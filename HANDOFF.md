@@ -1,18 +1,19 @@
 # 幸福小Molly：开发交接
 
-## 本地业务开发模式（2026-09-13）
+## 当前交接摘要（2026-09-13）
 
-- 当前重点已切换为本地业务闭环，暂不以 Supabase 可用性、迁移执行、RLS 或跨设备同步作为开发验收条件。
-- 新增 `src/services/localDb.ts`，使用浏览器 IndexedDB 保存本地账号、日期计划、三餐和自定义事项；会话仅保留当前浏览器本地状态。
-- `src/services/authService.ts`、`src/services/localDayPlanService.ts` 为本地适配层，页面继续通过服务层访问数据，便于上线阶段整体替换为云端实现。
-- 本地注册、登录、刷新恢复、日期模式、准备/执行、编辑面板、复制昨天和历史只读均应优先在当前浏览器验证。
-- Supabase 迁移文件保留但暂不执行；之前的云端验收记录不代表当前本地模式的运行状态。
+- 当前开发方向是本地优先：浏览器 IndexedDB 是唯一业务数据源；Supabase、RLS、跨设备同步和上线迁移均后置，不是当前开发或验收的阻塞条件。
+- 当前技术基线是 React + TypeScript + Vite + IndexedDB。`src/services/localDb.ts`、`src/services/authService.ts` 和 `src/services/localDayPlanService.ts` 是本地适配层；页面只通过服务层读写，未来可整体替换为云端实现。
+- 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐文本、晨间事项、健身决定、自定义事项、复制昨天、历史只读和保存失败重试。
+- 当前项目处于 **L0：本地基线整理与契约固定** 之前。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`；下一步只执行 L0，不提前扩展云端或上线验收。
+- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`；`main` 已推送首次提交 `634dd7b`。`.env.local`、构建产物和本地依赖均被忽略，未上传。
+- 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
-## 当前状态
+## 当前待办
 
-- 项目阶段：阶段 2 已完成，可进入阶段 3；阶段 1 和阶段 2 均已完成真实 Supabase 云端验收。
-- 技术基线：React + TypeScript + Vite；Supabase Auth + PostgreSQL + RLS。
-- 当前阶段严格限制为日期引擎、日期模式和周视图；未实现三餐、补剂、健身、衣服准备、晨间事项、时间线、复制昨天或选项管理。
+1. 执行 L0：清理遗留 Supabase 命名、固定本地服务接口与数据契约、补齐现有状态和可重复验收步骤。
+2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`，并在桌面和 390px 手机视口完成真实交互检查。
+3. 完成 L0 后更新本文件的当前交接摘要，再进入 L1；L1-L5 完成前不恢复云端迁移工作。
 
 ## 已有文档
 
