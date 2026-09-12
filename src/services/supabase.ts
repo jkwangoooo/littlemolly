@@ -1,0 +1,24 @@
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+export const supabaseConfigurationError =
+  '缺少 Supabase 配置。请在 .env.local 中设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。'
+
+export const hasSupabaseConfiguration = Boolean(supabaseUrl && supabaseAnonKey)
+
+export const supabase: SupabaseClient | null = hasSupabaseConfiguration
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
+  : null
+
+export function requireSupabase(): SupabaseClient {
+  if (!supabase) throw new Error(supabaseConfigurationError)
+  return supabase
+}
