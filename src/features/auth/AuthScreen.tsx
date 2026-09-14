@@ -20,13 +20,9 @@ export function AuthScreen({ notice }: { notice?: string | null }) {
     setBusy(true)
     setMessage(null)
     try {
-      let serverMessage: string | null = null
-      if (mode === 'sign-in') {
-        await signIn(email, password)
-      } else {
-        serverMessage = await signUp(email, password)
-      }
-      setMessage(serverMessage ?? (mode === 'sign-in' ? '登录成功。' : '注册成功。'))
+      if (mode === 'sign-in') await signIn(email, password)
+      else await signUp(email, password)
+      setMessage(mode === 'sign-in' ? '登录成功。' : '注册成功。')
     } catch (error) {
       setMessage(messageFrom(error))
     } finally {

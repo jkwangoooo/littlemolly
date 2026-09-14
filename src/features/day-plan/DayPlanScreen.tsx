@@ -1,54 +1,361 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CustomTask, DailyMeal, DayMode, DayPlan, MealType } from '../../shared/types/dayPlan'
-import type { SaveStatus } from '../../shared/types/save'
-import { addDays, classifyDate, defaultModeForDate, formatDateLabel, getBusinessDateKey, WEEKDAY_LABELS } from '../../shared/date/dateUtils'
-import { describeDataError } from '../../shared/errors'
-import { copyYesterday, deleteCustomTask, getDayPlan, listCustomTasks, listMeals, restoreDefaultDayPlan, saveCustomTask, saveMeals, upsertDayPlan } from '../../services/local/dayPlanService'
+import { useEffect, useMemo, useState } from 'react'
+import type { CustomTask, DailyMeal, DayMode, DayPlan } from '../../shared/types/dayPlan'
+import { addDays, classifyDate, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
+import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { signOut } from '../../services/local/authService'
+import {
+  copyYesterday,
+  deleteCustomTask,
+  listCustomTasks,
+  listMeals,
+  restoreDefaultDayPlan,
+  saveCustomTask,
+  saveMeals,
+  upsertDayPlan,
+} from '../../services/local/dayPlanService'
 import { WeekView } from '../week/WeekView'
+import { CustomTaskList } from './components/CustomTaskList'
+import { DateHeading } from './components/DateHeading'
+import { DayNavTabs } from './components/DayNavTabs'
+import { EditorSheet, type EditorKind } from './components/EditorSheet'
+import { ExecuteList, type ExecutionTarget } from './components/ExecuteList'
+import { ModeCard } from './components/ModeCard'
+import { PrepList, type PrepKey } from './components/PrepList'
+import { SaveStatusBar } from './components/SaveStatusBar'
+import { HISTORY_READONLY_TEXT, MODE_SWITCH_MESSAGE } from './dayPlanLabels'
+import { useDayPlanData } from './useDayPlanData'
+import { useSaveRunner } from './useSaveRunner'
 
-type Panel = 'meals' | 'morning' | 'exercise' | 'task' | null
-const mealNames: Record<MealType, string> = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐' }
-const statusText = (s: SaveStatus) => s === 'saving' ? '正在保存' : s === 'saved' ? '已保存' : s === 'error' ? '保存失败' : '尚未修改'
-const errorText = (e: unknown) => describeDataError(e)
+type View = 'day' | 'week'
+type Tab = 'execute' | 'prepare'
 
+/**
+ * 单日计划页。只负责编排：持有界面状态、串起数据加载与保存、组装子组件。
+ * 具体展示在 components/，数据读取在 useDayPlanData，保存状态机在 useSaveRunner。
+ */
 export function DayPlanScreen() {
-  const today = getBusinessDateKey(); const [view, setView] = useState<'day'|'week'>('day'); const [selectedDate, setSelectedDate] = useState(today); const [tab, setTab] = useState<'execute'|'prepare'>('execute')
-  const [plan, setPlan] = useState<DayPlan | null>(null); const [meals, setMeals] = useState<DailyMeal[]>([]); const [tasks, setTasks] = useState<CustomTask[]>([]); const [loading, setLoading] = useState(true); const [status, setStatus] = useState<SaveStatus>('idle'); const [error, setError] = useState<string | null>(null); const [pendingMode, setPendingMode] = useState<DayMode | null>(null); const [panel, setPanel] = useState<Panel>(null); const [editingTask, setEditingTask] = useState<CustomTask | null>(null); const [confirmDelete, setConfirmDelete] = useState<CustomTask | null>(null); const [confirmCopy, setConfirmCopy] = useState(false)
-  const retryAction = useRef<(() => Promise<void>) | null>(null)
-  const relation = classifyDate(selectedDate, today); const writable = relation !== 'history'; const mode = plan?.mode ?? defaultModeForDate(selectedDate); const isPrepare = tab === 'prepare';
-  const prep = plan ? [plan.outfit_ready, plan.meals_ready, plan.supplements_ready, plan.morning_ready, plan.exercise_ready] : [false,false,false,false,false]; const progress = prep.filter(Boolean).length
-  const sortedMeals = useMemo(() => [...meals].sort((a,b) => a.meal_type.localeCompare(b.meal_type)), [meals])
-  useEffect(() => { let active = true; retryAction.current = null; setLoading(true); setError(null); void getDayPlan(selectedDate).then(async (p) => { if (!active) return; setPlan(p); if (p) { const [m,t] = await Promise.all([listMeals(p.id), listCustomTasks(p.id)]); if (active) { setMeals(m); setTasks(t) } } else { setMeals([]); setTasks([]) } }).catch((e: unknown) => active && setError(errorText(e))).finally(() => active && setLoading(false)); return () => { active = false } }, [selectedDate])
-  async function ensurePlan() { return plan ?? await upsertDayPlan(selectedDate, { mode: defaultModeForDate(selectedDate), mode_override: false }) }
-  async function runSave(action: () => Promise<void>) { retryAction.current = action; setStatus('saving'); setError(null); try { await action(); setStatus('saved'); retryAction.current = null } catch (e) { setStatus('error'); setError(errorText(e)) } }
-  async function savePlan(patch: Partial<DayPlan>) { await runSave(async () => { const next = await upsertDayPlan(selectedDate, patch); setPlan(next) }) }
-  async function savePanel(kind: Panel, payload: Record<string, unknown>) {
-    if (!kind) return
-    await runSave(async () => { const ensured = await ensurePlan(); setPlan(ensured); if (kind === 'meals') setMeals(await saveMeals(selectedDate, payload.meals as Array<Pick<DailyMeal,'meal_type'|'plan_content'|'note'|'completed'>>)); if (kind === 'morning') setPlan(await upsertDayPlan(selectedDate, { morning_focus: String(payload.morning_focus ?? '') })); if (kind === 'exercise') setPlan(await upsertDayPlan(selectedDate, { exercise_decision: payload.exercise_decision as DayPlan['exercise_decision'], exercise_content: String(payload.exercise_content ?? ''), exercise_note: String(payload.exercise_note ?? '') })); if (kind === 'task') { const task = await saveCustomTask(selectedDate, { id: editingTask?.id, task_time: String(payload.task_time), title: String(payload.title), note: String(payload.note), completed: editingTask?.completed ?? false }); setTasks((old) => [...old.filter((x) => x.id !== task.id), task].sort((a,b) => a.task_time.localeCompare(b.task_time))) } setPanel(null) })
-  }
-  async function togglePrep(key: keyof DayPlan) { if (!writable) return; await savePlan({ [key]: !plan?.[key] } as Partial<DayPlan>) }
-  async function toggleExecution(kind: 'morning'|'exercise'|'meal'|'task', id?: string) { if (!writable) return; if (kind === 'morning') return savePlan({ morning_completed: !plan?.morning_completed }); if (kind === 'exercise') return savePlan({ exercise_completed: !plan?.exercise_completed }); if (kind === 'meal' && id) { const meal = meals.find(m => m.id === id); if (meal) await runSave(async () => setMeals(await saveMeals(selectedDate, meals.map(m => m.id === id ? { meal_type:m.meal_type, plan_content:m.plan_content, note:m.note, completed:!m.completed } : { meal_type:m.meal_type, plan_content:m.plan_content, note:m.note, completed:m.completed })))) } if (kind === 'task' && id) { const t = tasks.find(x=>x.id===id); if (t) await runSave(async () => { const next = await saveCustomTask(selectedDate,{...t,completed:!t.completed}); setTasks(tasks.map(x=>x.id===id?next:x)) }) } }
-  async function doCopy() { setConfirmCopy(false); await runSave(async () => { const next = await copyYesterday(selectedDate); setPlan(next); if (next) { setMeals(await listMeals(next.id)); setTasks(await listCustomTasks(next.id)) } }) }
-  async function restoreDefault() { await runSave(async () => { const next = await restoreDefaultDayPlan(selectedDate, defaultModeForDate(selectedDate)); setPlan(next) }) }
-  async function confirmDeleteTask(task: CustomTask) { setConfirmDelete(null); await runSave(async () => { await deleteCustomTask(selectedDate, task.id); setTasks((current) => current.filter((item) => item.id !== task.id)) }) }
-  if (view === 'week') return <WeekView selectedDate={selectedDate} onSelectDate={(d) => { setSelectedDate(d); setView('day') }} onBackToDay={() => setView('day')} />
-  const weekday = WEEKDAY_LABELS[new Date(`${selectedDate}T00:00:00Z`).getUTCDay() === 0 ? 6 : new Date(`${selectedDate}T00:00:00Z`).getUTCDay()-1]
-  return <main className="page"><header className="topbar"><div><p className="eyebrow">幸福小Molly</p><h1>{isPrepare ? '准备明天' : '执行今天'}</h1></div><button className="secondary" type="button" onClick={() => void signOut()}>退出登录</button></header>
-    <nav className="nav-tabs"><button className={!isPrepare?'active':''} type="button" onClick={() => {setTab('execute');setSelectedDate(today)}}>执行今天</button><button className={isPrepare?'active':''} type="button" onClick={() => {setTab('prepare');setSelectedDate(addDays(today,1))}}>准备明天</button><button type="button" onClick={() => setView('week')}>本周</button></nav>
-      <section className="panel stack"><div className="date-heading"><button className="icon-button" aria-label="前一天" onClick={() => setSelectedDate(addDays(selectedDate,-1))}>‹</button><div><p className="date-kicker">{relation==='today'?'今天':relation==='tomorrow'?'明天':relation==='history'?'历史日期':'未来日期'}</p><h2>{formatDateLabel(selectedDate)} · {weekday}</h2><p className="muted">{selectedDate}</p></div><button className="icon-button" aria-label="后一天" onClick={() => setSelectedDate(addDays(selectedDate,1))}>›</button></div><p className={`status ${status}`} aria-live="polite">本地保存状态：{statusText(status)}</p>{error && <p className="notice" role="alert">保存失败：{error} <button className="secondary retry" type="button" disabled={status === 'saving' || !retryAction.current} onClick={() => { if (retryAction.current) void runSave(retryAction.current) }}>重试</button></p>}{relation==='history'&&<p className="history-note">历史计划仅供查看</p>}
-      {!loading && <><div className="mode-card"><div><p className="muted">日期类型</p><strong>{mode==='work'?'工作日':'休息日'}</strong><p className="mode-detail">{plan?.mode_override?'人工覆盖默认模式':'按星期自动判断'}</p></div>{writable&&<div className="actions"><button type="button" onClick={() => setPendingMode(mode==='work'?'rest':'work')}>改为{mode==='work'?'休息日':'工作日'}</button>{plan?.mode_override&&<button className="secondary" onClick={() => void restoreDefault()}>恢复默认</button>}</div>}</div>
-      {mode==='work' && isPrepare && <><div className="progress-head"><strong>明日准备进度 {progress}/5</strong><span>{progress===5?'美好的一天结束啦，迎接下一天！':''}</span></div><div className="prep-list">{([['outfit_ready','衣服已经准备好','只记录是否准备好',null],['meals_ready','三餐已安排',sortedMeals.map(m=>`${mealNames[m.meal_type]}：${m.plan_content||'未填写'}`).join(' · ')||'点击编辑三餐','meals'],['supplements_ready','早中晚补剂已安排','本阶段只记录准备状态',null],['morning_ready','晨间事项已安排',plan?.morning_focus||'5:00-6:30 · 点击填写','morning'],['exercise_ready','健身安排已决定',plan?.exercise_decision==='exercise'?'已决定健身':plan?.exercise_decision==='rest'?'决定不健身':'点击选择','exercise'] ] as Array<[keyof DayPlan,string,string,Panel]>).map(([key,label,summary,editor])=><div className="prep-row" key={key}><input type="checkbox" checked={Boolean(plan?.[key])} onChange={() => void togglePrep(key)} disabled={!writable}/><button type="button" className="row-main" disabled={!editor} onClick={() => editor && setPanel(editor)}><strong>{label}</strong><span>{summary}</span></button>{editor && <span className="arrow">›</span>}</div>)}</div></>}
-      {!isPrepare && <div className="execute-list"><h3>今日计划</h3>{sortedMeals.map(m=><label className="execution-row" key={m.id}><input type="checkbox" checked={m.completed} disabled={!writable} onChange={()=>void toggleExecution('meal',m.id)}/><span><strong>{mealNames[m.meal_type]}</strong><small>{m.plan_content||'未安排'}{m.note&&` · ${m.note}`}</small></span></label>)}{plan?.morning_focus&&<label className="execution-row"><input type="checkbox" checked={plan.morning_completed} disabled={!writable} onChange={()=>void toggleExecution('morning')}/><span><strong>晨间专注 5:00-6:30</strong><small>{plan.morning_focus}</small></span></label>}{plan?.exercise_decision&&plan.exercise_decision!=='undecided'&&<label className="execution-row"><input type="checkbox" checked={plan.exercise_completed} disabled={!writable} onChange={()=>void toggleExecution('exercise')}/><span><strong>{plan.exercise_decision==='exercise'?'健身':'不健身'}</strong><small>{plan.exercise_content||'已决定'}</small></span></label>}</div>}
-      <div className="timeline-head"><h3>自定义事项</h3>{writable&&<button type="button" onClick={()=>{setEditingTask(null);setPanel('task')}}>＋ 添加事项</button>}</div>{tasks.map(t=><div className="execution-row task-row" key={t.id}><input type="checkbox" checked={t.completed} disabled={!writable} onChange={()=>void toggleExecution('task',t.id)}/><span><strong>{t.task_time.slice(0,5)} · {t.title}</strong><small>{t.note}</small></span>{writable&&<button className="secondary mini" onClick={()=>{setEditingTask(t);setPanel('task')}}>编辑</button>} {writable&&<button className="secondary mini" onClick={()=>setConfirmDelete(t)}>删除</button>}</div>)}{writable&&<button className="secondary" type="button" onClick={()=>setConfirmCopy(true)}>复制昨天</button>}</>}
-    </section>
-    {pendingMode&&<div className="modal-backdrop"><section className="confirm-modal" role="dialog" aria-modal="true"><h2>确认切换日期模式</h2><p>{pendingMode==='rest'?'恭喜幸福小Molly，今天不上班':'幸福小Molly，今天要上班哦'}</p><p className="muted">切换会影响该日期可见的规划内容。</p><div className="actions"><button onClick={()=>{setPendingMode(null);void savePlan({mode:pendingMode,mode_override:true})}}>确认切换</button><button className="secondary" onClick={()=>setPendingMode(null)}>取消</button></div></section></div>}
-    {confirmDelete&&<div className="modal-backdrop"><section className="confirm-modal"><h2>删除事项？</h2><p>{confirmDelete.title} 将被删除。</p><div className="actions"><button onClick={()=>void confirmDeleteTask(confirmDelete)}>确认删除</button><button className="secondary" onClick={()=>setConfirmDelete(null)}>取消</button></div></section></div>}
-    {confirmCopy&&<div className="modal-backdrop"><section className="confirm-modal"><h2>复制昨天的计划？</h2><p>将覆盖三餐、晨间、健身和自定义事项内容，但不会复制准备勾选或完成状态。</p><div className="actions"><button onClick={()=>void doCopy()}>确认覆盖</button><button className="secondary" onClick={()=>setConfirmCopy(false)}>取消</button></div></section></div>}
-    {panel&&<EditorPanel kind={panel} meals={meals} plan={plan} task={editingTask} onCancel={()=>setPanel(null)} onSave={(payload)=>void savePanel(panel,payload)}/>}</main>
-}
+  const today = getBusinessDateKey()
+  const [view, setView] = useState<View>('day')
+  const [selectedDate, setSelectedDate] = useState(today)
+  const [tab, setTab] = useState<Tab>('execute')
+  const [panel, setPanel] = useState<EditorKind | null>(null)
+  const [editingTask, setEditingTask] = useState<CustomTask | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<CustomTask | null>(null)
+  const [confirmCopy, setConfirmCopy] = useState(false)
+  const [pendingMode, setPendingMode] = useState<DayMode | null>(null)
 
-function EditorPanel({ kind, meals, plan, task, onCancel, onSave }: { kind: Panel; meals: DailyMeal[]; plan: DayPlan|null; task: CustomTask|null; onCancel:()=>void; onSave:(p:Record<string,unknown>)=>void }) {
-  const [mealDraft,setMealDraft]=useState<Record<MealType,{plan_content:string;note:string}>>({breakfast:{plan_content:meals.find(m=>m.meal_type==='breakfast')?.plan_content||'',note:meals.find(m=>m.meal_type==='breakfast')?.note||''},lunch:{plan_content:meals.find(m=>m.meal_type==='lunch')?.plan_content||'',note:meals.find(m=>m.meal_type==='lunch')?.note||''},dinner:{plan_content:meals.find(m=>m.meal_type==='dinner')?.plan_content||'',note:meals.find(m=>m.meal_type==='dinner')?.note||''}}); const [morning,setMorning]=useState(plan?.morning_focus||''); const [decision,setDecision]=useState<DayPlan['exercise_decision']>(plan?.exercise_decision||'undecided'); const [content,setContent]=useState(plan?.exercise_content||''); const [note,setNote]=useState(plan?.exercise_note||''); const [time,setTime]=useState(task?.task_time?.slice(0,5)||'08:00'); const [title,setTitle]=useState(task?.title||''); const [taskNote,setTaskNote]=useState(task?.note||''); if (!kind) return null; const titleText=kind==='meals'?'编辑三餐':kind==='morning'?'编辑晨间事项':kind==='exercise'?'编辑健身安排':task?'编辑事项':'添加事项';
-  return <div className="sheet-backdrop"><section className="bottom-sheet" role="dialog" aria-modal="true"><div className="sheet-handle"/><h2>{titleText}</h2>{kind==='meals'&&(['breakfast','lunch','dinner'] as MealType[]).map(type=><div className="field" key={type}><label>{mealNames[type]}计划<input value={mealDraft[type].plan_content} onChange={e=>setMealDraft({...mealDraft,[type]:{...mealDraft[type],plan_content:e.target.value}})}/></label><label>备注<input value={mealDraft[type].note} onChange={e=>setMealDraft({...mealDraft,[type]:{...mealDraft[type],note:e.target.value}})}/></label></div>)}{kind==='morning'&&<label className="field">5:00-6:30 当天事项<textarea value={morning} onChange={e=>setMorning(e.target.value)}/></label>}{kind==='exercise'&&<><label className="field">安排<select value={decision} onChange={e=>setDecision(e.target.value as DayPlan['exercise_decision'])}><option value="undecided">未决定</option><option value="exercise">健身</option><option value="rest">不健身</option></select></label>{decision==='exercise'&&<><label className="field">具体内容<input value={content} onChange={e=>setContent(e.target.value)}/></label><label className="field">备注<input value={note} onChange={e=>setNote(e.target.value)}/></label></>}</>}{kind==='task'&&<><label className="field">时间<input type="time" value={time} onChange={e=>setTime(e.target.value)}/></label><label className="field">事项名称<input value={title} onChange={e=>setTitle(e.target.value)}/></label><label className="field">备注<input value={taskNote} onChange={e=>setTaskNote(e.target.value)}/></label></>}<div className="actions"><button onClick={()=>onSave(kind==='meals'?{meals:(['breakfast','lunch','dinner'] as MealType[]).map(type=>({meal_type:type,plan_content:mealDraft[type].plan_content,note:mealDraft[type].note,completed:meals.find(m=>m.meal_type===type)?.completed||false}))}:kind==='morning'?{morning_focus:morning}:kind==='exercise'?{exercise_decision:decision,exercise_content:content,exercise_note:note}:{task_time:time,title,note:taskNote})}>保存</button><button className="secondary" onClick={onCancel}>取消</button></div></section></div>
+  const data = useDayPlanData(selectedDate)
+  const { status, saveError, canRetry, runSave, retryLastSave, resetForDateChange } = useSaveRunner()
+
+  // 切换日期时丢弃上一次的待重试写入请求与错误提示，避免跨日期误重试。
+  useEffect(() => {
+    resetForDateChange()
+  }, [selectedDate, resetForDateChange])
+
+  const relation = classifyDate(selectedDate, today)
+  const writable = relation !== 'history'
+  const isPrepare = tab === 'prepare'
+  const mode = data.plan?.mode ?? defaultModeForDate(selectedDate)
+
+  const progress = data.plan
+    ? [
+        data.plan.outfit_ready,
+        data.plan.meals_ready,
+        data.plan.supplements_ready,
+        data.plan.morning_ready,
+        data.plan.exercise_ready,
+      ].filter(Boolean).length
+    : 0
+
+  const sortedMeals = useMemo(
+    () => [...data.meals].sort((a, b) => a.meal_type.localeCompare(b.meal_type)),
+    [data.meals],
+  )
+
+  async function ensurePlan(): Promise<DayPlan> {
+    if (data.plan) return data.plan
+    const created = await upsertDayPlan(selectedDate, {
+      mode: defaultModeForDate(selectedDate),
+      mode_override: false,
+    })
+    data.setPlan(created)
+    return created
+  }
+
+  async function savePlan(patch: Partial<DayPlan>) {
+    await runSave(async () => {
+      data.setPlan(await upsertDayPlan(selectedDate, patch))
+    })
+  }
+
+  async function savePanel(kind: EditorKind, payload: Record<string, unknown>) {
+    await runSave(async () => {
+      await ensurePlan()
+
+      if (kind === 'meals') {
+        const rows = payload.meals as Array<Pick<DailyMeal, 'meal_type' | 'plan_content' | 'note' | 'completed'>>
+        data.setMeals(await saveMeals(selectedDate, rows))
+      }
+      if (kind === 'morning') {
+        data.setPlan(await upsertDayPlan(selectedDate, { morning_focus: String(payload.morning_focus ?? '') }))
+      }
+      if (kind === 'exercise') {
+        data.setPlan(
+          await upsertDayPlan(selectedDate, {
+            exercise_decision: payload.exercise_decision as DayPlan['exercise_decision'],
+            exercise_content: String(payload.exercise_content ?? ''),
+            exercise_note: String(payload.exercise_note ?? ''),
+          }),
+        )
+      }
+      if (kind === 'task') {
+        const saved = await saveCustomTask(selectedDate, {
+          id: editingTask?.id,
+          task_time: String(payload.task_time),
+          title: String(payload.title),
+          note: String(payload.note),
+          completed: editingTask?.completed ?? false,
+        })
+        data.setTasks((current) =>
+          [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) =>
+            a.task_time.localeCompare(b.task_time),
+          ),
+        )
+      }
+
+      setPanel(null)
+    })
+  }
+
+  async function togglePrep(key: PrepKey) {
+    if (!writable) return
+    await savePlan({ [key]: !data.plan?.[key] } as Partial<DayPlan>)
+  }
+
+  async function toggleExecution(target: ExecutionTarget, id?: string) {
+    if (!writable) return
+
+    if (target === 'morning') {
+      await savePlan({ morning_completed: !data.plan?.morning_completed })
+      return
+    }
+    if (target === 'exercise') {
+      await savePlan({ exercise_completed: !data.plan?.exercise_completed })
+      return
+    }
+    if (target === 'meal' && id) {
+      const meal = data.meals.find((item) => item.id === id)
+      if (!meal) return
+      await runSave(async () => {
+        data.setMeals(
+          await saveMeals(
+            selectedDate,
+            data.meals.map((item) => ({
+              meal_type: item.meal_type,
+              plan_content: item.plan_content,
+              note: item.note,
+              completed: item.id === id ? !item.completed : item.completed,
+            })),
+          ),
+        )
+      })
+    }
+  }
+
+  async function toggleTask(id: string) {
+    if (!writable) return
+    const task = data.tasks.find((item) => item.id === id)
+    if (!task) return
+    await runSave(async () => {
+      const saved = await saveCustomTask(selectedDate, { ...task, completed: !task.completed })
+      data.setTasks((current) => current.map((item) => (item.id === id ? saved : item)))
+    })
+  }
+
+  async function doCopy() {
+    setConfirmCopy(false)
+    await runSave(async () => {
+      const copied = await copyYesterday(selectedDate)
+      data.setPlan(copied)
+      data.setMeals(await listMeals(copied.id))
+      data.setTasks(await listCustomTasks(copied.id))
+    })
+  }
+
+  async function restoreDefault() {
+    await runSave(async () => {
+      data.setPlan(await restoreDefaultDayPlan(selectedDate, defaultModeForDate(selectedDate)))
+    })
+  }
+
+  async function confirmDeleteTask(task: CustomTask) {
+    setConfirmDelete(null)
+    await runSave(async () => {
+      await deleteCustomTask(selectedDate, task.id)
+      data.setTasks((current) => current.filter((item) => item.id !== task.id))
+    })
+  }
+
+  if (view === 'week') {
+    return (
+      <WeekView
+        selectedDate={selectedDate}
+        onSelectDate={(date) => {
+          setSelectedDate(date)
+          setView('day')
+        }}
+        onBackToDay={() => setView('day')}
+      />
+    )
+  }
+
+  return (
+    <main className="page">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">幸福小Molly</p>
+          <h1>{isPrepare ? '准备明天' : '执行今天'}</h1>
+        </div>
+        <button className="secondary" type="button" onClick={() => void signOut()}>
+          退出登录
+        </button>
+      </header>
+
+      <DayNavTabs
+        isPrepare={isPrepare}
+        onExecuteToday={() => {
+          setTab('execute')
+          setSelectedDate(today)
+        }}
+        onPrepareTomorrow={() => {
+          setTab('prepare')
+          setSelectedDate(addDays(today, 1))
+        }}
+        onOpenWeek={() => setView('week')}
+      />
+
+      <section className="panel stack">
+        <DateHeading
+          relation={relation}
+          selectedDate={selectedDate}
+          onPrev={() => setSelectedDate(addDays(selectedDate, -1))}
+          onNext={() => setSelectedDate(addDays(selectedDate, 1))}
+        />
+
+        <SaveStatusBar
+          status={status}
+          saveError={saveError}
+          loadError={data.loadError}
+          canRetry={canRetry}
+          onRetry={() => void retryLastSave()}
+        />
+
+        {relation === 'history' ? <p className="history-note">{HISTORY_READONLY_TEXT}</p> : null}
+
+        {data.loading ? null : (
+          <>
+            <ModeCard
+              mode={mode}
+              modeOverride={Boolean(data.plan?.mode_override)}
+              writable={writable}
+              onRequestSwitch={() => setPendingMode(mode === 'work' ? 'rest' : 'work')}
+              onRestoreDefault={() => void restoreDefault()}
+            />
+
+            {mode === 'work' && isPrepare ? (
+              <PrepList
+                plan={data.plan}
+                meals={sortedMeals}
+                progress={progress}
+                writable={writable}
+                onToggle={(key) => void togglePrep(key)}
+                onOpenEditor={(editor) => {
+                  setEditingTask(null)
+                  setPanel(editor)
+                }}
+              />
+            ) : null}
+
+            {isPrepare ? null : (
+              <ExecuteList
+                plan={data.plan}
+                meals={sortedMeals}
+                writable={writable}
+                onToggle={(target, id) => void toggleExecution(target, id)}
+              />
+            )}
+
+            <CustomTaskList
+              tasks={data.tasks}
+              writable={writable}
+              onAdd={() => {
+                setEditingTask(null)
+                setPanel('task')
+              }}
+              onEdit={(task) => {
+                setEditingTask(task)
+                setPanel('task')
+              }}
+              onRequestDelete={(task) => setConfirmDelete(task)}
+              onToggle={(id) => void toggleTask(id)}
+            />
+
+            {writable ? (
+              <button className="secondary" type="button" onClick={() => setConfirmCopy(true)}>
+                复制昨天
+              </button>
+            ) : null}
+          </>
+        )}
+      </section>
+
+      {pendingMode ? (
+        <ConfirmDialog
+          title="确认切换日期模式"
+          description={pendingMode === 'rest' ? MODE_SWITCH_MESSAGE.toRest : MODE_SWITCH_MESSAGE.toWork}
+          confirmLabel="确认切换"
+          onConfirm={() => {
+            const next = pendingMode
+            setPendingMode(null)
+            void savePlan({ mode: next, mode_override: true })
+          }}
+          onCancel={() => setPendingMode(null)}
+        >
+          <p className="muted">切换会影响该日期可见的规划内容。</p>
+        </ConfirmDialog>
+      ) : null}
+
+      {confirmDelete ? (
+        <ConfirmDialog
+          title="删除事项？"
+          description={`${confirmDelete.title} 将被删除。`}
+          confirmLabel="确认删除"
+          onConfirm={() => void confirmDeleteTask(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      ) : null}
+
+      {confirmCopy ? (
+        <ConfirmDialog
+          title="复制昨天的计划？"
+          description="将覆盖三餐、晨间、健身和自定义事项内容，但不会复制准备勾选或完成状态。"
+          confirmLabel="确认覆盖"
+          onConfirm={() => void doCopy()}
+          onCancel={() => setConfirmCopy(false)}
+        />
+      ) : null}
+
+      {panel ? (
+        <EditorSheet
+          key={panel}
+          kind={panel}
+          meals={data.meals}
+          plan={data.plan}
+          task={editingTask}
+          onCancel={() => setPanel(null)}
+          onSave={(payload) => void savePanel(panel, payload)}
+        />
+      ) : null}
+    </main>
+  )
 }

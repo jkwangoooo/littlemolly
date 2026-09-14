@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppSession } from '../shared/types/auth'
 import { getSession } from '../services/local/authService'
+import { AUTH_CHANGE_EVENT } from '../services/local/sessionStore'
 import { AuthScreen } from '../features/auth/AuthScreen'
 import { DayPlanScreen } from '../features/day-plan/DayPlanScreen'
 
@@ -32,11 +33,11 @@ export function App() {
         if (active) setSession(next)
       })
     }
-    window.addEventListener('molly-auth-change', handleAuthChange)
+    window.addEventListener(AUTH_CHANGE_EVENT, handleAuthChange)
 
     return () => {
       active = false
-      window.removeEventListener('molly-auth-change', handleAuthChange)
+      window.removeEventListener(AUTH_CHANGE_EVENT, handleAuthChange)
     }
   }, [])
 
