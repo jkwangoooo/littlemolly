@@ -1,4 +1,4 @@
-import type { DailyExerciseItem, DailyMeal, DailyMealItem, DailySupplement, DayPlan, MealType } from '../../../shared/types/dayPlan'
+import type { DailyExerciseItem, DailyMeal, DailyMealItem, DailySupplement, DayMode, DayPlan, MealType } from '../../../shared/types/dayPlan'
 import { MEAL_TYPES } from '../../../shared/types/dayPlan'
 import { SUPPLEMENT_PERIOD_LABEL } from '../../../shared/periodLabels'
 import {
@@ -32,6 +32,9 @@ function join(detail: string, note?: string): string {
  *
  * 补剂只列「今天吃」的项——被取消勾选的那几条是这一天的内容，但当天并不打算吃，
  * 放在执行区只会变成永远勾不动的噪音。健身只在决定为「健身」时才出现。
+ *
+ * 休息日（`mode === 'rest'`）只保留补剂与健身，隐藏三餐与晨间——这两项是工作日专属
+ * （docs/00「仅工作日」），休息日不展示。
  */
 export function ExecuteList({
   plan,
@@ -40,6 +43,7 @@ export function ExecuteList({
   supplements,
   exerciseItems,
   writable,
+  mode,
   onToggle,
 }: {
   plan: DayPlan | null
@@ -48,12 +52,18 @@ export function ExecuteList({
   supplements: DailySupplement[]
   exerciseItems: DailyExerciseItem[]
   writable: boolean
+  mode: DayMode
   onToggle: (toggle: ExecutionToggle) => void
 }) {
+  const isRest = mode === 'rest'
   const plannedSupplements = supplements.filter((row) => row.planned)
-  const showMorning = Boolean(plan?.morning_focus)
+  const showMorning = !isRest && Boolean(plan?.morning_focus)
   const showExercise = plan?.exercise_decision === 'exercise'
-  const empty = meals.length === 0 && !showMorning && !showExercise && plannedSupplements.length === 0
+  const showMeals = !isRest
+  // 休息日不展示三餐与晨间，因此空态只看「补剂 + 健身」是否有内容。
+  const empty = (isRest
+    ? plannedSupplements.length === 0 && !showExercise
+    : meals.length === 0 && !showMorning && !showExercise && plannedSupplements.length === 0)
 
   return (
     <div className="execute-list">
@@ -61,9 +71,8 @@ export function ExecuteList({
 
       {empty ? <p className="muted empty-note">{EXECUTE_EMPTY}</p> : null}
 
-      {empty
-        ? null
-        : MEAL_TYPES.map((type) => {
+      {!empty && showMeals
+        ? MEAL_TYPES.map((type) => {
             const meal = meals.find((item) => item.meal_type === type)
             const names = meal
               ? mealItems.filter((item) => item.daily_meal_id === meal.id).map((item) => item.food_name_snapshot)
@@ -83,7 +92,8 @@ export function ExecuteList({
                 </span>
               </label>
             )
-          })}
+          })
+        : null}
 
       {showMorning && plan ? (
         <label className="execution-row">

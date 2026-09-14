@@ -4,22 +4,23 @@
 
 - 当前开发方向是本地优先：浏览器 IndexedDB 是唯一业务数据源；Supabase、RLS、跨设备同步和上线迁移均后置，不是当前开发或验收的阻塞条件。
 - 当前技术基线是 React + TypeScript + Vite + IndexedDB。服务层已按职责拆为 `src/services/local/`（当前生效）与 `src/services/cloud/`（L6 前冻结、不得被页面引用）；页面只通过服务层读写。会话状态只在 `src/app/App.tsx` 持有，本地会话读写集中在 `src/services/local/sessionStore.ts`。
-- 日计划页已是「编排页 + 子组件 + hook」结构：`DayPlanScreen.tsx` 只做编排，展示在 `features/day-plan/components/`，数据读取在 `useDayPlanData`，保存状态机在 `useSaveRunner`；周视图状态判定集中在 `features/week/weekStatus.ts`。IndexedDB 的建表逻辑已收敛为按版本号递增的显式迁移表（`localDb.ts` 的 `STORES` / `MIGRATIONS`，当前 `DB_VERSION = 3`，共 10 张对象仓库）。选项页同样只做编排（`features/preferences/PreferencesScreen.tsx`），读写全部经 `services/local/optionService.ts`，示例数据在 `services/local/optionSeed.ts`；保存状态前缀与文案集中在 `shared/saveStatus.ts`，日计划页与选项页共用一套措辞。
-- 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐多选食物与备注、补剂模板实例化与逐项勾选、健身多选项目与备注、自定义事项、复制昨天、历史只读和保存失败重试。
+- 日计划页已是「编排页 + 子组件 + hook」结构：`DayPlanScreen.tsx` 只做编排，展示在 `features/day-plan/components/`，数据读取在 `useDayPlanData`，保存状态机在 `useSaveRunner`；周视图状态判定集中在 `features/week/weekStatus.ts`。IndexedDB 的建表逻辑已收敛为按版本号递增的显式迁移表（`localDb.ts` 的 `STORES` / `MIGRATIONS`，当前 `DB_VERSION = 4`，共 11 张对象仓库）。选项页同样只做编排（`features/preferences/PreferencesScreen.tsx`），读写全部经 `services/local/optionService.ts`，示例数据在 `services/local/optionSeed.ts`；保存状态前缀与文案集中在 `shared/saveStatus.ts`，日计划页与选项页共用一套措辞。
+- 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐多选食物与备注、补剂模板实例化与逐项勾选、健身多选项目与备注、自定义事项、休息日家务（拖地/洗衣）、复制昨天、历史只读和保存失败重试。
 - **L0 已完成（2026-09-14），可进入 L1。** 完成报告见 `docs/07-L0-completion-report.md`：六项任务全部落地，现有业务行为零回退，并首次具备可重复的自动化验收。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
 - **L1 已完成（2026-09-14），可进入 L2。** 完成报告见 `docs/08-L1-completion-report.md`：`food_options` / `supplement_templates` / `exercise_options` 三类对象仓库落库（`DB_VERSION` 1→2），选项页支持新增 / 改名 / 排序 / 启停 / 删除并带二次确认，示例选项放在 `services/local/optionSeed.ts`（注册时幂等播种，页面零写死）；同时修掉 L0 遗留的 R9（切日期后保存状态残留）。验收：浏览器 52 项 + 日期规则 48 项 + 本地数据结构 15 项全通过，含真实冷升级（v1 老库 → v2 七张表且老数据可读）。
 - **L2 已完成（2026-09-14），可进入 L3。** 完成报告见 `docs/09-L2-completion-report.md`：三餐升级为早/中/晚多选食物 + 备注（`daily_meals`）；补剂从模板生成每日实例、可逐项勾选执行、自定义行可增删（`daily_supplements`）；健身升级为多选项目 + 备注（`daily_exercises`）；全部保存时写入名称快照、改名/停用选项不改写历史；复制昨天只带内容与快照不带状态；`DB_VERSION` 2→3（共 10 张表），迁移含 `backfillSnapshots` 将旧自由文本转为快照项。验收：`npm run typecheck/lint/build` 通过、`check:local-data` 21/21 通过、`verify:local` **66/66** 通过（含 v2→v3 冷升级）。
+- **L3 已完成（2026-09-14），可进入 L4。** 完成报告见 `docs/10-L3-completion-report.md`：正常周六/周日自动补齐「拖地/洗衣」两个每日实例（`routine_tasks` 表）、仅勾选完成；临时不上班（工作日人工切休息日，`mode_override=true`）不自动带家务；休息日保留补剂/健身/自定义事项、隐藏衣服/三餐/晨间等工作日准备项；休息日切工作日保留二次确认；`DB_VERSION` 3→4（共 11 张表）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **74/74** 通过（含 v3→v4 冷升级）。
 - 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）→ `cd61dfc`（L0 完成报告）；L1 的提交为 `6408eb0`（选项管理与本地数据结构）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
 ## 当前待办
 
-1. 进入 **L3：休息日与自由规划**。正常周六、周日自动出现"拖地""洗衣"两个每日实例；工作日切换为休息日时不自动加入拖地/洗衣；休息日保留补剂、健身和自定义事项；隐藏不适用的工作日准备项；明确模式切换后已有内容的保留规则。
-   - L2 已就绪的取数入口：`listSelectableOptions(kind)`（`src/services/local/optionService.ts`），停用项天然不在结果里。
-   - L2 的面板组件 `MealPanel` / `SupplementPanel` / `ExercisePanel` 均已在 `EditorSheet` 中编排，L3 可直接复用或按模式隐藏。
+1. 进入 **L4：首页导航与移动端交互完善**。补齐底部固定导航「今日 / 本周 / 选项」；统一所有编辑入口为底部面板、保存/取消后回到原页面和滚动位置；优化长列表、面板键盘顶起、确认框、错误提示和空状态；保留桌面宽屏布局。
+   - L2/L3 已就绪：面板组件 `MealPanel` / `SupplementPanel` / `ExercisePanel` 已在 `EditorSheet` 编排；休息日视图（家务 + 补剂/健身/自定义事项）已分流。
+   - L3 遗留：休息日「准备/执行」tab 语义未区分（休息日无五项准备，两 tab 显示相同内容），L4 统一交互时一并处理。
 2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。
-3. L2 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。（L2 已完成此步骤，后续阶段若再新增表需继续遵循。）
+3. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。（L2/L3 已完成此步骤，后续阶段若再新增表需继续遵循。）
 4. R9 已在 L1 修复并纳入验收断言，不再挂账。
 5. L1-L5 完成前不恢复云端迁移工作。
 
@@ -35,6 +36,7 @@
 - `docs/07-L0-completion-report.md`：L0 完成报告（任务达成、证据、缺陷、延后项与未验证项）。
 - `docs/08-L1-completion-report.md`：L1 完成报告（选项管理与本地数据结构：任务达成、证据、缺陷、延后项与未验证项）。
 - `docs/09-L2-completion-report.md`：L2 完成报告（计划内容实例化：三餐多选、补剂实例化、健身多选、名称快照、v2→v3 冷升级；任务达成、证据、缺陷、延后项与未验证项）。
+- `docs/10-L3-completion-report.md`：L3 完成报告（休息日与自由规划：拖地/洗衣每日实例、临时不上班不带家务、隐藏工作日准备项、v3→v4 冷升级；任务达成、证据、缺陷、延后项与未验证项）。
 
 ## 阶段 1 已完成内容
 
@@ -641,5 +643,47 @@ L1 已完成选项仓库（`food_options` / `supplement_templates` / `exercise_o
 - **L2 完成，可进入 L3。** 全部 9 项任务落地，DB_VERSION 升至 3（10 张表），验收基线为「三件套 + `check:dates` 48 项 + `check:local-data` 21 项 + `verify:local` 66 项」。
 - 名称快照机制已建立并验收：保存时写入快照、改名/停用选项不改写历史、复制昨天不带状态。
 - 未验证项：L3–L6 功能、云端一切、跨浏览器差异、真机移动设备。
+
+## L3：休息日与自由规划（2026-09-14）
+
+完整报告见 `docs/10-L3-completion-report.md`，此处只记改动与证据。
+
+### 背景
+
+L2 已完成三餐 / 补剂 / 健身的内容实例化。但休息日（周六 / 周日）和「临时不上班」（工作日人工切休息日）仍缺一套规则：正常休息日应有拖地 / 洗衣两项家务，临时不上班则不带家务；休息日应隐藏工作日专属的衣服 / 三餐 / 晨间，只保留补剂 / 健身 / 自定义事项。
+
+### 本次修改文件
+
+**新增（1 个）：**
+- `src/features/day-plan/components/RoutineList.tsx`：休息日家务列表（拖地 / 洗衣），只展示完成勾选
+
+**修改（9 个）：**
+- `src/services/local/localDb.ts`：`DB_VERSION` 3→4；新增 `routine_tasks` 表；`MIGRATIONS[4]` 建表（只建表不搬迁）
+- `src/services/local/dayPlanService.ts`：新增 `listRoutineTasks` / `ensureRestDayRoutines` / `setRoutineCompleted`
+- `src/shared/types/dayPlan.ts`：新增 `RoutineKind` / `RoutineTask`
+- `src/features/day-plan/useDayPlanData.ts`：load 时对正常休息日自动补齐家务（含创建 rest 计划）；新增 `routines` 状态
+- `src/features/day-plan/DayPlanScreen.tsx`：按 `mode` 分流渲染；新增 `toggleRoutine`
+- `src/features/day-plan/components/ExecuteList.tsx`：新增 `mode` 参数，休息日隐藏三餐与晨间
+- `src/features/day-plan/dayPlanLabels.ts`：新增 `ROUTINE_TITLE` / `REST_NO_ROUTINE_NOTE`
+- `src/app/styles.css`：新增 `.rest-note`
+- `scripts/verify-local.mjs`：52→74 项；`scripts/check-local-data.mjs`：15→24 项
+
+### 实际运行的命令与结果
+
+- `npm run typecheck` / `npm run lint`：通过。
+- `npm run build`：通过，73 modules。
+- `npm run check:dates`：**48/48 通过**。
+- `npm run check:local-data`：**24/24 通过**。
+- `npm run verify:local`：**74/74 通过**（桌面 1440x900 + 手机 390x844，无横向溢出，控制台无 error/warning；含 v3→v4 冷升级）。
+
+### 本轮修复的缺陷
+
+1. **家务重复补齐（竞态，P1）**：最初把家务补齐放在 `DayPlanScreen` 的 `useEffect`，`ensurePlan` 内的 `setPlan` 触发重渲染与 effect 派生值交互，快速切日期时 `ensureRestDayRoutines` 被并发调用两次，出现「洗衣」重复。改为把补齐逻辑移到 `useDayPlanData.load`（有 `active` 保护），消除竞态。
+
+### 阶段结论
+
+- **L3 完成，可进入 L4。** 全部 6 项任务落地，DB_VERSION 升至 4（11 张表），验收基线为「三件套 + `check:dates` 48 项 + `check:local-data` 24 项 + `verify:local` 74 项」。
+- 休息日家务、临时不上班、模式切换后内容保留规则均符合 docs/00 与 docs/01 不变量。
+- 未验证项：L4–L6 功能、云端一切、跨浏览器差异、真机移动设备。
 
 

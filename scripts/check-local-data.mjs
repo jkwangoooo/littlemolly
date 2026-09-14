@@ -50,10 +50,12 @@ check(
   [...storesOf(3)].sort(),
   ['daily_exercise_items', 'daily_meal_items', 'daily_supplements'],
 )
+check('v4 迁移新增休息日家务表', [...storesOf(4)].sort(), ['routine_tasks'])
 
 // ---- 已有数据的版本必须带搬迁函数：只建表不搬数据，老用户的自由文本会被静默丢掉 ----
 check('v3 迁移带数据搬迁函数', typeof migrations[3].migrate, 'function')
 check('v1 / v2 只建表、不做数据搬迁', migrationVersions.slice(0, 2).map((key) => migrations[key].migrate ?? null), [null, null])
+check('v4 只建表、不做数据搬迁', migrations[4].migrate ?? null, null)
 
 // ---- 定义与迁移必须一一对应，防止「加了 STORES 忘了 MIGRATIONS」这类漏项 ----
 check('迁移表覆盖的仓库与 STORES 清单完全一致', [...new Set(migratedNames)].sort(), storeNames)
@@ -72,6 +74,7 @@ for (const [name, index] of [
   ['daily_meal_items', 'daily_meal_id'],
   ['daily_supplements', 'day_plan_id'],
   ['daily_exercise_items', 'day_plan_id'],
+  ['routine_tasks', 'day_plan_id'],
 ]) {
   const definition = stores.find((store) => store.name === name)
   const indexNames = (definition?.indexes ?? []).map((item) => item.name)

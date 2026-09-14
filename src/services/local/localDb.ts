@@ -1,5 +1,5 @@
 const DB_NAME = 'happy-little-molly-local'
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 /**
  * 本地对象仓库契约。新增仓库时必须同时做四件事，缺一不可：
@@ -20,6 +20,7 @@ export type LocalStore =
   | 'daily_meal_items'
   | 'daily_supplements'
   | 'daily_exercise_items'
+  | 'routine_tasks'
 
 type IndexDefinition = { name: string; keyPath: string | string[]; unique?: boolean }
 type StoreDefinition = { name: LocalStore; keyPath: string; indexes?: IndexDefinition[] }
@@ -53,6 +54,7 @@ const STORES: StoreDefinition[] = [
   { name: 'daily_meal_items', keyPath: 'id', indexes: [{ name: 'daily_meal_id', keyPath: 'daily_meal_id' }] },
   { name: 'daily_supplements', keyPath: 'id', indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }] },
   { name: 'daily_exercise_items', keyPath: 'id', indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }] },
+  { name: 'routine_tasks', keyPath: 'id', indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }] },
 ]
 
 /**
@@ -121,6 +123,7 @@ const MIGRATIONS: Record<number, Migration> = {
     stores: ['daily_meal_items', 'daily_supplements', 'daily_exercise_items'],
     migrate: backfillSnapshots,
   },
+  4: { stores: ['routine_tasks'] },
 }
 
 /**

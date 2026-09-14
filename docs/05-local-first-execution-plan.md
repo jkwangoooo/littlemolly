@@ -19,6 +19,7 @@
 - `day_plans`、`daily_meals`、`custom_tasks` 的本地存储及当前账号过滤。
 - （L1）`food_options`、`supplement_templates`、`exercise_options` 三类选项对象仓库及按账号隔离的读写；选项页支持新增、改名、排序、启停、删除（后两者带二次确认），新账号自动带出一组可编辑的示例选项。
 - （L2）三餐升级为早/中/晚多选食物 + 备注（`daily_meals`）；补剂从模板生成每日实例、可逐项勾选执行（`daily_supplements`）；健身升级为多选项目 + 备注（`daily_exercises`）；全部保存时写入名称快照；`DB_VERSION` 2→3（共 10 张表）。
+- （L3）正常周六/周日自动补齐「拖地/洗衣」两个每日实例（`routine_tasks` 表）；临时不上班（`mode_override`）不带家务；休息日隐藏衣服/三餐/晨间、保留补剂/健身/自定义事项；`DB_VERSION` 3→4（共 11 张表）。
 
 ## 3. 与需求的差距
 
@@ -27,8 +28,8 @@
 | 三餐常用食物多选 | ✅ 已完成（L2）：`MealPanel` + `ItemPicker`，按早/中/晚多选 + 备注 + 名称快照 | — |
 | 早中晚补剂 | ✅ 已完成（L2）：`SupplementPanel`，模板实例化 + 逐项勾选 + 自定义行 + 名称快照 | — |
 | 健身项目/动作多选 | ✅ 已完成（L2）：`ExercisePanel` + `ItemPicker`，多选 + 备注 + 名称快照 | — |
-| 周末拖地、洗衣 | 未实现 | 创建休息日默认实例，可单独完成（L3） |
-| 临时不上班自由规划 | 模式基础已存在，内容规则不完整 | 完善显示范围和自定义事项行为（L3） |
+| 周末拖地、洗衣 | ✅ 已完成（L3）：`routine_tasks` 每日实例，正常休息日自动补齐，仅勾选完成 | — |
+| 临时不上班自由规划 | ✅ 已完成（L3）：`mode_override` 区分临时不上班，不带家务、隐藏工作日准备项 | — |
 | 底部"今日/本周/选项"导航 | 已能进入选项页；固定底部导航未做 | 在移动端交互阶段补齐（L4） |
 | 选项新增、编辑、排序、停用 | 已完成（L1） | — |
 | 本地数据升级、备份恢复 | 未实现 | IndexedDB 版本迁移、导入导出和异常恢复 |
@@ -156,13 +157,13 @@ src/shared/date/             业务日期和周计算
 
 ## 7. 当前下一步
 
-**L0、L1、L2 已完成**（报告见 `docs/07-L0-completion-report.md`、`docs/08-L1-completion-report.md`、`docs/09-L2-completion-report.md`）。下一步执行 **L3：休息日与自由规划**。
+**L0、L1、L2、L3 已完成**（报告见 `docs/07-L0-completion-report.md`、`docs/08-L1-completion-report.md`、`docs/09-L2-completion-report.md`、`docs/10-L3-completion-report.md`）。下一步执行 **L4：首页导航与移动端交互完善**。
 
-进入 L3 前已经就位的三件事，不要重复造：
+进入 L4 前已经就位的三件事，不要重复造：
 
 1. 新计划选择器的取数入口是 `listSelectableOptions(kind)`（`src/services/local/optionService.ts`），停用项天然不在结果里。
 2. 选项的唯一写入入口是 `optionService`，`sort_order` 与时段分组规则已定：补剂按「早 / 中 / 晚 → `sort_order`」，其余按 `sort_order`。
 3. 选项页显示的「启用 N 项」直接取自 `listSelectableOptions()`，与选择器同源；改口径时两边一起改。
-4. L2 的面板组件 `MealPanel` / `SupplementPanel` / `ExercisePanel` 均已在 `EditorSheet` 中编排，L3 可直接复用或按模式隐藏。
+4. L2/L3 的面板组件 `MealPanel` / `SupplementPanel` / `ExercisePanel` 均已在 `EditorSheet` 编排；休息日视图（家务 + 补剂/健身/自定义事项）已按 `mode` 分流。
 
-L3 必须守住 `docs/01` 的不变量：保存计划时写入名称快照，之后改名 / 停用选项不得改写历史计划；复制昨天只复制内容与快照，不带任何准备或完成状态。
+L4 必须守住 `docs/01` 的不变量：保存计划时写入名称快照，之后改名 / 停用选项不得改写历史计划；复制昨天只复制内容与快照，不带任何准备或完成状态。

@@ -11,10 +11,11 @@
 // 依赖：本机已安装 Chrome 或 Edge。不使用第三方 npm 包，不写入项目目录。
 // 可用 CHROME_PATH 指定浏览器可执行文件；用 APP_URL 指向已存在的服务时，脚本不再自行拉起服务器。
 //
-// 覆盖：数据库冷升级（v1 → v3，含老自由文本搬迁）→ 登录页 → 注册 → 周视图 → 历史只读 →
+// 覆盖：数据库冷升级（v1 → v4，含老自由文本搬迁）→ 登录页 → 注册 → 周视图 → 历史只读 →
 // 模式切换与恢复默认 → 未来空日期引导 → 三餐多选 → 准备进度 → 健身多选（切「不健身」不清内容）→
 // 补剂实例（打开面板补齐 / 模板行不可删 / 自定义行可删 / 不重复补齐）→ 执行区勾选（与准备区分离）→
 // 自定义事项增改删 → 复制昨天（带内容、不带任何状态、不改模式）→
+// 休息日家务（正常休息日自动带拖地洗衣 / 临时不上班不带 / 隐藏工作日准备项 / 可勾选）→
 // 选项页（增改排序启停删、补剂时段分组、可用数量口径）→ 刷新恢复 → 账号间选项隔离 →
 // 桌面与手机视口 → 退出登录 → 控制台干净。
 
@@ -194,11 +195,12 @@ const FOOD_RENAMED = '测试食物已改名'
 const TEMP_NAME = '临时待删食物'
 const SUPPLEMENT_NAME = '测试补剂'
 const DB_NAME = 'happy-little-molly-local'
-/** v1 只包含这四张表；升级到最新版后必须补上后续三张与三张（选项、每日内容）且旧数据不丢。 */
+/** v1 只包含这四张表；升级到最新版后必须补上后续三张与三张（选项、每日内容）再补一张（家务）且旧数据不丢。 */
 const V1_STORES = ['custom_tasks', 'daily_meals', 'day_plans', 'users']
 const V2_STORES = ['exercise_options', 'food_options', 'supplement_templates']
 const V3_STORES = ['daily_exercise_items', 'daily_meal_items', 'daily_supplements']
-const LATEST_VERSION = 3
+const V4_STORES = ['routine_tasks']
+const LATEST_VERSION = 4
 /** v1 老库里的自由文本内容，v3 迁移应当把它转成一条「名称快照项」。 */
 const LEGACY_MEAL_TEXT = '老库早餐内容'
 const LEGACY_EXERCISE_TEXT = '老库健身内容'
@@ -219,6 +221,14 @@ const SENTINEL_MEAL = {
   plan_content: LEGACY_MEAL_TEXT,
   note: '',
   completed: false,
+}
+
+/** 计算「今天」到「本周六」还要往后翻几天（Asia/Shanghai，周一为一周第一天，周六=5）。 */
+function daysToSaturday() {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', weekday: 'short' }).formatToParts(new Date())
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? 'Mon'
+  const mondayFirst = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 }[weekday] ?? 0
+  return (5 - mondayFirst + 7) % 7
 }
 
 const results = []
@@ -292,6 +302,18 @@ window.__m = {
   },
   executeStates: () => [...document.querySelectorAll('.execution-row input[type=checkbox]')].map((box) => ({ label: box.getAttribute('aria-label') || '', checked: box.checked })),
   executeText: () => [...document.querySelectorAll('.execution-row')].map((row) => row.innerText.replace(/\\n+/g, ' ').trim()),
+
+  // ---- L3：休息日家务 ----
+  routineRows: () => [...document.querySelectorAll('[data-routine]')],
+  routineText: () => window.__m.routineRows().map((row) => row.textContent.trim()),
+  routineToggle: async (label) => {
+    const box = window.__m.routineRows().map((row) => row.querySelector('input[type=checkbox]')).find((item) => item && item.getAttribute('aria-label') === label);
+    if (!box) return 'NO_ROW:' + label;
+    box.click();
+    await window.__m.wait(1100);
+    const after = window.__m.routineRows().map((row) => row.querySelector('input[type=checkbox]')).find((item) => item && item.getAttribute('aria-label') === label);
+    return after && after.checked ? 'CHECKED' : 'UNCHECKED';
+  },
 
   setValue: (el, value) => { const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set; setter.call(el, value); el.dispatchEvent(new Event('input', { bubbles: true })) },
   fill: (labelText, value) => {
@@ -512,8 +534,8 @@ async function main() {
         return JSON.stringify({ schema, sentinel });
       })()
     `))
-    const allStores = [...V1_STORES, ...V2_STORES, ...V3_STORES]
-    record(`v1 老库被升级到 v${LATEST_VERSION} 且十张表齐备`,
+    const allStores = [...V1_STORES, ...V2_STORES, ...V3_STORES, ...V4_STORES]
+    record(`v1 老库被升级到 v${LATEST_VERSION} 且十一张表齐备`,
       upgrade.schema.version === LATEST_VERSION && allStores.every((name) => upgrade.schema.names.includes(name)),
       `version=${upgrade.schema.version}, tables=${upgrade.schema.names.join(',')}`)
     record('升级后 v1 老数据仍可读',
@@ -1009,6 +1031,122 @@ async function main() {
         copiedExecution.states.length >= 5 &&
         copiedExecution.states.every((item) => item.checked === false),
       `执行区状态=${JSON.stringify(copiedExecution.states.map((item) => item.checked))}`)
+
+    // 12c. L3：休息日家务——导航到本周六（正常休息日），验证自动出现拖地 / 洗衣
+    const saturdayOffset = daysToSaturday()
+    const restDay = JSON.parse(await evaluate(`
+      (async () => {
+        window.__m.clickText('执行今天');
+        await window.__m.wait(1100);
+        for (let i = 0; i < ${saturdayOffset}; i += 1) {
+          window.__m.clickAria('后一天', '.icon-button');
+          await window.__m.wait(900);
+        }
+        await window.__m.wait(1500);
+        return JSON.stringify({
+          mode: window.__m.modeLabel(),
+          override: window.__m.text().includes('人工覆盖默认模式'),
+          routines: window.__m.routineText(),
+          hasPrepList: !!document.querySelector('.prep-list'),
+          hasRoutineList: document.querySelectorAll('[data-routine]').length > 0,
+        });
+      })()
+    `))
+    record('周六默认是休息日且无人工覆盖',
+      restDay.mode === '休息日' && restDay.override === false,
+      `模式=${restDay.mode}, 人工覆盖=${restDay.override}`)
+    record('正常休息日自动出现拖地 / 洗衣两个实例',
+      restDay.routines.includes('拖地') && restDay.routines.includes('洗衣') && restDay.routines.length === 2,
+      `家务=${restDay.routines.join('、')}`)
+    record('休息日隐藏工作日准备项（衣服 / 三餐 / 晨间）',
+      restDay.hasPrepList === false,
+      `准备列表存在=${restDay.hasPrepList}`)
+
+    // 12d. 家务可勾选完成，刷新后保留
+    const routineToggle = await evaluate(`window.__m.routineToggle('拖地已完成')`)
+    await sleep(300)
+    const routineAfter = await evaluate(`window.__m.routineToggle('洗衣已完成')`)
+    record('家务可逐项勾选完成',
+      routineToggle === 'CHECKED' && routineAfter === 'CHECKED',
+      `拖地=${routineToggle}, 洗衣=${routineAfter}`)
+
+    // 12e. 临时不上班（工作日切休息日）不自动带家务
+    const tempRest = JSON.parse(await evaluate(`
+      (async () => {
+        window.__m.clickContains('改为');
+        await window.__m.wait(700);
+        const dialog = (document.querySelector('.confirm-modal') || {}).innerText || '';
+        window.__m.clickText('确认切换');
+        await window.__m.wait(1400);
+        return JSON.stringify({
+          dialogOk: dialog.includes('幸福小Molly，今天要上班哦'),
+          mode: window.__m.modeLabel(),
+          override: window.__m.text().includes('人工覆盖默认模式'),
+          routines: window.__m.routineText(),
+          hasRestNote: window.__m.text().includes('临时不上班'),
+        });
+      })()
+    `))
+    record('休息日切工作日有二次确认且文案正确',
+      tempRest.dialogOk === true && tempRest.mode === '工作日' && tempRest.override === true,
+      `确认框=${tempRest.dialogOk}, 模式=${tempRest.mode}, 覆盖=${tempRest.override}`)
+
+    // 12f. 从工作日切回休息日（临时不上班），不自动带家务
+    const tempRestBack = JSON.parse(await evaluate(`
+      (async () => {
+        window.__m.clickContains('改为');
+        await window.__m.wait(700);
+        window.__m.clickText('确认切换');
+        await window.__m.wait(1400);
+        return JSON.stringify({
+          mode: window.__m.modeLabel(),
+          override: window.__m.text().includes('人工覆盖默认模式'),
+          routines: window.__m.routineText(),
+          hasRestNote: window.__m.text().includes('临时不上班'),
+          hasPrepList: !!document.querySelector('.prep-list'),
+        });
+      })()
+    `))
+    record('临时不上班（人工切休息日）不自动带家务且显示说明',
+      tempRestBack.mode === '休息日' &&
+        tempRestBack.override === true &&
+        tempRestBack.routines.length === 0 &&
+        tempRestBack.hasRestNote === true,
+      `模式=${tempRestBack.mode}, 覆盖=${tempRestBack.override}, 家务=${tempRestBack.routines.join('、')}, 说明=${tempRestBack.hasRestNote}`)
+
+    // 12g. 休息日仍保留补剂 / 健身 / 自定义事项入口（自定义事项列表应可见）
+    const restKeeps = JSON.parse(await evaluate(`
+      JSON.stringify({
+        hasSupplement: window.__m.text().includes('早中晚补剂') || window.__m.text().includes('补剂'),
+        hasTimeline: window.__m.text().includes('自定义事项'),
+        hasPrepList: !!document.querySelector('.prep-list'),
+      })
+    `))
+    record('休息日保留补剂 / 健身 / 自定义事项，隐藏工作日准备项',
+      restKeeps.hasTimeline === true && restKeeps.hasPrepList === false,
+      `自定义事项=${restKeeps.hasTimeline}, 准备列表=${restKeeps.hasPrepList}`)
+
+    // 12h. 恢复默认回到正常休息日，家务重新出现（补齐不重复）
+    await evaluate(`window.__m.clickContains('恢复默认')`)
+    await sleep(1400)
+    const restoredRest = JSON.parse(await evaluate(`
+      JSON.stringify({
+        mode: window.__m.modeLabel(),
+        override: window.__m.text().includes('人工覆盖默认模式'),
+        routines: window.__m.routineText(),
+      })
+    `))
+    record('恢复默认回到正常休息日并重新补齐家务',
+      restoredRest.mode === '休息日' &&
+        restoredRest.override === false &&
+        restoredRest.routines.includes('拖地') &&
+        restoredRest.routines.includes('洗衣') &&
+        restoredRest.routines.length === 2,
+      `模式=${restoredRest.mode}, 覆盖=${restoredRest.override}, 家务=${restoredRest.routines.join('、')}`)
+
+    // 回到「执行今天」且是今天，供后续刷新恢复测试使用
+    await evaluate(`window.__m.clickText('执行今天')`)
+    await sleep(1100)
 
     // 13. 刷新恢复
     await goto()

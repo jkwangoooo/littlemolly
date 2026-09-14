@@ -18,6 +18,7 @@ import {
   saveExercise,
   saveMeals,
   setMealCompleted,
+  setRoutineCompleted,
   setSupplementCompleted,
   upsertDayPlan,
 } from '../../services/local/dayPlanService'
@@ -31,8 +32,9 @@ import { EmptyDayHint } from './components/EmptyDayHint'
 import { ExecuteList, type ExecutionToggle } from './components/ExecuteList'
 import { ModeCard } from './components/ModeCard'
 import { PrepList, type PrepKey } from './components/PrepList'
+import { RoutineList } from './components/RoutineList'
 import { SaveStatusBar } from './components/SaveStatusBar'
-import { HISTORY_READONLY_TEXT, LOADING_TEXT, MODE_SWITCH_MESSAGE } from './dayPlanLabels'
+import { HISTORY_READONLY_TEXT, LOADING_TEXT, MODE_SWITCH_MESSAGE, REST_NO_ROUTINE_NOTE } from './dayPlanLabels'
 import { useSaveRunner } from '../../shared/hooks/useSaveRunner'
 import { useDayPlanData } from './useDayPlanData'
 
@@ -194,6 +196,15 @@ export function DayPlanScreen() {
     })
   }
 
+  async function toggleRoutine(id: string) {
+    if (!writable) return
+    const routine = data.routines.find((item) => item.id === id)
+    if (!routine) return
+    await runSave(async () => {
+      data.setRoutines(await setRoutineCompleted(selectedDate, id, !routine.completed))
+    })
+  }
+
   async function doCopy() {
     setConfirmCopy(false)
     await runSave(async () => {
@@ -328,7 +339,22 @@ export function DayPlanScreen() {
               />
             ) : null}
 
-            {isPrepare ? null : (
+            {/* 休息日：家务（仅正常休息日）+ 补剂 / 健身 / 自定义事项，隐藏工作日准备项（衣服 / 三餐 / 晨间） */}
+            {mode === 'rest' ? (
+              <>
+                {data.plan?.mode_override ? (
+                  <p className="muted rest-note">{REST_NO_ROUTINE_NOTE}</p>
+                ) : (
+                  <RoutineList
+                    routines={data.routines}
+                    writable={writable}
+                    onToggle={(id) => void toggleRoutine(id)}
+                  />
+                )}
+              </>
+            ) : null}
+
+            {mode === 'work' && !isPrepare ? (
               <ExecuteList
                 plan={data.plan}
                 meals={data.meals}
@@ -336,9 +362,23 @@ export function DayPlanScreen() {
                 supplements={data.supplements}
                 exerciseItems={data.exerciseItems}
                 writable={writable}
+                mode={mode}
                 onToggle={(toggle) => void toggleExecution(toggle)}
               />
-            )}
+            ) : null}
+
+            {mode === 'rest' ? (
+              <ExecuteList
+                plan={data.plan}
+                meals={data.meals}
+                mealItems={data.mealItems}
+                supplements={data.supplements}
+                exerciseItems={data.exerciseItems}
+                writable={writable}
+                mode={mode}
+                onToggle={(toggle) => void toggleExecution(toggle)}
+              />
+            ) : null}
 
             <CustomTaskList
               tasks={data.tasks}

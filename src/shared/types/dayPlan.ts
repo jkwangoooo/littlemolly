@@ -86,6 +86,21 @@ export interface DailyExerciseItem {
 export interface CustomTask { id: string; day_plan_id: string; task_time: string; title: string; note: string; completed: boolean }
 
 /**
+ * 休息日固定家务（拖地 / 洗衣）。它是某一天的「每日实例」，不是全局模板：
+ * 只在正常休息日（周六 / 周日默认 `rest` 且无人工覆盖）自动补齐，用户勾选完成。
+ * 临时不上班（`mode_override` 为 true）不自动带家务（docs/00 / docs/01 不变量 7）。
+ */
+export type RoutineKind = 'mop' | 'laundry'
+
+export interface RoutineTask {
+  id: string
+  day_plan_id: string
+  kind: RoutineKind
+  title: string
+  completed: boolean
+}
+
+/**
  * 编辑面板提交的一项内容：只有名称与来源选项，快照字段由服务层补齐。
  * `optionId` 为空表示「没有来源选项」——旧记录迁移来的内容，或已停用选项留下的历史选择。
  */

@@ -98,3 +98,11 @@ export const EXECUTE_MORNING_LABEL = '晨间专注 5:00-6:30'
 export const EXECUTE_MEAL_EMPTY = '未安排'
 export const EXECUTE_EXERCISE_LABEL = { exercise: '健身', rest: '不健身' } as const
 export const EXECUTE_EXERCISE_DECIDED = '已决定'
+
+// ---------------------------------------------------------------- 休息日家务
+
+/** 休息日家务区块标题。 */
+export const ROUTINE_TITLE = '今日家务'
+
+/** 临时不上班（工作日人工切休息日）时不带家务，这里给一句一致说明。 */
+export const REST_NO_ROUTINE_NOTE = '临时不上班：家务不自动加入，仅保留补剂、健身和自定义事项。'

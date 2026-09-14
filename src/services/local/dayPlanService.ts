@@ -8,6 +8,8 @@ import type {
   DayPlan,
   MealType,
   PlanItemInput,
+  RoutineKind,
+  RoutineTask,
 } from '../../shared/types/dayPlan'
 import { MEAL_TYPES } from '../../shared/types/dayPlan'
 import type { SupplementPeriod } from '../../shared/types/options'
@@ -130,6 +132,10 @@ async function exerciseItemsForPlan(id: string): Promise<DailyExerciseItem[]> {
 
 async function tasksForPlan(id: string): Promise<CustomTask[]> {
   return (await getAll<CustomTask>('custom_tasks')).filter((task) => task.day_plan_id === id)
+}
+
+async function routinesForPlan(id: string): Promise<RoutineTask[]> {
+  return (await getAll<RoutineTask>('routine_tasks')).filter((row) => row.day_plan_id === id)
 }
 
 async function dropMealItems(dailyMealIds: Set<string>): Promise<void> {
@@ -459,6 +465,67 @@ export async function deleteCustomTask(planDate: string, id: string): Promise<vo
   if (task) await remove('custom_tasks', id)
 }
 
+// ---------------------------------------------------------------- 休息日家务
+
+/** 家务固定顺序：拖地在先、洗衣在后（docs/00）。 */
+const ROUTINE_ORDER: RoutineKind[] = ['mop', 'laundry']
+const ROUTINE_TITLE: Record<RoutineKind, string> = { mop: '拖地', laundry: '洗衣' }
+
+function sortRoutines(list: RoutineTask[]): RoutineTask[] {
+  return [...list].sort((left, right) => ROUTINE_ORDER.indexOf(left.kind) - ROUTINE_ORDER.indexOf(right.kind))
+}
+
+export async function listRoutineTasks(dayPlanId: string): Promise<RoutineTask[]> {
+  return sortRoutines(await routinesForPlan(dayPlanId))
+}
+
+/**
+ * 取该天的休息日家务，并在需要时补齐「拖地 / 洗衣」两个每日实例。
+ *
+ * 补齐规则（docs/00「仅正常休息日」）：
+ * - 只在「正常休息日」补齐——`mode === 'rest'` 且 `mode_override === false`；
+ *   临时不上班（工作日人工切 rest，`mode_override === true`）不自动带家务；
+ * - 历史日期只读，不补；
+ * - 只补缺失，不删除、不改写已有实例。
+ */
+export async function ensureRestDayRoutines(planDate: string): Promise<RoutineTask[]> {
+  const plan = await getDayPlan(planDate)
+  if (!plan) return []
+  const existing = await routinesForPlan(plan.id)
+  if (isHistory(planDate)) return existing
+  if (plan.mode !== 'rest' || plan.mode_override) return existing
+
+  const seen = new Set(existing.map((row) => row.kind))
+  let changed = false
+  for (const kind of ROUTINE_ORDER) {
+    if (seen.has(kind)) continue
+    await put<RoutineTask>('routine_tasks', {
+      id: newId(),
+      day_plan_id: plan.id,
+      kind,
+      title: ROUTINE_TITLE[kind],
+      completed: false,
+    })
+    changed = true
+  }
+  return changed ? sortRoutines(await routinesForPlan(plan.id)) : sortRoutines(existing)
+}
+
+/** 只翻某一条家务的「做没做」，内容与顺序都不动。 */
+export async function setRoutineCompleted(
+  planDate: string,
+  id: string,
+  completed: boolean,
+): Promise<RoutineTask[]> {
+  assertWritableDate(planDate)
+  const plan = await getDayPlan(planDate)
+  if (!plan) return []
+
+  const row = (await routinesForPlan(plan.id)).find((item) => item.id === id)
+  if (row) await put<RoutineTask>('routine_tasks', { ...row, completed })
+  return sortRoutines(await routinesForPlan(plan.id))
+}
+
 // ---------------------------------------------------------------- 复制
 
 /**
@@ -468,6 +535,9 @@ export async function deleteCustomTask(planDate: string, id: string): Promise<vo
  *       健身项目、自定义事项。
  * 不带：五个准备勾选、三餐完成、补剂完成、晨间完成、健身完成，以及目标日自己的
  *       模式与 `mode_override`（复制不改变这一天是工作日还是休息日）。
+ *
+ * 家务（routine_tasks）完全不参与复制：它是休息日按日自动生成的每日实例，
+ * 由 `ensureRestDayRoutines` 独立管理；复制既不带走来源日的家务，也不动目标日已有的家务。
  */
 export async function copyYesterday(planDate: string): Promise<DayPlan> {
   assertWritableDate(planDate)
