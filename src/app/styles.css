@@ -132,6 +132,29 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .mini { min-height: 32px; padding: 5px 9px; font-size: 12px; }
 .retry { min-height: 32px; margin-left: 8px; }
 
+/* L2 内容面板：分组多选（三餐 / 健身）与补剂清单 */
+.panel-hint { margin: 0 0 6px; font-size: 12px; }
+
+.panel-group { display: grid; gap: 6px; padding: 4px 0 12px; border-bottom: 1px solid #eee7e3; }
+.panel-group:last-of-type { border-bottom: 0; }
+.panel-group-label { margin: 0; color: #a11b4a; font-size: 13px; font-weight: 700; }
+
+.picker { display: grid; gap: 2px; }
+.picker-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 14px; font-weight: 400; }
+.picker-row input[type="checkbox"] { width: 20px; min-width: 20px; height: 20px; accent-color: #a11b4a; }
+.picker-row span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.picker-note { margin: 2px 0; color: #625d58; font-size: 13px; }
+.picker-others { display: grid; gap: 2px; margin-top: 6px; border-left: 3px solid #e0c0cd; padding-left: 10px; }
+
+.panel-row { display: flex; align-items: center; gap: 10px; }
+.panel-row-name { flex: 1; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+.panel-row input:not([type="checkbox"]) { flex: 1; min-width: 0; }
+
+.inline-check { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 400; white-space: nowrap; }
+.inline-check input[type="checkbox"] { width: 20px; min-width: 20px; height: 20px; accent-color: #a11b4a; }
+
+.section-title { margin: 10px 0 0; color: #a11b4a; font-size: 14px; }
+
 /* ---------- 7 选项页 ---------- */
 .option-section { display: grid; gap: 4px; }
 .option-section + .option-section { border-top: 1px solid #e4dfdb; padding-top: 16px; }
@@ -184,4 +207,8 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .option-row { align-items: stretch; flex-direction: column; gap: 8px; }
   .option-actions { gap: 6px; }
   .option-actions button { flex: 1 1 0; }
+  /* 补剂行有名称 / 输入框 + 勾选 + 移除按钮，窄屏挤在一行会溢出：让名称独占一行。 */
+  .panel-row { flex-wrap: wrap; }
+  .panel-row-name, .panel-row input:not([type="checkbox"]) { flex: 1 1 100%; }
+  .inline-check { margin-left: auto; }
 }

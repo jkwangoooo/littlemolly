@@ -1,5 +1,5 @@
 const DB_NAME = 'happy-little-molly-local'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 /**
  * 本地对象仓库契约。新增仓库时必须同时做四件事，缺一不可：
@@ -17,6 +17,9 @@ export type LocalStore =
   | 'food_options'
   | 'supplement_templates'
   | 'exercise_options'
+  | 'daily_meal_items'
+  | 'daily_supplements'
+  | 'daily_exercise_items'
 
 type IndexDefinition = { name: string; keyPath: string | string[]; unique?: boolean }
 type StoreDefinition = { name: LocalStore; keyPath: string; indexes?: IndexDefinition[] }
@@ -47,12 +50,77 @@ const STORES: StoreDefinition[] = [
   { name: 'food_options', keyPath: 'id', indexes: [{ name: 'user_id', keyPath: 'user_id' }] },
   { name: 'supplement_templates', keyPath: 'id', indexes: [{ name: 'user_id', keyPath: 'user_id' }] },
   { name: 'exercise_options', keyPath: 'id', indexes: [{ name: 'user_id', keyPath: 'user_id' }] },
+  { name: 'daily_meal_items', keyPath: 'id', indexes: [{ name: 'daily_meal_id', keyPath: 'daily_meal_id' }] },
+  { name: 'daily_supplements', keyPath: 'id', indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }] },
+  { name: 'daily_exercise_items', keyPath: 'id', indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }] },
 ]
 
-/** 版本号 → 该版本引入的对象仓库。升级时按版本升序补齐，已存在的跳过。 */
-const MIGRATIONS: Record<number, LocalStore[]> = {
-  1: ['users', 'day_plans', 'daily_meals', 'custom_tasks'],
-  2: ['food_options', 'supplement_templates', 'exercise_options'],
+/**
+ * 一个版本对数据库做过的全部改动。
+ * `stores` 是该版本新建的仓库；`migrate` 是该版本需要的数据搬迁，
+ * 拿到的 `tx` 就是 versionchange 事务本身——升级期间不允许另开事务。
+ */
+type Migration = { stores?: LocalStore[]; migrate?: (tx: IDBTransaction) => void }
+
+/** 老库把三餐内容与健身内容存成自由文本，这两个形状只用于迁移读取。 */
+type LegacyMeal = { id: string; plan_content?: string }
+type LegacyPlan = { id: string; exercise_decision?: string; exercise_content?: string }
+
+/**
+ * v3 数据搬迁：把老库的自由文本转成「名称快照项」。
+ *
+ * 迁移前 `daily_meals.plan_content` 与 `day_plans.exercise_content` 各存一段文字，
+ * 迁移后内容改存 `daily_meal_items` / `daily_exercise_items`，每段文字转成一条快照项，
+ * 关联选项留空表示「没有来源选项」。原字段的值有意保留不清空：
+ * 万一以后发现搬迁有误，数据还在原地，而新的写入自然会丢掉这些字段。
+ */
+function backfillSnapshots(tx: IDBTransaction): void {
+  const timestamp = new Date().toISOString()
+
+  const meals = tx.objectStore('daily_meals').getAll()
+  meals.onsuccess = () => {
+    const items = tx.objectStore('daily_meal_items')
+    for (const meal of meals.result as LegacyMeal[]) {
+      const text = (meal.plan_content ?? '').trim()
+      if (!text) continue
+      items.put({
+        id: createId(),
+        daily_meal_id: meal.id,
+        food_option_id: null,
+        food_name_snapshot: text,
+        sort_order: 0,
+        created_at: timestamp,
+      })
+    }
+  }
+
+  const plans = tx.objectStore('day_plans').getAll()
+  plans.onsuccess = () => {
+    const items = tx.objectStore('daily_exercise_items')
+    for (const plan of plans.result as LegacyPlan[]) {
+      if (plan.exercise_decision !== 'exercise') continue
+      const text = (plan.exercise_content ?? '').trim()
+      if (!text) continue
+      items.put({
+        id: createId(),
+        day_plan_id: plan.id,
+        exercise_option_id: null,
+        name_snapshot: text,
+        sort_order: 0,
+        created_at: timestamp,
+      })
+    }
+  }
+}
+
+/** 版本号 → 该版本的改动。升级时按版本升序补齐，已存在的跳过。**只追加，不改写旧版本。** */
+const MIGRATIONS: Record<number, Migration> = {
+  1: { stores: ['users', 'day_plans', 'daily_meals', 'custom_tasks'] },
+  2: { stores: ['food_options', 'supplement_templates', 'exercise_options'] },
+  3: {
+    stores: ['daily_meal_items', 'daily_supplements', 'daily_exercise_items'],
+    migrate: backfillSnapshots,
+  },
 }
 
 /**
@@ -87,10 +155,14 @@ function openDatabase(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const database = request.result
+      const transaction = request.transaction
+      if (!transaction) throw new Error('升级事务不可用，无法执行数据搬迁。')
 
       for (const version of Object.keys(MIGRATIONS).map(Number).sort((left, right) => left - right)) {
         if (version <= event.oldVersion) continue
-        for (const storeName of MIGRATIONS[version]) applyMigration(database, storeName)
+        const migration = MIGRATIONS[version]
+        for (const storeName of migration.stores ?? []) applyMigration(database, storeName)
+        migration.migrate?.(transaction)
       }
     }
 

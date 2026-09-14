@@ -1,6 +1,9 @@
 // 云端适配层，L0-L5 期间冻结、不参与运行时。
-// 保留价值：编码了 day_plans / daily_meals / custom_tasks 的字段清单与 copy_yesterday_stage3 RPC 调用方式，供 L6 参考。
-import type { CustomTask, DailyMeal, DayMode, DayPlan } from '../../shared/types/dayPlan'
+// 保留价值：编码了 day_plans / daily_meals / daily_meal_items / daily_supplements /
+// daily_exercise_items / custom_tasks 的字段清单与 copy_yesterday_stage3 RPC 调用方式，供 L6 参考。
+// 字段清单已跟随 L2 契约更新（内容与状态分离：三餐内容在 daily_meal_items，补剂实例在 daily_supplements，
+// 健身项目在 daily_exercise_items）；本文件仍未接线，写入函数只覆盖主记录，供迁移时补全。
+import type { CustomTask, DailyMeal, DayMode, DayPlan, PlanItemInput } from '../../shared/types/dayPlan'
 import { defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
 import { requireSupabase } from './supabase'
 
@@ -27,9 +30,18 @@ function throwSupabaseError(error: unknown): never {
   throw normalizeSupabaseError(error)
 }
 
-const columns = 'id,user_id,plan_date,mode,mode_override,created_at,updated_at,outfit_ready,meals_ready,supplements_ready,morning_ready,exercise_ready,morning_focus,morning_completed,exercise_decision,exercise_content,exercise_note,exercise_completed'
-const mealColumns = 'id,day_plan_id,meal_type,plan_content,note,completed'
+const columns = 'id,user_id,plan_date,mode,mode_override,created_at,updated_at,outfit_ready,meals_ready,supplements_ready,morning_ready,exercise_ready,morning_focus,morning_completed,exercise_decision,exercise_note,exercise_completed'
+const mealColumns = 'id,day_plan_id,meal_type,note,completed'
+const mealItemColumns = 'id,daily_meal_id,food_option_id,food_name_snapshot,sort_order,created_at'
+const supplementColumns = 'id,day_plan_id,name_snapshot,period,planned,completed,sort_order,created_at,updated_at'
+const exerciseItemColumns = 'id,day_plan_id,exercise_option_id,name_snapshot,sort_order,created_at'
 const taskColumns = 'id,day_plan_id,task_time,title,note,completed'
+
+// 供 L6 迁移时读取，当前未接入运行时流程。
+export const CLOUD_COLUMNS = { mealItemColumns, supplementColumns, exerciseItemColumns } as const
+
+/** 三餐面板提交的形状，与本地服务保持一致；内容项需另写 `daily_meal_items`。 */
+type MealInput = { meal_type: DailyMeal['meal_type']; note: string; items: PlanItemInput[] }
 
 function assertWritableDate(planDate: string): void {
   if (planDate < getBusinessDateKey()) throw new Error('历史日期不可修改。')
@@ -60,8 +72,8 @@ export async function restoreDefaultDayPlan(planDate: string, defaultMode: DayMo
 }
 
 export async function listMeals(dayPlanId: string): Promise<DailyMeal[]> { const { data, error } = await requireSupabase().from('daily_meals').select(mealColumns).eq('day_plan_id', dayPlanId).order('meal_type'); if (error) throwSupabaseError(error); return (data ?? []) as DailyMeal[] }
-export async function saveMeals(planDate: string, meals: Array<Pick<DailyMeal, 'meal_type' | 'plan_content' | 'note' | 'completed'>>): Promise<DailyMeal[]> {
-  assertWritableDate(planDate); const plan = await getDayPlan(planDate) ?? await upsertDayPlan(planDate, { mode: defaultModeForDate(planDate), mode_override: false }); const rows = meals.map((meal) => ({ ...meal, day_plan_id: plan.id })); const { data, error } = await requireSupabase().from('daily_meals').upsert(rows, { onConflict: 'day_plan_id,meal_type' }).select(mealColumns); if (error) throwSupabaseError(error); return (data ?? []) as DailyMeal[]
+export async function saveMeals(planDate: string, meals: MealInput[]): Promise<DailyMeal[]> {
+  assertWritableDate(planDate); const plan = await getDayPlan(planDate) ?? await upsertDayPlan(planDate, { mode: defaultModeForDate(planDate), mode_override: false }); const rows = meals.map(({ meal_type, note }) => ({ meal_type, note, day_plan_id: plan.id })); const { data, error } = await requireSupabase().from('daily_meals').upsert(rows, { onConflict: 'day_plan_id,meal_type' }).select(mealColumns); if (error) throwSupabaseError(error); return (data ?? []) as DailyMeal[]
 }
 export async function listCustomTasks(dayPlanId: string): Promise<CustomTask[]> { const { data, error } = await requireSupabase().from('custom_tasks').select(taskColumns).eq('day_plan_id', dayPlanId).order('task_time'); if (error) throwSupabaseError(error); return (data ?? []) as CustomTask[] }
 export async function saveCustomTask(planDate: string, task: Partial<CustomTask> & { task_time: string; title: string; note: string; completed: boolean }): Promise<CustomTask> {

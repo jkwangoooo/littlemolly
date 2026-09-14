@@ -1,4 +1,4 @@
-import type { OptionKind, SupplementPeriod } from '../../shared/types/options'
+import type { OptionKind } from '../../shared/types/options'
 
 /** 三个选项分区的标题，与 docs/02 选项页一致。 */
 export const OPTION_KIND_TITLE: Record<OptionKind, string> = {
@@ -7,12 +7,8 @@ export const OPTION_KIND_TITLE: Record<OptionKind, string> = {
   exercise: '健身项目与动作',
 }
 
-/** 补剂时段标签。 */
-export const SUPPLEMENT_PERIOD_LABEL: Record<SupplementPeriod, string> = {
-  morning: '早',
-  noon: '中',
-  evening: '晚',
-}
+/** 补剂时段文案由 shared 统一提供（日计划页也要用同一套），这里只做转出。 */
+export { SUPPLEMENT_PERIOD_LABEL } from '../../shared/periodLabels'
 
 /** 新增按钮文案，按分区微调以便无障碍文案也能区分。 */
 export const OPTION_ADD_LABEL: Record<OptionKind, string> = {

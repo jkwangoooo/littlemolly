@@ -11,10 +11,12 @@
 // 依赖：本机已安装 Chrome 或 Edge。不使用第三方 npm 包，不写入项目目录。
 // 可用 CHROME_PATH 指定浏览器可执行文件；用 APP_URL 指向已存在的服务时，脚本不再自行拉起服务器。
 //
-// 覆盖：数据库冷升级（v1 → v2）→ 登录页 → 注册 → 周视图 → 历史只读 → 模式切换与恢复默认 →
-// 未来空日期引导 → 三餐保存 → 准备进度 → 健身面板 → 自定义事项增改删 →
-// 复制昨天（内容/状态/模式）→ 选项页（增改排序启停删、补剂时段分组、可用数量口径）→
-// 刷新恢复 → 账号间选项隔离 → 桌面与手机视口 → 退出登录 → 控制台干净。
+// 覆盖：数据库冷升级（v1 → v3，含老自由文本搬迁）→ 登录页 → 注册 → 周视图 → 历史只读 →
+// 模式切换与恢复默认 → 未来空日期引导 → 三餐多选 → 准备进度 → 健身多选（切「不健身」不清内容）→
+// 补剂实例（打开面板补齐 / 模板行不可删 / 自定义行可删 / 不重复补齐）→ 执行区勾选（与准备区分离）→
+// 自定义事项增改删 → 复制昨天（带内容、不带任何状态、不改模式）→
+// 选项页（增改排序启停删、补剂时段分组、可用数量口径）→ 刷新恢复 → 账号间选项隔离 →
+// 桌面与手机视口 → 退出登录 → 控制台干净。
 
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -178,23 +180,53 @@ const stamp = Date.now()
 const EMAIL = `verify-${stamp}@local.test`
 const EMAIL_B = `verify-b-${stamp}@local.test`
 const PASSWORD = 'verify123'
-const BREAKFAST = '测试早餐'
+/** 三餐多选：早餐选两项、午餐选一项，用来验证「一餐多项」而不是单个自由文本。 */
+const BREAKFAST_FOODS = ['燕麦牛奶', '水煮蛋']
+const LUNCH_FOODS = ['鸡胸沙拉']
+const MEAL_NOTE = '温牛奶'
+/** 健身多选。 */
+const EXERCISE_PICKS = ['快走', '瑜伽']
+/** 这一天自己加的补剂，名字刻意不与任何模板重合，才能验证「自定义项可删除」。 */
+const DAY_SUPPLEMENT = '测试日用补剂'
 const TASK_NAME = '测试事项'
 const FOOD_NAME = '测试专属食物'
 const FOOD_RENAMED = '测试食物已改名'
 const TEMP_NAME = '临时待删食物'
 const SUPPLEMENT_NAME = '测试补剂'
 const DB_NAME = 'happy-little-molly-local'
-/** v1 只包含这四张表；升级到 v2 后必须补上三张选项表且旧数据不丢。 */
+/** v1 只包含这四张表；升级到最新版后必须补上后续三张与三张（选项、每日内容）且旧数据不丢。 */
 const V1_STORES = ['custom_tasks', 'daily_meals', 'day_plans', 'users']
 const V2_STORES = ['exercise_options', 'food_options', 'supplement_templates']
+const V3_STORES = ['daily_exercise_items', 'daily_meal_items', 'daily_supplements']
+const LATEST_VERSION = 3
+/** v1 老库里的自由文本内容，v3 迁移应当把它转成一条「名称快照项」。 */
+const LEGACY_MEAL_TEXT = '老库早餐内容'
+const LEGACY_EXERCISE_TEXT = '老库健身内容'
 const SENTINEL_USER = { id: 'verify-sentinel-user', email: 'verify-sentinel@local.test', password_hash: 'x', created_at: '2020-01-01T00:00:00.000Z' }
-const SENTINEL_PLAN = { id: 'verify-sentinel-plan', user_id: SENTINEL_USER.id, plan_date: '2020-01-01', mode: 'work', mode_override: false }
+const SENTINEL_PLAN = {
+  id: 'verify-sentinel-plan',
+  user_id: SENTINEL_USER.id,
+  plan_date: '2020-01-01',
+  mode: 'work',
+  mode_override: false,
+  exercise_decision: 'exercise',
+  exercise_content: LEGACY_EXERCISE_TEXT,
+}
+const SENTINEL_MEAL = {
+  id: 'verify-sentinel-meal',
+  day_plan_id: SENTINEL_PLAN.id,
+  meal_type: 'breakfast',
+  plan_content: LEGACY_MEAL_TEXT,
+  note: '',
+  completed: false,
+}
 
 const results = []
 
 // 注入到页面的交互辅助函数。重写界面时请保留 .prep-row / .execution-row / .task-row /
-// .bottom-sheet / .confirm-modal / .mode-card / .progress-head / .option-row 这些类名，脚本依赖它们。
+// .bottom-sheet / .confirm-modal / .mode-card / .progress-head / .option-row /
+// .panel-group / .panel-row / .picker-row 这些类名，以及 data-meal / data-period 这两个属性，
+// 脚本依赖它们定位 L2 的多选与补剂分组。
 const HELPERS = `
 window.__m = {
   byText: (text, tag) => [...document.querySelectorAll(tag || 'button')].find((el) => el.textContent.trim() === text),
@@ -202,6 +234,65 @@ window.__m = {
   clickContains: (text, tag) => { const el = [...document.querySelectorAll(tag || 'button')].find((node) => node.textContent.includes(text)); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
   clickAria: (label, tag) => { const el = [...document.querySelectorAll(tag || 'button')].find((node) => node.getAttribute('aria-label') === label); if (!el) return 'NOT_FOUND:' + label; el.click(); return 'OK' },
   prepRow: (label) => [...document.querySelectorAll('.prep-row')].find((row) => (row.querySelector('strong') || {}).textContent?.includes(label)),
+
+  // ---- L2：编辑面板里的多选选择器 ----
+  // 多选是按受控数组整体替换实现的，连续两次点击若挤在同一个 tick 里，
+  // 第二次会基于上一次之前的旧数组计算，把第一项吃掉。因此每次点击后都要等一次渲染。
+  pickerRows: (scopeSelector) => {
+    const scope = document.querySelector(scopeSelector || '.picker');
+    if (!scope) return [];
+    return [...scope.querySelectorAll('.picker-row')];
+  },
+  pickerOptions: (scopeSelector) => window.__m.pickerRows(scopeSelector).map((row) => row.textContent.trim()),
+  pickerChecked: (scopeSelector) =>
+    window.__m.pickerRows(scopeSelector)
+      .filter((row) => { const box = row.querySelector('input[type=checkbox]'); return box && box.checked; })
+      .map((row) => row.textContent.trim()),
+  pick: async (scopeSelector, name) => {
+    const row = window.__m.pickerRows(scopeSelector).find((item) => item.textContent.includes(name));
+    if (!row) return 'NO_OPTION:' + name;
+    const box = row.querySelector('input[type=checkbox]');
+    if (!box) return 'NO_CHECKBOX:' + name;
+    box.click();
+    await window.__m.wait(260);
+    return box.checked ? 'CHECKED' : 'UNCHECKED';
+  },
+  /** 面板分组（三餐按 data-meal、补剂按 data-period）下的行文本。 */
+  groupRows: (selector) => {
+    const group = document.querySelector(selector);
+    return group ? [...group.querySelectorAll('.panel-row, .picker-row')].map((row) => row.textContent.trim()) : [];
+  },
+  groupChecked: (selector) => {
+    const group = document.querySelector(selector);
+    if (!group) return [];
+    return [...group.querySelectorAll('input[type=checkbox]')].filter((box) => box.checked).map((box) => box.getAttribute('aria-label') || box.parentElement.textContent.trim());
+  },
+  clickIn: (selector, text) => {
+    const scope = document.querySelector(selector);
+    if (!scope) return 'NO_SCOPE:' + selector;
+    const button = [...scope.querySelectorAll('button')].find((item) => item.textContent.includes(text));
+    if (!button) return 'NO_BUTTON:' + text;
+    button.click();
+    return 'OK';
+  },
+  lastSupplementInput: () => {
+    const inputs = [...document.querySelectorAll('.panel-row input[placeholder]')];
+    return inputs.length ? inputs[inputs.length - 1] : null;
+  },
+
+  // ---- L2：执行区 ----
+  executeRows: () => [...document.querySelectorAll('.execution-row')],
+  executeToggle: async (ariaLabel) => {
+    const box = [...document.querySelectorAll('.execution-row input[type=checkbox]')].find((item) => item.getAttribute('aria-label') === ariaLabel);
+    if (!box) return 'NO_ROW:' + ariaLabel;
+    box.click();
+    await window.__m.wait(1100);
+    const after = [...document.querySelectorAll('.execution-row input[type=checkbox]')].find((item) => item.getAttribute('aria-label') === ariaLabel);
+    return after && after.checked ? 'CHECKED' : 'UNCHECKED';
+  },
+  executeStates: () => [...document.querySelectorAll('.execution-row input[type=checkbox]')].map((box) => ({ label: box.getAttribute('aria-label') || '', checked: box.checked })),
+  executeText: () => [...document.querySelectorAll('.execution-row')].map((row) => row.innerText.replace(/\\n+/g, ' ').trim()),
+
   setValue: (el, value) => { const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set; setter.call(el, value); el.dispatchEvent(new Event('input', { bubbles: true })) },
   fill: (labelText, value) => {
     const label = [...document.querySelectorAll('label')].find((item) => item.textContent.includes(labelText));
@@ -372,16 +463,17 @@ async function main() {
         };
         request.onsuccess = () => {
           const db = request.result;
-          const tx = db.transaction(['users', 'day_plans'], 'readwrite');
+          const tx = db.transaction(['users', 'day_plans', 'daily_meals'], 'readwrite');
           tx.objectStore('users').put(${JSON.stringify(SENTINEL_USER)});
           tx.objectStore('day_plans').put(${JSON.stringify(SENTINEL_PLAN)});
-          tx.oncomplete = () => { db.close(); resolve(['users', 'day_plans']); };
+          tx.objectStore('daily_meals').put(${JSON.stringify(SENTINEL_MEAL)});
+          tx.oncomplete = () => { db.close(); resolve(['users', 'day_plans', 'daily_meals']); };
           tx.onerror = () => reject(tx.error);
         };
       })
     `)
     await cdp.send('Fetch.disable')
-    record('可在同源页面上造出 v1 老库（四张表）', Array.isArray(seededV1) && seededV1.length === 2, String(seededV1))
+    record('可在同源页面上造出带自由文本内容的 v1 老库', Array.isArray(seededV1) && seededV1.length === 3, String(seededV1))
     await goto()
 
     // 1. 登录页
@@ -403,7 +495,7 @@ async function main() {
     record('注册后进入日计划页', afterSignUp.includes('执行今天') && afterSignUp.includes('准备明天'), signedUp)
 
     // 2b. 冷升级结果：应用是懒打开数据库的（登录页不读数据），注册写入才真正碰到库，
-    //     因此在这里断言 v1 老库已经被应用升到 v2，且老数据仍在。
+    //     因此在这里断言 v1 老库已经被应用一路升到最新版，且老数据仍在、老自由文本已被搬迁。
     const upgrade = JSON.parse(await evaluate(`
       (async () => {
         const schema = JSON.parse(await window.__m.dbSchema());
@@ -420,12 +512,43 @@ async function main() {
         return JSON.stringify({ schema, sentinel });
       })()
     `))
-    record('v1 老库被升级到 v2 且七张表齐备',
-      upgrade.schema.version === 2 && [...V1_STORES, ...V2_STORES].every((name) => upgrade.schema.names.includes(name)),
+    const allStores = [...V1_STORES, ...V2_STORES, ...V3_STORES]
+    record(`v1 老库被升级到 v${LATEST_VERSION} 且十张表齐备`,
+      upgrade.schema.version === LATEST_VERSION && allStores.every((name) => upgrade.schema.names.includes(name)),
       `version=${upgrade.schema.version}, tables=${upgrade.schema.names.join(',')}`)
     record('升级后 v1 老数据仍可读',
       upgrade.sentinel?.email === SENTINEL_USER.email,
       `读取到 ${upgrade.sentinel ? upgrade.sentinel.email : 'null'}`)
+
+    // 2c. 验证 v3 自由文本搬迁：单独读取新表确认快照项已生成
+    const migration = JSON.parse(await evaluate(`
+      (async () => {
+        const readAll = (store) => new Promise((resolve, reject) => {
+          const request = indexedDB.open(${JSON.stringify(DB_NAME)});
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            const db = request.result;
+            const all = db.transaction(store, 'readonly').objectStore(store).getAll();
+            all.onsuccess = () => { resolve(all.result ?? []); db.close(); };
+            all.onerror = () => reject(all.error);
+          };
+        });
+        const mealItems = await readAll('daily_meal_items');
+        const exerciseItems = await readAll('daily_exercise_items');
+        const mealItem = mealItems.find((row) => row.daily_meal_id === ${JSON.stringify(SENTINEL_MEAL.id)});
+        const exerciseItem = exerciseItems.find((row) => row.day_plan_id === ${JSON.stringify(SENTINEL_PLAN.id)});
+        return JSON.stringify({
+          mealItem: mealItem ? { name: mealItem.food_name_snapshot, optionId: mealItem.food_option_id ?? null } : null,
+          exerciseItem: exerciseItem ? { name: exerciseItem.name_snapshot, optionId: exerciseItem.exercise_option_id ?? null } : null,
+        });
+      })()
+    `))
+    record('v3 把老库三餐自由文本迁成一条名称快照项',
+      migration.mealItem?.name === LEGACY_MEAL_TEXT && migration.mealItem?.optionId === null,
+      JSON.stringify(migration.mealItem))
+    record('v3 把老库健身自由文本迁成一条名称快照项',
+      migration.exerciseItem?.name === LEGACY_EXERCISE_TEXT && migration.exerciseItem?.optionId === null,
+      JSON.stringify(migration.exerciseItem))
 
     // 3. 周视图
     await evaluate(`window.__m.clickText('本周')`)
@@ -517,18 +640,43 @@ async function main() {
       })()
     `)
     record('目标日可确认为工作日', workday === 'ALREADY_WORK' || workday === 'SWITCHED', workday)
-    await evaluate(`window.__m.clickContains('三餐已安排', '.row-main')`)
-    await sleep(800)
-    const sheetTitle = await evaluate(`(document.querySelector('.bottom-sheet h2') || {}).textContent || ''`)
-    await evaluate(`window.__m.fill('早餐计划', ${JSON.stringify(BREAKFAST)})`)
-    await evaluate(`window.__m.clickText('保存')`)
-    await sleep(1400)
-    const mealsSaved = await evaluate(`
-      JSON.stringify({ status: window.__m.text().includes('已保存'), summary: window.__m.text().includes(${JSON.stringify(BREAKFAST)}) })
-    `)
-    const mealsData = JSON.parse(mealsSaved)
-    record('三餐面板可编辑并保存', sheetTitle === '编辑三餐' && mealsData.status && mealsData.summary,
-      `面板标题=${sheetTitle}, 已保存=${mealsData.status}, 摘要含内容=${mealsData.summary}`)
+    const meals = JSON.parse(await evaluate(`
+      (async () => {
+        window.__m.clickContains('三餐已安排', '.row-main');
+        await window.__m.wait(900);
+        const title = (document.querySelector('.bottom-sheet h2') || {}).textContent || '';
+        const candidates = window.__m.pickerOptions('.panel-group[data-meal="breakfast"]');
+        const picked = [];
+        for (const name of ${JSON.stringify(BREAKFAST_FOODS)}) {
+          picked.push(await window.__m.pick('.panel-group[data-meal="breakfast"]', name));
+        }
+        picked.push(await window.__m.pick('.panel-group[data-meal="lunch"]', ${JSON.stringify(LUNCH_FOODS[0])}));
+        const checkedBeforeSave = window.__m.pickerChecked('.panel-group[data-meal="breakfast"]');
+        window.__m.fill('早餐备注', ${JSON.stringify(MEAL_NOTE)});
+        await window.__m.wait(220);
+        window.__m.clickText('保存');
+        await window.__m.wait(1600);
+        const body = window.__m.text();
+        return JSON.stringify({
+          title,
+          candidates,
+          picked,
+          checkedBeforeSave,
+          status: body.includes('已保存'),
+          breakfastInSummary: ${JSON.stringify(BREAKFAST_FOODS)}.every((name) => body.includes(name)),
+          lunchInSummary: body.includes(${JSON.stringify(LUNCH_FOODS[0])}),
+        });
+      })()
+    `))
+    record('三餐面板按早 / 中 / 晚分组多选常用食物',
+      meals.title === '编辑三餐' &&
+        meals.candidates.length === 5 &&
+        meals.picked.every((value) => value === 'CHECKED') &&
+        JSON.stringify(meals.checkedBeforeSave) === JSON.stringify(BREAKFAST_FOODS),
+      `面板标题=${meals.title}, 候选项=${meals.candidates.length}, 勾选=${meals.picked.join(',')}, 保存前已选=${meals.checkedBeforeSave.join('、')}`)
+    record('三餐保存后摘要按名称快照列出所选内容',
+      meals.status && meals.breakfastInSummary && meals.lunchInSummary,
+      `已保存=${meals.status}, 含早餐项=${meals.breakfastInSummary}, 含午餐项=${meals.lunchInSummary}`)
 
     // 6b. 计划产生后引导自动消失，说明引导块只是提示、不是必须停留的状态
     const hintGone = await evaluate(`!document.querySelector('.empty-day')`)
@@ -549,24 +697,204 @@ async function main() {
     record('准备项勾选后进度与保存状态一致', /1\/5/.test(progressData.progress) && progressData.status,
       `${progressData.progress}, 已保存=${progressData.status}`)
 
-    // 8. 健身面板
-    const exercise = await evaluate(`
+    // 8. 健身面板：多选项 + 决定；选「不健身」不得清掉已选项目
+    const exercise = JSON.parse(await evaluate(`
       (async () => {
         window.__m.clickContains('健身安排已决定', '.row-main');
-        await window.__m.wait(800);
-        const title = (document.querySelector('.bottom-sheet h2') || {}).textContent;
+        await window.__m.wait(900);
+        const title = (document.querySelector('.bottom-sheet h2') || {}).textContent || '';
+        const candidates = window.__m.pickerOptions('.panel-group');
+        const picked = [];
+        for (const name of ${JSON.stringify(EXERCISE_PICKS)}) {
+          picked.push(await window.__m.pick('.panel-group', name));
+        }
         window.__m.fill('安排', 'exercise');
-        await window.__m.wait(400);
-        window.__m.fill('具体内容', '测试健身项目');
-        await window.__m.wait(200);
+        await window.__m.wait(320);
+        window.__m.fill('备注', '热身 10 分钟');
+        await window.__m.wait(220);
         window.__m.clickText('保存');
-        await window.__m.wait(1300);
-        return JSON.stringify({ title, ok: window.__m.text().includes('已决定健身') });
+        await window.__m.wait(1500);
+
+        // 切成「不健身」再存一次：项目是内容，不该被清掉
+        window.__m.clickContains('健身安排已决定', '.row-main');
+        await window.__m.wait(900);
+        window.__m.fill('安排', 'rest');
+        await window.__m.wait(320);
+        window.__m.clickText('保存');
+        await window.__m.wait(1500);
+
+        // 再打开：项目应当原样还在，切回健身并保存
+        window.__m.clickContains('健身安排已决定', '.row-main');
+        await window.__m.wait(900);
+        const restored = window.__m.pickerChecked('.panel-group');
+        window.__m.fill('安排', 'exercise');
+        await window.__m.wait(320);
+        window.__m.clickText('保存');
+        await window.__m.wait(1500);
+        return JSON.stringify({ title, candidates, picked, restored, ok: window.__m.text().includes('已决定健身') });
       })()
-    `)
-    const exerciseData = JSON.parse(exercise)
-    record('健身面板可选择健身并保存', exerciseData.title === '编辑健身安排' && exerciseData.ok === true,
-      `面板标题=${exerciseData.title}`)
+    `))
+    record('健身面板可多选项目并保存决定',
+      exercise.title === '编辑健身安排' &&
+        exercise.candidates.length === 4 &&
+        exercise.picked.every((value) => value === 'CHECKED') &&
+        exercise.ok === true,
+      `面板标题=${exercise.title}, 候选项=${exercise.candidates.length}, 勾选=${exercise.picked.join(',')}`)
+    record('选「不健身」不清空已选项目',
+      JSON.stringify(exercise.restored) === JSON.stringify(EXERCISE_PICKS),
+      `重新打开后已选=${exercise.restored.join('、')}`)
+
+    // 8b. 补剂面板：打开时按模板补齐当天清单，模板行不可删、自定义行可删
+    const supplements = JSON.parse(await evaluate(`
+      (async () => {
+        window.__m.clickContains('早中晚补剂已安排', '.row-main');
+        await window.__m.wait(1600);
+        const title = (document.querySelector('.bottom-sheet h2') || {}).textContent || '';
+        const templateRows = {
+          morning: window.__m.groupRows('.panel-group[data-period="morning"]'),
+          noon: window.__m.groupRows('.panel-group[data-period="noon"]'),
+          evening: window.__m.groupRows('.panel-group[data-period="evening"]'),
+        };
+        const removeButtonsOnTemplates = document.querySelectorAll('.panel-row button').length;
+
+        // 取消「今天吃鱼油」：行要留在面板里，只是不勾
+        const fishRow = [...document.querySelectorAll('.panel-row')].find((row) => row.textContent.includes('鱼油'));
+        fishRow.querySelector('input[type=checkbox]').click();
+        await window.__m.wait(320);
+        const fishStillListed = [...document.querySelectorAll('.panel-row')].some((row) => row.textContent.includes('鱼油'));
+
+        // 自己加一条
+        window.__m.clickIn('.panel-group[data-period="noon"]', '添加补剂');
+        await window.__m.wait(360);
+        const input = window.__m.lastSupplementInput();
+        if (input) window.__m.setValue(input, ${JSON.stringify(DAY_SUPPLEMENT)});
+        await window.__m.wait(320);
+        const removeButtonsAfterAdd = document.querySelectorAll('.panel-row button').length;
+
+        window.__m.clickText('保存');
+        await window.__m.wait(1700);
+        const body = window.__m.text();
+        return JSON.stringify({
+          title,
+          templateRows,
+          removeButtonsOnTemplates,
+          fishStillListed,
+          removeButtonsAfterAdd,
+          summaryHasMorning: body.includes('早 维生素 D'),
+          summaryHasEvening: body.includes('晚 钙片'),
+          summaryHasCustom: body.includes(${JSON.stringify(DAY_SUPPLEMENT)}),
+          summaryExcludesFish: !body.includes('鱼油'),
+        });
+      })()
+    `))
+    record('补剂面板打开时按模板补齐当天清单',
+      supplements.title === '编辑补剂' &&
+        supplements.templateRows.morning.some((row) => row.includes('维生素 D')) &&
+        supplements.templateRows.noon.some((row) => row.includes('鱼油')) &&
+        supplements.templateRows.evening.some((row) => row.includes('钙片')),
+      `面板标题=${supplements.title}, 早组=${supplements.templateRows.morning.join('|')}`)
+    record('模板来源的补剂不给删除按钮，只能取消「今天吃」',
+      supplements.removeButtonsOnTemplates === 0 &&
+        supplements.fishStillListed === true &&
+        supplements.removeButtonsAfterAdd === 1,
+      `模板行删除按钮=${supplements.removeButtonsOnTemplates}, 取消勾选后仍在列表=${supplements.fishStillListed}, 加自定义行后删除按钮=${supplements.removeButtonsAfterAdd}`)
+    record('补剂摘要只列「今天吃」的项，自定义项可加入',
+      supplements.summaryHasMorning &&
+        supplements.summaryHasEvening &&
+        supplements.summaryHasCustom &&
+        supplements.summaryExcludesFish,
+      `早=${supplements.summaryHasMorning}, 晚=${supplements.summaryHasEvening}, 自定义=${supplements.summaryHasCustom}, 已排除未勾选项=${supplements.summaryExcludesFish}`)
+
+    // 8c. 再次打开补剂面板：已存在的实例不会被重复补一遍；自定义行可移除
+    const supplementsReopen = JSON.parse(await evaluate(`
+      (async () => {
+        window.__m.clickContains('早中晚补剂已安排', '.row-main');
+        await window.__m.wait(2200);
+        const rows = [...document.querySelectorAll('.panel-row')];
+
+        // 自定义行判定：有删除按钮的就是自定义行（模板行不给删除按钮）
+        const fish = rows.filter((row) => row.textContent.includes('鱼油'));
+        const customRows = rows.filter((row) => !!row.querySelector('button'));
+        const fishChecked = fish.length ? fish[0].querySelector('input[type=checkbox]').checked : null;
+        const fishRemovable = fish.length ? !!fish[0].querySelector('button') : null;
+        const customRemovable = customRows.length ? !!customRows[0].querySelector('button') : null;
+
+        if (customRows.length) customRows[0].querySelector('button').click();
+        await window.__m.wait(320);
+        window.__m.clickText('保存');
+        await window.__m.wait(1700);
+        const body = window.__m.text();
+        return JSON.stringify({
+          customRowCount: customRows.length,
+          fishCount: fish.length,
+          fishChecked,
+          fishRemovable,
+          customRemovable,
+          customGone: !body.includes(${JSON.stringify(DAY_SUPPLEMENT)}),
+          morningKept: body.includes('维生素 D'),
+          eveningKept: body.includes('钙片'),
+        });
+      })()
+    `))
+    record('再次打开补剂面板不会重复补齐已存在的实例',
+      supplementsReopen.fishCount === 1 && supplementsReopen.fishChecked === false,
+      `鱼油行数=${supplementsReopen.fishCount}, 仍为未勾选=${supplementsReopen.fishChecked}`)
+    record('自定义补剂可移除，模板来源的行不提供删除',
+      supplementsReopen.customRowCount === 1 &&
+        supplementsReopen.customRemovable === true &&
+        supplementsReopen.fishRemovable === false &&
+        supplementsReopen.customGone === true &&
+        supplementsReopen.morningKept === true &&
+        supplementsReopen.eveningKept === true,
+      `自定义行=${supplementsReopen.customRowCount} 可删=${supplementsReopen.customRemovable}, 模板行可删=${supplementsReopen.fishRemovable}, 删除生效=${supplementsReopen.customGone}`)
+    await shot('03-补剂面板')
+
+    // 8d. 执行区：内容与完成状态严格分开——执行区勾「吃了」，准备区的勾选不受影响
+    const execution = JSON.parse(await evaluate(`
+      (async () => {
+        window.__m.clickText('执行今天');
+        await window.__m.wait(1100);
+        window.__m.clickAria('后一天', '.icon-button');
+        await window.__m.wait(1400);
+
+        const rows = window.__m.executeText();
+        const before = window.__m.executeStates();
+        const breakfast = await window.__m.executeToggle('早餐已完成');
+        const vitamin = await window.__m.executeToggle('维生素 D已完成');
+        const workout = await window.__m.executeToggle('健身已完成');
+
+        window.__m.clickText('准备明天');
+        await window.__m.wait(1500);
+        return JSON.stringify({
+          rows,
+          before,
+          breakfast,
+          vitamin,
+          workout,
+          prepBoxes: window.__m.prepChecked(),
+          progressText: window.__m.progress(),
+        });
+      })()
+    `))
+    const executionLabels = execution.rows.join(' | ')
+    record('执行区列出三餐内容、补剂实例与健身项目',
+      executionLabels.includes('燕麦牛奶') &&
+        executionLabels.includes('鸡胸沙拉') &&
+        executionLabels.includes('维生素 D') &&
+        executionLabels.includes('钙片') &&
+        EXERCISE_PICKS.every((name) => executionLabels.includes(name)),
+      firstLine(executionLabels, 170))
+    record('执行区不展示「今天不吃」的补剂',
+      !executionLabels.includes('鱼油'),
+      firstLine(executionLabels, 170))
+    record('执行区勾选完成不影响准备区勾选',
+      execution.before.every((item) => item.checked === false) &&
+        execution.breakfast === 'CHECKED' &&
+        execution.vitamin === 'CHECKED' &&
+        execution.workout === 'CHECKED' &&
+        JSON.stringify(execution.prepBoxes) === JSON.stringify([false, true, false, false, false]) &&
+        /1\/5/.test(execution.progressText),
+      `初始=${JSON.stringify(execution.before.map((item) => item.checked))}, 三餐=${execution.breakfast}, 补剂=${execution.vitamin}, 健身=${execution.workout}, 准备区=${JSON.stringify(execution.prepBoxes)} ${execution.progressText}`)
 
     // 9. 自定义事项：新增
     const taskAdded = await evaluate(`
@@ -622,23 +950,25 @@ async function main() {
     record('自定义事项删除需二次确认且可删除', deletedData.asked === true && deletedData.remaining === 0,
       `确认框=${deletedData.asked}, 剩余=${deletedData.remaining}`)
 
-    // 12. 复制昨天：内容复制但不带准备状态，且不改目标日模式与 mode_override
+    // 12. 复制昨天：内容复制但不带任何状态，且不改目标日模式与 mode_override
     const copied = await evaluate(`
       (async () => {
         window.__m.clickAria('后一天', '.icon-button');
-        await window.__m.wait(1200);
+        await window.__m.wait(1400);
         const modeBefore = window.__m.modeLabel();
         window.__m.clickText('复制昨天');
         await window.__m.wait(700);
         const asked = (document.querySelector('.confirm-modal') || {}).innerText || '';
         window.__m.clickText('确认覆盖');
-        await window.__m.wait(1500);
+        await window.__m.wait(1800);
         const body = window.__m.text();
-        const prep = window.__m.prepChecked();
         return JSON.stringify({
-          asked: asked.includes('不会复制准备勾选'),
-          hasMeal: body.includes(${JSON.stringify(BREAKFAST)}),
-          prep,
+          asked: asked.includes('不会复制任何准备勾选'),
+          hasMeals: ${JSON.stringify(BREAKFAST_FOODS)}.every((name) => body.includes(name)) && body.includes(${JSON.stringify(LUNCH_FOODS[0])}),
+          hasSupplements: body.includes('维生素 D') && body.includes('钙片'),
+          fishStaysUnplanned: !body.includes('鱼油'),
+          hasExercise: body.includes('已决定健身'),
+          prep: window.__m.prepChecked(),
           progress: window.__m.progress(),
           modeBefore,
           modeAfter: window.__m.modeLabel(),
@@ -648,11 +978,37 @@ async function main() {
     `)
     const copyData = JSON.parse(copied)
     const prepAllCleared = copyData.prep.length === 0 || copyData.prep.every((value) => value === false)
-    record('复制昨天带内容但不带准备勾选', copyData.asked && copyData.hasMeal && prepAllCleared,
-      `确认文案=${copyData.asked}, 含早餐=${copyData.hasMeal}, 准备项=${JSON.stringify(copyData.prep)}`)
+    record('复制昨天带三餐 / 补剂 / 健身内容但不带准备勾选',
+      copyData.asked && copyData.hasMeals && copyData.hasSupplements && copyData.hasExercise && prepAllCleared,
+      `确认文案=${copyData.asked}, 三餐=${copyData.hasMeals}, 补剂=${copyData.hasSupplements}, 健身=${copyData.hasExercise}, 准备项=${JSON.stringify(copyData.prep)}`)
+    record('复制昨天原样带走「今天不吃」的补剂，不回填成默认吃',
+      copyData.fishStaysUnplanned === true,
+      `复制后摘要里是否出现鱼油=${!copyData.fishStaysUnplanned}`)
     record('复制昨天不改目标日模式与人工覆盖',
       copyData.modeBefore === copyData.modeAfter && copyData.overrideAfter === false,
       `模式 ${copyData.modeBefore} → ${copyData.modeAfter}, 复制后存在人工覆盖=${copyData.overrideAfter}`)
+
+    // 12b. 复制过来的内容不带任何完成状态：执行区应当整片未勾选
+    const copiedExecution = JSON.parse(await evaluate(`
+      (async () => {
+        window.__m.clickText('执行今天');
+        await window.__m.wait(1100);
+        window.__m.clickAria('后一天', '.icon-button');
+        await window.__m.wait(1100);
+        window.__m.clickAria('后一天', '.icon-button');
+        await window.__m.wait(1500);
+        const labels = window.__m.executeText();
+        return JSON.stringify({
+          states: window.__m.executeStates(),
+          hasContent: labels.join('|').includes('燕麦牛奶') && labels.join('|').includes('维生素 D'),
+        });
+      })()
+    `))
+    record('复制昨天不带走任何完成状态',
+      copiedExecution.hasContent === true &&
+        copiedExecution.states.length >= 5 &&
+        copiedExecution.states.every((item) => item.checked === false),
+      `执行区状态=${JSON.stringify(copiedExecution.states.map((item) => item.checked))}`)
 
     // 13. 刷新恢复
     await goto()
@@ -661,7 +1017,9 @@ async function main() {
     await evaluate(`window.__m.clickText('准备明天')`)
     await sleep(1100)
     const persisted = await text()
-    record('刷新后规划内容从本地数据库恢复', persisted.includes(BREAKFAST), firstLine(persisted, 120))
+    record('刷新后规划内容从本地数据库恢复',
+      persisted.includes('燕麦牛奶') && persisted.includes('维生素 D'),
+      firstLine(persisted, 120))
 
     // 14. 选项页（L1）：三个分区、示例选项、可用数量口径与本地模式说明
     await evaluate(`window.__m.clickText('选项')`)

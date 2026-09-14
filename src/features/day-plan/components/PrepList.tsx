@@ -1,8 +1,11 @@
-import type { DailyMeal, DayPlan } from '../../../shared/types/dayPlan'
+import type { DailyMeal, DailyMealItem, DailySupplement, DayPlan } from '../../../shared/types/dayPlan'
+import { MEAL_TYPES } from '../../../shared/types/dayPlan'
+import { SUPPLEMENT_PERIODS } from '../../../shared/types/options'
+import { SUPPLEMENT_PERIOD_LABEL } from '../../../shared/periodLabels'
 import { MEAL_NAMES, PREPARE_COMPLETE_TEXT } from '../dayPlanLabels'
 
 export type PrepKey = 'outfit_ready' | 'meals_ready' | 'supplements_ready' | 'morning_ready' | 'exercise_ready'
-export type PrepEditor = 'meals' | 'morning' | 'exercise'
+export type PrepEditor = 'meals' | 'supplements' | 'morning' | 'exercise'
 
 type PrepRow = { key: PrepKey; label: string; summary: string; editor?: PrepEditor }
 
@@ -12,9 +15,28 @@ function exerciseSummary(plan: DayPlan | null): string {
   return '点击选择'
 }
 
-function mealSummary(meals: DailyMeal[]): string {
-  const joined = meals.map((meal) => `${MEAL_NAMES[meal.meal_type]}：${meal.plan_content || '未填写'}`).join(' · ')
-  return joined || '点击编辑三餐'
+/** 三餐摘要按早餐 → 午餐 → 晚餐固定顺序列出内容项，展示一律用名称快照。 */
+function mealSummary(meals: DailyMeal[], mealItems: DailyMealItem[]): string {
+  return MEAL_TYPES.map((type) => {
+    const meal = meals.find((item) => item.meal_type === type)
+    const names = meal
+      ? mealItems.filter((item) => item.daily_meal_id === meal.id).map((item) => item.food_name_snapshot)
+      : []
+    return `${MEAL_NAMES[type]}：${names.join('、') || '未安排'}`
+  }).join(' · ')
+}
+
+/** 补剂摘要只列「今天吃」的项，按时段聚合；一条都没有时给出下一步动作。 */
+function supplementSummary(supplements: DailySupplement[]): string {
+  const planned = supplements.filter((row) => row.planned)
+  if (!planned.length) return '点击安排补剂'
+
+  const groups = SUPPLEMENT_PERIODS.map((period) => {
+    const names = planned.filter((row) => row.period === period).map((row) => row.name_snapshot)
+    return names.length ? `${SUPPLEMENT_PERIOD_LABEL[period]} ${names.join('、')}` : ''
+  }).filter(Boolean)
+
+  return groups.join(' · ') || '点击安排补剂'
 }
 
 /**
@@ -24,6 +46,8 @@ function mealSummary(meals: DailyMeal[]): string {
 export function PrepList({
   plan,
   meals,
+  mealItems,
+  supplements,
   progress,
   writable,
   onToggle,
@@ -31,6 +55,8 @@ export function PrepList({
 }: {
   plan: DayPlan | null
   meals: DailyMeal[]
+  mealItems: DailyMealItem[]
+  supplements: DailySupplement[]
   progress: number
   writable: boolean
   onToggle: (key: PrepKey) => void
@@ -38,8 +64,13 @@ export function PrepList({
 }) {
   const rows: PrepRow[] = [
     { key: 'outfit_ready', label: '衣服已经准备好', summary: '只记录是否准备好' },
-    { key: 'meals_ready', label: '三餐已安排', summary: mealSummary(meals), editor: 'meals' },
-    { key: 'supplements_ready', label: '早中晚补剂已安排', summary: '本阶段只记录准备状态' },
+    { key: 'meals_ready', label: '三餐已安排', summary: mealSummary(meals, mealItems), editor: 'meals' },
+    {
+      key: 'supplements_ready',
+      label: '早中晚补剂已安排',
+      summary: supplementSummary(supplements),
+      editor: 'supplements',
+    },
     {
       key: 'morning_ready',
       label: '晨间事项已安排',

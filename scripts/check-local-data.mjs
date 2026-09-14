@@ -31,7 +31,8 @@ const { LOCAL_SCHEMA } = await import('../src/services/local/localDb.ts')
 const { version, stores, migrations } = LOCAL_SCHEMA
 const storeNames = stores.map((store) => store.name).sort()
 const migrationVersions = Object.keys(migrations).map(Number).sort((left, right) => left - right)
-const migratedNames = migrationVersions.flatMap((key) => migrations[key])
+const storesOf = (key) => migrations[key].stores ?? []
+const migratedNames = migrationVersions.flatMap((key) => storesOf(key))
 
 // ---- 版本号与迁移表必须自洽 ----
 check('DB_VERSION 等于迁移表的最大版本号', version, migrationVersions[migrationVersions.length - 1])
@@ -42,8 +43,17 @@ check(
 )
 
 // ---- 迁移只追加：v1 的四个仓库是历史事实，任何改写都会让老用户的库升不上来 ----
-check('v1 迁移保持历史四张表不变', [...migrations[1]].sort(), ['custom_tasks', 'daily_meals', 'day_plans', 'users'])
-check('v2 迁移只新增三张选项表', [...migrations[2]].sort(), ['exercise_options', 'food_options', 'supplement_templates'])
+check('v1 迁移保持历史四张表不变', [...storesOf(1)].sort(), ['custom_tasks', 'daily_meals', 'day_plans', 'users'])
+check('v2 迁移只新增三张选项表', [...storesOf(2)].sort(), ['exercise_options', 'food_options', 'supplement_templates'])
+check(
+  'v3 迁移新增三张每日内容表',
+  [...storesOf(3)].sort(),
+  ['daily_exercise_items', 'daily_meal_items', 'daily_supplements'],
+)
+
+// ---- 已有数据的版本必须带搬迁函数：只建表不搬数据，老用户的自由文本会被静默丢掉 ----
+check('v3 迁移带数据搬迁函数', typeof migrations[3].migrate, 'function')
+check('v1 / v2 只建表、不做数据搬迁', migrationVersions.slice(0, 2).map((key) => migrations[key].migrate ?? null), [null, null])
 
 // ---- 定义与迁移必须一一对应，防止「加了 STORES 忘了 MIGRATIONS」这类漏项 ----
 check('迁移表覆盖的仓库与 STORES 清单完全一致', [...new Set(migratedNames)].sort(), storeNames)
@@ -51,10 +61,21 @@ check('每个仓库只在一个版本里引入', migratedNames.length, new Set(m
 check('所有仓库的主键都是 id', [...new Set(stores.map((store) => store.keyPath))], ['id'])
 
 // ---- 按 user_id 隔离的三张选项表必须带 user_id 索引，否则靠 getAll 全表扫 ----
-for (const name of migrations[2]) {
+for (const name of storesOf(2)) {
   const definition = stores.find((store) => store.name === name)
   const indexNames = (definition?.indexes ?? []).map((index) => index.name)
   check(`${name} 带有 user_id 索引`, indexNames.includes('user_id'), true)
+}
+
+// ---- 三张每日内容表按父记录查，必须带父键索引，否则每读一天都要全表扫 ----
+for (const [name, index] of [
+  ['daily_meal_items', 'daily_meal_id'],
+  ['daily_supplements', 'day_plan_id'],
+  ['daily_exercise_items', 'day_plan_id'],
+]) {
+  const definition = stores.find((store) => store.name === name)
+  const indexNames = (definition?.indexes ?? []).map((item) => item.name)
+  check(`${name} 带有 ${index} 索引`, indexNames.includes(index), true)
 }
 
 // ---- 界面层不得直接碰数据库：页面只能经 src/services/ ----

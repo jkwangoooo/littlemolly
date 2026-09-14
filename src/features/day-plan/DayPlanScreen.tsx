@@ -1,16 +1,24 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { CustomTask, DailyMeal, DayMode, DayPlan } from '../../shared/types/dayPlan'
+import { useEffect, useState } from 'react'
+import type { CustomTask, DayMode, DayPlan } from '../../shared/types/dayPlan'
 import { addDays, classifyDate, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { signOut } from '../../services/local/authService'
 import {
   copyYesterday,
   deleteCustomTask,
+  ensureDaySupplements,
   listCustomTasks,
+  listDaySupplements,
+  listExerciseItems,
+  listMealItems,
   listMeals,
   restoreDefaultDayPlan,
   saveCustomTask,
+  saveDaySupplements,
+  saveExercise,
   saveMeals,
+  setMealCompleted,
+  setSupplementCompleted,
   upsertDayPlan,
 } from '../../services/local/dayPlanService'
 import { WeekView } from '../week/WeekView'
@@ -18,9 +26,9 @@ import { PreferencesScreen } from '../preferences/PreferencesScreen'
 import { CustomTaskList } from './components/CustomTaskList'
 import { DateHeading } from './components/DateHeading'
 import { DayNavTabs } from './components/DayNavTabs'
-import { EditorSheet, type EditorKind } from './components/EditorSheet'
+import { EditorSheet, type EditorKind, type PanelPayload } from './components/EditorSheet'
 import { EmptyDayHint } from './components/EmptyDayHint'
-import { ExecuteList, type ExecutionTarget } from './components/ExecuteList'
+import { ExecuteList, type ExecutionToggle } from './components/ExecuteList'
 import { ModeCard } from './components/ModeCard'
 import { PrepList, type PrepKey } from './components/PrepList'
 import { SaveStatusBar } from './components/SaveStatusBar'
@@ -73,11 +81,6 @@ export function DayPlanScreen() {
       ].filter(Boolean).length
     : 0
 
-  const sortedMeals = useMemo(
-    () => [...data.meals].sort((a, b) => a.meal_type.localeCompare(b.meal_type)),
-    [data.meals],
-  )
-
   async function ensurePlan(): Promise<DayPlan> {
     if (data.plan) return data.plan
     const created = await upsertDayPlan(selectedDate, {
@@ -94,32 +97,48 @@ export function DayPlanScreen() {
     })
   }
 
-  async function savePanel(kind: EditorKind, payload: Record<string, unknown>) {
+  /**
+   * 打开编辑面板。补剂在这里先「补齐」一次：模板里还没落到这一天的项会被写进来，
+   * 让用户在面板里看到完整的今日清单。补齐只发生在打开面板时，历史日期跳过，
+   * 因此打开页面本身不会改写任何已有日期（docs/02「进面板时补齐，不回填」）。
+   */
+  async function openPanel(kind: EditorKind) {
+    setEditingTask(null)
+    if (kind === 'supplements' && writable) {
+      await runSave(async () => {
+        await ensurePlan()
+        data.setSupplements(await ensureDaySupplements(selectedDate))
+      })
+    }
+    setPanel(kind)
+  }
+
+  async function savePanel(payload: PanelPayload) {
     await runSave(async () => {
       await ensurePlan()
 
-      if (kind === 'meals') {
-        const rows = payload.meals as Array<Pick<DailyMeal, 'meal_type' | 'plan_content' | 'note' | 'completed'>>
-        data.setMeals(await saveMeals(selectedDate, rows))
+      if (payload.kind === 'meals') {
+        const saved = await saveMeals(selectedDate, payload.meals)
+        data.setMeals(saved.meals)
+        data.setMealItems(saved.items)
       }
-      if (kind === 'morning') {
-        data.setPlan(await upsertDayPlan(selectedDate, { morning_focus: String(payload.morning_focus ?? '') }))
+      if (payload.kind === 'supplements') {
+        data.setSupplements(await saveDaySupplements(selectedDate, payload.rows))
       }
-      if (kind === 'exercise') {
-        data.setPlan(
-          await upsertDayPlan(selectedDate, {
-            exercise_decision: payload.exercise_decision as DayPlan['exercise_decision'],
-            exercise_content: String(payload.exercise_content ?? ''),
-            exercise_note: String(payload.exercise_note ?? ''),
-          }),
-        )
+      if (payload.kind === 'morning') {
+        data.setPlan(await upsertDayPlan(selectedDate, { morning_focus: payload.morning_focus }))
       }
-      if (kind === 'task') {
+      if (payload.kind === 'exercise') {
+        const saved = await saveExercise(selectedDate, payload.exercise)
+        data.setPlan(saved.plan)
+        data.setExerciseItems(saved.items)
+      }
+      if (payload.kind === 'task') {
         const saved = await saveCustomTask(selectedDate, {
           id: editingTask?.id,
-          task_time: String(payload.task_time),
-          title: String(payload.title),
-          note: String(payload.note),
+          task_time: payload.task.task_time,
+          title: payload.task.title,
+          note: payload.task.note,
           completed: editingTask?.completed ?? false,
         })
         data.setTasks((current) =>
@@ -138,34 +157,31 @@ export function DayPlanScreen() {
     await savePlan({ [key]: !data.plan?.[key] } as Partial<DayPlan>)
   }
 
-  async function toggleExecution(target: ExecutionTarget, id?: string) {
+  async function toggleExecution(toggle: ExecutionToggle) {
     if (!writable) return
 
-    if (target === 'morning') {
+    if (toggle.kind === 'morning') {
       await savePlan({ morning_completed: !data.plan?.morning_completed })
       return
     }
-    if (target === 'exercise') {
+    if (toggle.kind === 'exercise') {
       await savePlan({ exercise_completed: !data.plan?.exercise_completed })
       return
     }
-    if (target === 'meal' && id) {
-      const meal = data.meals.find((item) => item.id === id)
-      if (!meal) return
+
+    if (toggle.kind === 'meal') {
+      const meal = data.meals.find((item) => item.meal_type === toggle.mealType)
       await runSave(async () => {
-        data.setMeals(
-          await saveMeals(
-            selectedDate,
-            data.meals.map((item) => ({
-              meal_type: item.meal_type,
-              plan_content: item.plan_content,
-              note: item.note,
-              completed: item.id === id ? !item.completed : item.completed,
-            })),
-          ),
-        )
+        data.setMeals(await setMealCompleted(selectedDate, toggle.mealType, !(meal?.completed ?? false)))
       })
+      return
     }
+
+    const row = data.supplements.find((item) => item.id === toggle.id)
+    if (!row) return
+    await runSave(async () => {
+      data.setSupplements(await setSupplementCompleted(selectedDate, row.id, !row.completed))
+    })
   }
 
   async function toggleTask(id: string) {
@@ -182,9 +198,19 @@ export function DayPlanScreen() {
     setConfirmCopy(false)
     await runSave(async () => {
       const copied = await copyYesterday(selectedDate)
+      const [nextMeals, nextMealItems, nextSupplements, nextExerciseItems, nextTasks] = await Promise.all([
+        listMeals(copied.id),
+        listMealItems(copied.id),
+        listDaySupplements(copied.id),
+        listExerciseItems(copied.id),
+        listCustomTasks(copied.id),
+      ])
       data.setPlan(copied)
-      data.setMeals(await listMeals(copied.id))
-      data.setTasks(await listCustomTasks(copied.id))
+      data.setMeals(nextMeals)
+      data.setMealItems(nextMealItems)
+      data.setSupplements(nextSupplements)
+      data.setExerciseItems(nextExerciseItems)
+      data.setTasks(nextTasks)
     })
   }
 
@@ -292,33 +318,32 @@ export function DayPlanScreen() {
             {mode === 'work' && isPrepare ? (
               <PrepList
                 plan={data.plan}
-                meals={sortedMeals}
+                meals={data.meals}
+                mealItems={data.mealItems}
+                supplements={data.supplements}
                 progress={progress}
                 writable={writable}
                 onToggle={(key) => void togglePrep(key)}
-                onOpenEditor={(editor) => {
-                  setEditingTask(null)
-                  setPanel(editor)
-                }}
+                onOpenEditor={(editor) => void openPanel(editor)}
               />
             ) : null}
 
             {isPrepare ? null : (
               <ExecuteList
                 plan={data.plan}
-                meals={sortedMeals}
+                meals={data.meals}
+                mealItems={data.mealItems}
+                supplements={data.supplements}
+                exerciseItems={data.exerciseItems}
                 writable={writable}
-                onToggle={(target, id) => void toggleExecution(target, id)}
+                onToggle={(toggle) => void toggleExecution(toggle)}
               />
             )}
 
             <CustomTaskList
               tasks={data.tasks}
               writable={writable}
-              onAdd={() => {
-                setEditingTask(null)
-                setPanel('task')
-              }}
+              onAdd={() => void openPanel('task')}
               onEdit={(task) => {
                 setEditingTask(task)
                 setPanel('task')
@@ -365,7 +390,7 @@ export function DayPlanScreen() {
       {confirmCopy ? (
         <ConfirmDialog
           title="复制昨天的计划？"
-          description="将覆盖三餐、晨间、健身和自定义事项内容，但不会复制准备勾选或完成状态。"
+          description="将覆盖三餐、补剂、晨间、健身和自定义事项的内容，但不会复制任何准备勾选或完成状态。"
           confirmLabel="确认覆盖"
           onConfirm={() => void doCopy()}
           onCancel={() => setConfirmCopy(false)}
@@ -377,10 +402,14 @@ export function DayPlanScreen() {
           key={panel}
           kind={panel}
           meals={data.meals}
+          mealItems={data.mealItems}
+          supplements={data.supplements}
+          exerciseItems={data.exerciseItems}
           plan={data.plan}
           task={editingTask}
+          writable={writable}
           onCancel={() => setPanel(null)}
-          onSave={(payload) => void savePanel(panel, payload)}
+          onSave={(payload) => void savePanel(payload)}
         />
       ) : null}
     </main>

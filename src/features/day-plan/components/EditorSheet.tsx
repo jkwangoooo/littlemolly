@@ -1,150 +1,188 @@
 import { useState } from 'react'
-import type { CustomTask, DailyMeal, DayPlan, MealType } from '../../../shared/types/dayPlan'
+import type {
+  CustomTask,
+  DailyExerciseItem,
+  DailyMeal,
+  DailyMealItem,
+  DailySupplement,
+  DayPlan,
+  MealType,
+} from '../../../shared/types/dayPlan'
+import { MEAL_TYPES } from '../../../shared/types/dayPlan'
+import type { ExerciseInput, MealInput, SupplementInput } from '../../../services/local/dayPlanService'
 import { BottomSheet } from '../../../shared/components/BottomSheet'
-import { MEAL_NAMES, MEAL_TYPES } from '../dayPlanLabels'
+import {
+  PANEL_ADD_TASK_TITLE,
+  PANEL_LOADING_TEXT,
+  PANEL_OPTIONS_ERROR,
+  PANEL_TITLE,
+} from '../dayPlanLabels'
+import { usePanelOptions } from '../usePanelOptions'
+import {
+  appendSupplement,
+  buildExerciseDraft,
+  buildMealDraft,
+  buildSupplementDraft,
+  patchSupplement,
+  removeSupplementAt,
+  templateKeys,
+  type ExerciseDraft,
+  type MealDraft,
+  type SupplementDraftRow,
+} from '../panelDrafts'
+import { ExercisePanel } from './ExercisePanel'
+import { MealPanel } from './MealPanel'
+import { SupplementPanel } from './SupplementPanel'
 import type { PrepEditor } from './PrepList'
 
 export type EditorKind = PrepEditor | 'task'
 
-type MealDraft = Record<MealType, { plan_content: string; note: string }>
-
-const PANEL_TITLE: Record<EditorKind, string> = {
-  meals: '编辑三餐',
-  morning: '编辑晨间事项',
-  exercise: '编辑健身安排',
-  task: '编辑事项',
-}
-
-function buildMealDraft(meals: DailyMeal[]): MealDraft {
-  const draft = {} as MealDraft
-  for (const type of MEAL_TYPES) {
-    const existing = meals.find((meal) => meal.meal_type === type)
-    draft[type] = { plan_content: existing?.plan_content ?? '', note: existing?.note ?? '' }
-  }
-  return draft
-}
+/** 面板提交的载荷。按 `kind` 判别，调用方 switch 时可以穷尽检查，不会漏掉一种面板。 */
+export type PanelPayload =
+  | { kind: 'meals'; meals: MealInput[] }
+  | { kind: 'supplements'; rows: SupplementInput[] }
+  | { kind: 'morning'; morning_focus: string }
+  | { kind: 'exercise'; exercise: ExerciseInput }
+  | { kind: 'task'; task: { task_time: string; title: string; note: string } }
 
 /**
- * 底部编辑面板。四种编辑对象共用一套草稿状态，保存时统一产出 payload，
- * 由调用方按 kind 落到对应服务；面板本身不碰数据层。
+ * 底部编辑面板。只持有草稿状态并组装载荷，落库由调用方按 `kind` 转给对应服务。
+ *
+ * 三种「内容型」面板（三餐 / 补剂 / 健身）各自一个组件；晨间与自定义事项字段少，
+ * 直接写在这里。候选项统一由 `usePanelOptions` 异步读取，读完之前不渲染面板内容，
+ * 避免先闪一下空态。
  */
 export function EditorSheet({
   kind,
   meals,
+  mealItems,
+  supplements,
+  exerciseItems,
   plan,
   task,
+  writable,
   onCancel,
   onSave,
 }: {
   kind: EditorKind
   meals: DailyMeal[]
+  mealItems: DailyMealItem[]
+  supplements: DailySupplement[]
+  exerciseItems: DailyExerciseItem[]
   plan: DayPlan | null
   task: CustomTask | null
+  writable: boolean
   onCancel: () => void
-  onSave: (payload: Record<string, unknown>) => void
+  onSave: (payload: PanelPayload) => void
 }) {
-  const [mealDraft, setMealDraft] = useState<MealDraft>(() => buildMealDraft(meals))
+  const options = usePanelOptions(true)
+
+  const [mealDraft, setMealDraft] = useState<MealDraft>(() => buildMealDraft(meals, mealItems))
+  const [exerciseDraft, setExerciseDraft] = useState<ExerciseDraft>(() => buildExerciseDraft(plan, exerciseItems))
   const [morningFocus, setMorningFocus] = useState(plan?.morning_focus ?? '')
-  const [decision, setDecision] = useState<DayPlan['exercise_decision']>(plan?.exercise_decision ?? 'undecided')
-  const [exerciseContent, setExerciseContent] = useState(plan?.exercise_content ?? '')
-  const [exerciseNote, setExerciseNote] = useState(plan?.exercise_note ?? '')
   const [taskTime, setTaskTime] = useState(task?.task_time?.slice(0, 5) || '08:00')
   const [taskTitle, setTaskTitle] = useState(task?.title ?? '')
   const [taskNote, setTaskNote] = useState(task?.note ?? '')
+
+  // 补剂草稿在用户第一次改动之前保持「派生」状态：候选项是异步到的，
+  // 若一开始就固化进 state，模板补进来的行会永远等不到。
+  const [editedSupplements, setEditedSupplements] = useState<SupplementDraftRow[] | null>(null)
+  const supplementDraft = editedSupplements ?? buildSupplementDraft(supplements, options.supplement, writable)
+  const supplementTemplateKeys = templateKeys(options.supplement)
 
   function updateMeal(type: MealType, patch: Partial<MealDraft[MealType]>) {
     setMealDraft((current) => ({ ...current, [type]: { ...current[type], ...patch } }))
   }
 
-  function buildPayload(): Record<string, unknown> {
+  function buildPayload(): PanelPayload {
     if (kind === 'meals') {
       return {
+        kind: 'meals',
         meals: MEAL_TYPES.map((type) => ({
           meal_type: type,
-          plan_content: mealDraft[type].plan_content,
           note: mealDraft[type].note,
-          completed: meals.find((meal) => meal.meal_type === type)?.completed ?? false,
+          items: mealDraft[type].items,
         })),
       }
     }
-    if (kind === 'morning') return { morning_focus: morningFocus }
-    if (kind === 'exercise') {
-      return { exercise_decision: decision, exercise_content: exerciseContent, exercise_note: exerciseNote }
-    }
-    return { task_time: taskTime, title: taskTitle, note: taskNote }
+    if (kind === 'supplements') return { kind: 'supplements', rows: supplementDraft }
+    if (kind === 'morning') return { kind: 'morning', morning_focus: morningFocus }
+    if (kind === 'exercise') return { kind: 'exercise', exercise: exerciseDraft }
+    return { kind: 'task', task: { task_time: taskTime, title: taskTitle, note: taskNote } }
   }
 
-  const title = kind === 'task' && !task ? '添加事项' : PANEL_TITLE[kind]
+  const needsOptions = kind === 'meals' || kind === 'supplements' || kind === 'exercise'
+  const title = kind === 'task' && !task ? PANEL_ADD_TASK_TITLE : PANEL_TITLE[kind]
 
   return (
-    <BottomSheet title={title} onSave={() => onSave(buildPayload())} onCancel={onCancel}>
-      {kind === 'meals'
-        ? MEAL_TYPES.map((type) => (
-            <div className="field" key={type}>
-              <label>
-                {MEAL_NAMES[type]}计划
-                <input
-                  value={mealDraft[type].plan_content}
-                  onChange={(event) => updateMeal(type, { plan_content: event.target.value })}
-                />
-              </label>
-              <label>
-                {MEAL_NAMES[type]}备注
-                <input value={mealDraft[type].note} onChange={(event) => updateMeal(type, { note: event.target.value })} />
-              </label>
-            </div>
-          ))
-        : null}
-
-      {kind === 'morning' ? (
-        <label className="field">
-          5:00-6:30 当天事项
-          <textarea value={morningFocus} onChange={(event) => setMorningFocus(event.target.value)} />
-        </label>
+    <BottomSheet
+      title={title}
+      saveDisabled={!writable}
+      onSave={() => onSave(buildPayload())}
+      onCancel={onCancel}
+    >
+      {needsOptions && options.loading ? (
+        <p className="muted loading-note" role="status">
+          {PANEL_LOADING_TEXT}
+        </p>
       ) : null}
 
-      {kind === 'exercise' ? (
+      {needsOptions && options.error ? (
+        <p className="notice" role="alert">
+          {PANEL_OPTIONS_ERROR}
+          {options.error}
+        </p>
+      ) : null}
+
+      {!needsOptions || (!options.loading && !options.error) ? (
         <>
-          <label className="field">
-            安排
-            <select
-              value={decision}
-              onChange={(event) => setDecision(event.target.value as DayPlan['exercise_decision'])}
-            >
-              <option value="undecided">未决定</option>
-              <option value="exercise">健身</option>
-              <option value="rest">不健身</option>
-            </select>
-          </label>
-          {decision === 'exercise' ? (
+          {kind === 'meals' ? (
+            <MealPanel draft={mealDraft} options={options.food} disabled={!writable} onChange={updateMeal} />
+          ) : null}
+
+          {kind === 'supplements' ? (
+            <SupplementPanel
+              draft={supplementDraft}
+              keys={supplementTemplateKeys}
+              disabled={!writable}
+              onPatch={(index, patch) => setEditedSupplements(patchSupplement(supplementDraft, index, patch))}
+              onRemove={(index) => setEditedSupplements(removeSupplementAt(supplementDraft, index))}
+              onAdd={(period) => setEditedSupplements(appendSupplement(supplementDraft, period))}
+            />
+          ) : null}
+
+          {kind === 'morning' ? (
+            <label className="field">
+              5:00-6:30 当天事项
+              <textarea value={morningFocus} disabled={!writable} onChange={(event) => setMorningFocus(event.target.value)} />
+            </label>
+          ) : null}
+
+          {kind === 'exercise' ? (
+            <ExercisePanel
+              draft={exerciseDraft}
+              options={options.exercise}
+              disabled={!writable}
+              onChange={(patch) => setExerciseDraft((current) => ({ ...current, ...patch }))}
+            />
+          ) : null}
+
+          {kind === 'task' ? (
             <>
               <label className="field">
-                具体内容
-                <input value={exerciseContent} onChange={(event) => setExerciseContent(event.target.value)} />
+                时间
+                <input type="time" value={taskTime} onChange={(event) => setTaskTime(event.target.value)} />
+              </label>
+              <label className="field">
+                事项名称
+                <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} />
               </label>
               <label className="field">
                 备注
-                <input value={exerciseNote} onChange={(event) => setExerciseNote(event.target.value)} />
+                <input value={taskNote} onChange={(event) => setTaskNote(event.target.value)} />
               </label>
             </>
           ) : null}
-        </>
-      ) : null}
-
-      {kind === 'task' ? (
-        <>
-          <label className="field">
-            时间
-            <input type="time" value={taskTime} onChange={(event) => setTaskTime(event.target.value)} />
-          </label>
-          <label className="field">
-            事项名称
-            <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} />
-          </label>
-          <label className="field">
-            备注
-            <input value={taskNote} onChange={(event) => setTaskNote(event.target.value)} />
-          </label>
         </>
       ) : null}
     </BottomSheet>
