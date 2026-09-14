@@ -36,7 +36,7 @@
 | --- | --- |
 | `npm run typecheck` | 通过，无输出 |
 | `npm run lint` | 通过，无输出 |
-| `npm run build` | 通过，64 modules，`index-*.js` 236.24 kB（gzip 73.71 kB）、`index-*.css` 6.53 kB |
+| `npm run build` | 通过，64 modules，`index-*.js` 236.25 kB（gzip 73.72 kB）、`index-*.css` 6.65 kB（gzip 2.03 kB） |
 
 ### 3.2 浏览器闭环验收 `npm run verify:local`：52/52 通过
 
