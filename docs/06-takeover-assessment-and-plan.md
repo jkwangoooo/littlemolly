@@ -109,7 +109,7 @@ L0 验收：`npm run typecheck` / `lint` / `build` 全通过；桌面与 390px �
 
 | 编号 | 状态 | 说明 |
 | --- | --- | --- |
-| L0-1 | 已完成 | 本地 `.git` 已重建并接上远端历史 `7f35041`；公钥已授权，`git push -u origin main` 成功，远端 `main` = `4c936e0`，分支跟踪已建立 |
+| L0-1 | 已完成 | 本地 `.git` 已重建并接上远端历史 `7f35041`；公钥已授权，`git push -u origin main` 成功，远端 `main` 与本地一致，分支跟踪已建立 |
 | L0-2 | 已完成 | 云端实现已移入 `src/services/cloud/` 并加冻结说明；已核对无页面引用，且未被打入产物 |
 | L0-3 | 已完成 | `AuthSyncScreen` → `features/auth/AuthScreen.tsx`；错误标准化统一为 `shared/errors.ts`；`types/sync.ts` → `types/save.ts` |
 | L0-4 | 部分完成 | IndexedDB 升级逻辑已收敛为按版本号递增的迁移表（`DB_VERSION` 仍为 1）；「预先扩展 `LocalStore` 联合类型」暂缓，决定与新对象仓库同时落库，避免留下无人使用的空接口 |
