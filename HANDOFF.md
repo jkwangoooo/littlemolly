@@ -8,7 +8,7 @@
 - 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐文本、晨间事项、健身决定、自定义事项、复制昨天、历史只读和保存失败重试。
 - **L0 已完成（2026-09-14），可进入 L1。** 完成报告见 `docs/07-L0-completion-report.md`：六项任务全部落地，现有业务行为零回退，并首次具备可重复的自动化验收。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
 - **L1 已完成（2026-09-14），可进入 L2。** 完成报告见 `docs/08-L1-completion-report.md`：`food_options` / `supplement_templates` / `exercise_options` 三类对象仓库落库（`DB_VERSION` 1→2），选项页支持新增 / 改名 / 排序 / 启停 / 删除并带二次确认，示例选项放在 `services/local/optionSeed.ts`（注册时幂等播种，页面零写死）；同时修掉 L0 遗留的 R9（切日期后保存状态残留）。验收：浏览器 52 项 + 日期规则 48 项 + 本地数据结构 15 项全通过，含真实冷升级（v1 老库 → v2 七张表且老数据可读）。
-- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
+- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）→ `cd61dfc`（L0 完成报告）；L1 的提交为 `6408eb0`（选项管理与本地数据结构）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
