@@ -1,7 +1,7 @@
 # 幸福小Molly：接手盘点与推进计划
 
 - 日期：2026-09-14
-- 状态：L0 执行中（第 1、2 批已完成，剩余 L0-4 类型面与 L0-5 加载/空状态）
+- 状态：**L0 已完成**，可进入 L1；完成报告见 `docs/07-L0-completion-report.md`
 - 位置：本文件为接手评估与执行清单；阶段范围与顺序的唯一依据仍是 `docs/05-local-first-execution-plan.md`。
 
 ## 1. 本次接手做了什么
@@ -72,9 +72,9 @@
 
 `dayPlanService.ts`（云端版）的 `normalizeSupabaseError` 会保留 `code/details/hint/status`；`localDayPlanService.ts`（本地版）只把非 Error 包成 message，会丢掉元信息。而页面用的是本地版。L0 应统一成一个通用命名、行为一致的实现。
 
-**R7 — 加载态与空状态不完整（低）**
+**R7 — 加载态与空状态不完整（低）**——**已在 L0-5 解决**
 
-`DayPlanScreen` 用 `{!loading && ...}` 直接隐藏内容，没有加载占位；未来空日期没有 `docs/02` 要求的「准备这一天」引导；休息日、选项模块的空状态以后统一补齐。
+`DayPlanScreen` 原来用 `{!loading && ...}` 直接隐藏内容，没有加载占位；未来空日期没有 `docs/02` 要求的「准备这一天」引导。现已补：读取占位文案、未来空日期引导块（不落库、任意真实写入后自动消失）、自定义事项空态；周视图第四态见 R5。休息日与选项模块的空状态仍留待 L3 / L1 各自补齐。
 
 **R8 — `@supabase/supabase-js` 仍是生产依赖（低）**
 
@@ -112,11 +112,13 @@ L0 验收：`npm run typecheck` / `lint` / `build` 全通过；桌面与 390px �
 | L0-1 | 已完成 | 本地 `.git` 已重建并接上远端历史 `7f35041`；公钥已授权，`git push -u origin main` 成功，远端 `main` 与本地一致，分支跟踪已建立 |
 | L0-2 | 已完成 | 云端实现已移入 `src/services/cloud/` 并加冻结说明；已核对无页面引用，且未被打入产物 |
 | L0-3 | 已完成 | `AuthSyncScreen` → `features/auth/AuthScreen.tsx`；错误标准化统一为 `shared/errors.ts`；`types/sync.ts` → `types/save.ts` |
-| L0-4 | 部分完成 | IndexedDB 升级逻辑已收敛为按版本号递增的迁移表（`DB_VERSION` 仍为 1）；「预先扩展 `LocalStore` 联合类型」暂缓，决定与新对象仓库同时落库，避免留下无人使用的空接口 |
-| L0-5 | 部分完成 | 周视图已补第四种「已完成」状态；**待办**：日页加载占位、未来空日期「准备这一天」引导 |
-| L0-6 | 已完成 | `npm run verify:local`（`scripts/verify-local.mjs`，20 项真实浏览器检查，无第三方依赖，自带临时 Vite 服务器并自动回收），验收步骤已写入 `README.md` |
+| L0-4 | 已完成 | IndexedDB 升级逻辑已收敛为按版本号递增的迁移表（`DB_VERSION` 仍为 1）；「预先扩展 `LocalStore` 联合类型」**有意未做**——会留下 7 个无人使用的空接口，改为与 L1 实际建表同时落地，`localDb.ts` 顶部已写明四步流程 |
+| L0-5 | 已完成 | 周视图补第四种「已完成」状态；新增未来空日期「准备这一天」引导（不落库、任意真实写入后自动消失）、读取占位、自定义事项空态 |
+| L0-6 | 已完成 | `npm run verify:local`（23 项真实浏览器检查，自带临时服务器并自动回收）+ `npm run check:dates`（48 项日期规则回归），均零第三方依赖；验收步骤已写入 `README.md` |
 
 补充：本批额外修掉了 R2（云端遗留）、R4（无显式迁移）、R5（周视图缺完成态）、R6（两套错误标准化）。R3（对象仓库少于数据契约）属 L1/L2 主体工作量，按 L0-4 的说明与建表同步进行。R1 已通过版本控制基线解决，推送也已于 2026-09-14 打通。
+
+新发现 **R9（低）**：切换日期后保存状态文案残留上一天的结论（`useSaveRunner.resetForDateChange` 有意不重置 `status`），切到空白日期仍显示「已保存」。因 L0 约定不改业务行为，本次未改，建议 L1 触碰保存层时一并处理。详见 `docs/07-L0-completion-report.md` §7。
 
 ## 6. L1–L6 概要
 

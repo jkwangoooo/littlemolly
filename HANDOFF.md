@@ -6,17 +6,17 @@
 - 当前技术基线是 React + TypeScript + Vite + IndexedDB。服务层已按职责拆为 `src/services/local/`（当前生效）与 `src/services/cloud/`（L6 前冻结、不得被页面引用）；页面只通过服务层读写。会话状态只在 `src/app/App.tsx` 持有，本地会话读写集中在 `src/services/local/sessionStore.ts`。
 - 日计划页已是「编排页 + 子组件 + hook」结构：`DayPlanScreen.tsx` 只做编排，展示在 `features/day-plan/components/`，数据读取在 `useDayPlanData`，保存状态机在 `useSaveRunner`；周视图状态判定集中在 `features/week/weekStatus.ts`。IndexedDB 的建表逻辑已收敛为按版本号递增的显式迁移表（`localDb.ts` 的 `STORES` / `MIGRATIONS`）。
 - 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐文本、晨间事项、健身决定、自定义事项、复制昨天、历史只读和保存失败重试。
-- **L0 进行中：第 1 批（目录与职责整理）与第 2 批（组件拆分、IndexedDB 迁移机制、可重复验收）已完成并验证**；L0 剩余项为服务契约类型面固定（L0-4）与加载/空状态占位（L0-5）。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
+- **L0 已完成（2026-09-14），可进入 L1。** 完成报告见 `docs/07-L0-completion-report.md`：六项任务全部落地，现有业务行为零回退，并首次具备可重复的自动化验收。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
 - 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
 ## 当前待办
 
-1. 完成 L0 剩余两项：服务契约类型面固定（L0-4），日页加载占位与空日期/休息日引导（L0-5）。
-2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。
-3. ~~项目所有者将本机公钥加入 GitHub，然后执行 `git push -u origin main` 完成首次推送。~~ **已完成（2026-09-14）**，远端 `main` 已与本地一致。
-4. 完成 L0 后更新本文件的当前交接摘要，再进入 L1；L1-L5 完成前不恢复云端迁移工作。进入 L1 前需先补上 `docs/01` 数据契约里尚未落库的 7 类对象仓库（L1/L2 主体工作量）。
+1. 进入 **L1：选项管理与本地数据结构**。第一步是按 `localDb.ts` 顶部的四步流程新增 `food_options`、`supplement_templates`、`exercise_options` 三类对象仓库，并同时定稿 `LocalStore` 联合类型与选项服务接口；选项改名 / 停用必须保存名称快照，不得改写历史计划。
+2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。
+3. L1 触碰保存层时顺手处理 R9：切换日期后保存状态文案应回到「尚未修改」，当前会残留上一天的结论（详见 `docs/07-L0-completion-report.md` §7）。
+4. L1-L5 完成前不恢复云端迁移工作；数据库迁移只追加，不改写既有迁移。
 
 ## 已有文档
 
@@ -25,6 +25,9 @@
 - `docs/02-ui-interaction-spec.md`：页面和交互规则。
 - `docs/03-delivery-roadmap.md`：五个开发阶段及各阶段验收。
 - `docs/04-stage-orchestration.md`：新窗口实施提示词、总指挥验收协议。
+- `docs/05-local-first-execution-plan.md`：现行 L0–L6 任务线、顺序与验收门槛（**现行方向的唯一依据**）。
+- `docs/06-takeover-assessment-and-plan.md`：接手评估、风险项 R1–R9、L0 执行清单与状态。
+- `docs/07-L0-completion-report.md`：L0 完成报告（任务达成、证据、缺陷、延后项与未验证项）。
 
 ## 阶段 1 已完成内容
 
@@ -541,4 +544,39 @@
 - 未完成项：L0-4 遗留的「为选项/每日实例预留对象仓库联合类型」（建议与新表一起定，避免空接口）、L0-5 遗留的「日页加载占位与未来空日期『准备这一天』引导」。
 - 未验证项：跨年周的周视图样例（日期工具已按固定周一至周日实现，可作后续回归补充）；L1-L6 全部内容。
 - 阻塞（已解除）：本机公钥未加入 GitHub 账号，`b81bf71`、`baf78db` 两次提交仍在本地，尚未推送。**2026-09-14 已授权并推送完成，远端 `main` 与本地一致。**
+
+## L0 第 3 批：状态补齐与验收加固，L0 收官（2026-09-14）
+
+完整报告见 `docs/07-L0-completion-report.md`，此处只记改动与证据。
+
+### 本次修改文件
+
+- 新增 `src/features/day-plan/components/EmptyDayHint.tsx`：未来空日期引导块，纯展示、不触发写入，因此计划一旦产生便自行消失，不需要额外的关闭状态。
+- 调整 `src/features/day-plan/DayPlanScreen.tsx`：新增读取占位文案；引入 `showEmptyDayHint`（`tomorrow` 或 `future` 且无计划时渲染）。**注意 `classifyDate` 对「明天」返回 `tomorrow` 而不是 `future`**，若只判 `future` 会漏掉「准备明天」这个主路径。
+- 调整 `src/features/day-plan/components/CustomTaskList.tsx`：自定义事项空态，可写与只读文案分开。
+- `src/features/day-plan/dayPlanLabels.ts`：新增 `LOADING_TEXT`、`EMPTY_DAY_TEXT`、`EMPTY_TASKS_TEXT`。
+- `src/app/styles.css`：新增 `.loading-note`、`.empty-day`、`.empty-note`。
+- 新增 `scripts/check-date-rules.mjs` + `npm run check:dates`：48 项日期引擎回归，直接导入 `src/shared/date/dateUtils.ts`，无需浏览器与构建产物。
+- 扩展 `scripts/verify-local.mjs`：20 → 23 项，新增「未来空日期引导」「计划保存后引导自动消失」「复制昨天不改目标日模式与人工覆盖」；并新增可选 `SHOT_DIR` 截图能力（默认关闭，失败只告警不影响结果）。
+- `README.md`：验收命令与步骤、`SHOT_DIR` 用法。
+
+### 实际运行的命令与结果
+
+- `npm run typecheck` / `npm run lint`：通过。
+- `npm run build`：通过，53 modules，223.09 kB（gzip 70.08 kB）。
+- `npm run check:dates`：**48/48 通过**。
+- `npm run verify:local`：**23/23 通过**（临时端口 10532，跑完已释放）。
+
+### 说明
+
+- 补齐的引导块本身**不落库**：用户勾选任意准备项或保存任一面板时才创建当天计划，这一条已由「引导出现 → 保存后自动消失」两项检查共同证明。
+- 「复制不改目标日模式与人工覆盖」是 `docs/01` 的不变量，此前从未被验收覆盖，本次补上。
+- 加载态未纳入自动断言：IndexedDB 读取近乎瞬时，占位一闪而过，硬断言只会制造不稳定用例；已实现并在真机确认，如实标注为未自动验证。
+- 跨年周无法用浏览器验收（周视图只显示当前一周、无翻页入口），改为在 `check:dates` 里覆盖日期工具层，避免为了造样例而改动页面行为。
+
+### 阶段结论
+
+- **L0 完成。** 六项任务全部落地，业务行为零回退，验收基线为「三件套 + `check:dates` 48 项 + `verify:local` 23 项」。
+- 新发现 R9（低）：切换日期后保存状态文案残留上一天结论；因 L0 约定不改业务行为而未改，已登记待 L1 处理。
+- 未验证项：L1–L6 功能、云端一切、跨浏览器差异（仅 Chrome/Edge 无头内核）、真机移动设备（仅视口模拟）。
 
