@@ -448,7 +448,7 @@
 
 ### 本次修改文件
 
-- 新增：`src/services/local/`、`src/services/cloud/`、`src/features/auth/`、`src/shared/errors.ts`、`src/shared/types/save.ts`、`src/services/cloud/types.ts`、`public/favicon.svg`
+- 新增：`src/services/local/`、`src/services/cloud/`、`src/features/auth/`、`src/shared/errors.ts`、`src/shared/types/save.ts`、`src/services/cloud/types.ts`、`public/favicon.svg`、`scripts/verify-local.mjs`、`package.json` 的 `verify:local` 脚本
 - 移动：`services/localDb.ts`、`services/authService.ts`、`services/localDayPlanService.ts` → `services/local/`；`services/supabase.ts`、`services/dayPlanService.ts`、`services/syncTestRecordService.ts` → `services/cloud/`；`features/auth-sync/AuthSyncScreen.tsx` → `features/auth/AuthScreen.tsx`；`shared/types/sync.ts` → `shared/types/save.ts`
 - 改写：`src/app/App.tsx`（由会话门禁持有 session）、`src/features/auth/AuthScreen.tsx`（只保留表单）
 - 调整：`src/features/day-plan/DayPlanScreen.tsx`（路径与错误文案统一、移除未使用的 `session` 参数）、`src/features/week/WeekView.tsx`（同上）、`index.html`（标题改为「幸福小Molly」、补 favicon 链接）
@@ -464,7 +464,7 @@
 
 ### 浏览器验证证据
 
-用本机 Chrome 无头内核经 DevTools Protocol 实测（脚本 `.workbuddy/tmp/verify.mjs`，无第三方依赖），**9/9 通过**：
+用本机 Chrome 无头内核经 DevTools Protocol 实测（常驻命令 `npm run verify:local`，脚本 `scripts/verify-local.mjs`，无第三方依赖），**9/9 通过**：
 
 1. 未登录渲染登录页（邮箱 / 密码 / 登录 / 注册）。
 2. 注册后进入日计划页，可见「执行今天 / 准备明天」。

@@ -14,6 +14,20 @@
 
 当前版本不读取 `.env.local`，也不会连接 Supabase。上线阶段再将 `src/services/local/` 下的实现替换为云端适配器（参考已冻结的 `src/services/cloud/`），并按文件顺序执行 `database/migrations/202608270001_stage1_auth_sync.sql`、`database/migrations/202608310001_stage2_day_plans.sql`、`database/migrations/202608310002_stage3_workday_planning.sql`，随后补做跨设备、断网和 RLS 验收。
 
+## 本地验收命令
+
+```bash
+npm run typecheck   # 类型检查
+npm run lint        # 静态检查
+npm run build       # 生产构建
+npm run verify:local  # 真实浏览器闭环验收（需先在另一个终端运行 npm run dev）
+```
+
+`npm run verify:local` 会自动拉起本机 Chrome 或 Edge 的无头实例，实际走一遍
+「登录页 → 注册 → 准备明天勾选 → 本地保存 → 刷新恢复 → 桌面/手机视口无溢出 → 退出登录」，
+并检查控制台无 error / warning。结束时自动关闭浏览器，不残留进程。
+若浏览器不在默认位置，用 `CHROME_PATH` 指定可执行文件；应用地址可用 `APP_URL` 覆盖。
+
 ## 验收步骤
 
 1. 注册或登录后在“准备明天”完成五项准备、三餐、晨间、健身和自定义事项；刷新确认从本地数据库恢复。
