@@ -37,8 +37,9 @@ import { SaveStatusBar } from './components/SaveStatusBar'
 import { HISTORY_READONLY_TEXT, LOADING_TEXT, MODE_SWITCH_MESSAGE, REST_NO_ROUTINE_NOTE } from './dayPlanLabels'
 import { useSaveRunner } from '../../shared/hooks/useSaveRunner'
 import { useDayPlanData } from './useDayPlanData'
+import { BottomNav } from '../../shared/components/BottomNav'
+import type { View } from '../../shared/types/view'
 
-type View = 'day' | 'week' | 'options'
 type Tab = 'execute' | 'prepare'
 
 /**
@@ -247,8 +248,15 @@ export function DayPlanScreen() {
           setSelectedDate(date)
           setView('day')
         }}
-        onBackToDay={() => setView('day')}
-        onOpenOptions={() => setView('options')}
+        onNavigate={(next) => {
+          if (next === 'day') {
+            setTab('execute')
+            setSelectedDate(today)
+            setView('day')
+          } else {
+            setView(next)
+          }
+        }}
       />
     )
   }
@@ -256,12 +264,15 @@ export function DayPlanScreen() {
   if (view === 'options') {
     return (
       <PreferencesScreen
-        onBackToDay={() => {
-          setTab('execute')
-          setSelectedDate(today)
-          setView('day')
+        onNavigate={(next) => {
+          if (next === 'day') {
+            setTab('execute')
+            setSelectedDate(today)
+            setView('day')
+          } else {
+            setView(next)
+          }
         }}
-        onOpenWeek={() => setView('week')}
       />
     )
   }
@@ -288,8 +299,6 @@ export function DayPlanScreen() {
           setTab('prepare')
           setSelectedDate(addDays(today, 1))
         }}
-        onOpenWeek={() => setView('week')}
-        onOpenOptions={() => setView('options')}
       />
 
       <section className="panel stack">
@@ -452,6 +461,19 @@ export function DayPlanScreen() {
           onSave={(payload) => void savePanel(payload)}
         />
       ) : null}
+
+      <BottomNav
+        current="day"
+        onNavigate={(next) => {
+          if (next === 'day') {
+            setTab('execute')
+            setSelectedDate(today)
+            setView('day')
+          } else {
+            setView(next)
+          }
+        }}
+      />
     </main>
   )
 }

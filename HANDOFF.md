@@ -10,15 +10,16 @@
 - **L1 已完成（2026-09-14），可进入 L2。** 完成报告见 `docs/08-L1-completion-report.md`：`food_options` / `supplement_templates` / `exercise_options` 三类对象仓库落库（`DB_VERSION` 1→2），选项页支持新增 / 改名 / 排序 / 启停 / 删除并带二次确认，示例选项放在 `services/local/optionSeed.ts`（注册时幂等播种，页面零写死）；同时修掉 L0 遗留的 R9（切日期后保存状态残留）。验收：浏览器 52 项 + 日期规则 48 项 + 本地数据结构 15 项全通过，含真实冷升级（v1 老库 → v2 七张表且老数据可读）。
 - **L2 已完成（2026-09-14），可进入 L3。** 完成报告见 `docs/09-L2-completion-report.md`：三餐升级为早/中/晚多选食物 + 备注（`daily_meals`）；补剂从模板生成每日实例、可逐项勾选执行、自定义行可增删（`daily_supplements`）；健身升级为多选项目 + 备注（`daily_exercises`）；全部保存时写入名称快照、改名/停用选项不改写历史；复制昨天只带内容与快照不带状态；`DB_VERSION` 2→3（共 10 张表），迁移含 `backfillSnapshots` 将旧自由文本转为快照项。验收：`npm run typecheck/lint/build` 通过、`check:local-data` 21/21 通过、`verify:local` **66/66** 通过（含 v2→v3 冷升级）。
 - **L3 已完成（2026-09-14），可进入 L4。** 完成报告见 `docs/10-L3-completion-report.md`：正常周六/周日自动补齐「拖地/洗衣」两个每日实例（`routine_tasks` 表）、仅勾选完成；临时不上班（工作日人工切休息日，`mode_override=true`）不自动带家务；休息日保留补剂/健身/自定义事项、隐藏衣服/三餐/晨间等工作日准备项；休息日切工作日保留二次确认；`DB_VERSION` 3→4（共 11 张表）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **74/74** 通过（含 v3→v4 冷升级）。
+- **L4 已完成（2026-09-15），可进入 L5。** 完成报告见 `docs/11-L4-completion-report.md`：底部固定导航「今日/本周/选项」上线（`BottomNav` 共享组件，三页统一接线，移除各页顶部重复主入口）；「执行今天/准备明天」保留为日页顶部页签；BottomSheet/ConfirmDialog 打开时锁定 body 滚动、关闭恢复（滚动位置不漂移）；三餐/补剂/健身已是带勾选选项行（L2 达标）；桌面宽屏布局保留（导航与内容区同宽居中）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **77/77** 通过（两次连续），截图人工核对手机/桌面观感。
 - 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）→ `cd61dfc`（L0 完成报告）；L1 的提交为 `6408eb0`（选项管理与本地数据结构）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
 ## 当前待办
 
-1. 进入 **L4：首页导航与移动端交互完善**。补齐底部固定导航「今日 / 本周 / 选项」；统一所有编辑入口为底部面板、保存/取消后回到原页面和滚动位置；优化长列表、面板键盘顶起、确认框、错误提示和空状态；保留桌面宽屏布局。
-   - L2/L3 已就绪：面板组件 `MealPanel` / `SupplementPanel` / `ExercisePanel` 已在 `EditorSheet` 编排；休息日视图（家务 + 补剂/健身/自定义事项）已分流。
-   - L3 遗留：休息日「准备/执行」tab 语义未区分（休息日无五项准备，两 tab 显示相同内容），L4 统一交互时一并处理。
+1. 进入 **L5：本地可靠性、备份与回归**。增加 schema 校验、事务封装、重复写入和异常恢复处理；提供本地数据导出/导入（导入前确认，格式错误不得覆盖现有数据）；补齐核心规则测试（日期、历史只读、模式切换、准备进度、实例化、复制和账号隔离）；完成桌面/手机、多日期、刷新、清空缓存后的行为回归。
+   - 迁移机制已在 L0–L3 落地为显式版本表（`localDb.ts` 的 `STORES` / `MIGRATIONS`，当前 `DB_VERSION = 4`、11 张表），L5 的 schema 校验与异常恢复在此之上加固。
+   - L4 遗留：真机软键盘顶起与 iOS 安全区（`env(safe-area-inset-bottom)`）待真机验收时人工确认/补齐。
 2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。
 3. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。（L2/L3 已完成此步骤，后续阶段若再新增表需继续遵循。）
 4. R9 已在 L1 修复并纳入验收断言，不再挂账。
@@ -37,6 +38,7 @@
 - `docs/08-L1-completion-report.md`：L1 完成报告（选项管理与本地数据结构：任务达成、证据、缺陷、延后项与未验证项）。
 - `docs/09-L2-completion-report.md`：L2 完成报告（计划内容实例化：三餐多选、补剂实例化、健身多选、名称快照、v2→v3 冷升级；任务达成、证据、缺陷、延后项与未验证项）。
 - `docs/10-L3-completion-report.md`：L3 完成报告（休息日与自由规划：拖地/洗衣每日实例、临时不上班不带家务、隐藏工作日准备项、v3→v4 冷升级；任务达成、证据、缺陷、延后项与未验证项）。
+- `docs/11-L4-completion-report.md`：L4 完成报告（首页导航与移动端交互：底部固定导航、面板滚动锁定、带勾选选项行核对、桌面宽屏保留；任务达成、证据、决策、延后项与未验证项）。
 
 ## 阶段 1 已完成内容
 
@@ -685,5 +687,47 @@ L2 已完成三餐 / 补剂 / 健身的内容实例化。但休息日（周六 /
 - **L3 完成，可进入 L4。** 全部 6 项任务落地，DB_VERSION 升至 4（11 张表），验收基线为「三件套 + `check:dates` 48 项 + `check:local-data` 24 项 + `verify:local` 74 项」。
 - 休息日家务、临时不上班、模式切换后内容保留规则均符合 docs/00 与 docs/01 不变量。
 - 未验证项：L4–L6 功能、云端一切、跨浏览器差异、真机移动设备。
+
+## L4：首页导航与移动端交互完善（2026-09-15）
+
+完整报告见 `docs/11-L4-completion-report.md`，此处只记改动与证据。
+
+### 背景
+
+三个页面（日计划 / 周视图 / 选项）各自在顶部渲染一份「今日/本周/选项」导航按钮，移动端单手切换不便，且与 docs/02「底部固定三个入口」不符。L4 把一级导航统一到底部固定栏，并补齐面板滚动锁定。
+
+### 本次修改文件
+
+**新增（2 个）：**
+- `src/shared/components/BottomNav.tsx`：底部固定导航，当前页高亮
+- `src/shared/types/view.ts`：共享 `View` 类型
+
+**修改（8 个）：**
+- `src/features/day-plan/components/DayNavTabs.tsx`：精简为「执行今天/准备明天」两个页签
+- `src/features/day-plan/DayPlanScreen.tsx`：WeekView/PreferencesScreen 回调统一为 `onNavigate`；挂 BottomNav
+- `src/features/week/WeekView.tsx`：移除顶部 nav-tabs，挂 BottomNav
+- `src/features/preferences/PreferencesScreen.tsx`：移除顶部 nav-tabs，挂 BottomNav
+- `src/shared/components/BottomSheet.tsx`：打开锁定 body 滚动、卸载恢复
+- `src/shared/components/ConfirmDialog.tsx`：同上
+- `src/app/styles.css`：新增 `.bottom-nav`；`.page` 底部 padding 避让导航
+- `scripts/verify-local.mjs`：74→77 项
+
+### 实际运行的命令与结果
+
+- `npm run typecheck` / `npm run lint`：通过。
+- `npm run build`：通过，74 modules，251.41 kB（gzip 77.88 kB）。
+- `npm run check:dates`：**48/48 通过**。
+- `npm run check:local-data`：**24/24 通过**。
+- `npm run verify:local`：**77/77 通过**（连续两次；桌面 1440x900 + 手机 390x844，无横向溢出，控制台无 error/warning）。
+- `SHOT_DIR` 截图人工核对：手机/桌面的底部导航位置、高亮、无遮挡均正常。
+
+### L3 遗留项处置
+
+「休息日 prepare/execute tab 语义未区分」复核后**确认为合理现状**：休息日全部内容在两个 tab 下一致且可操作，语义由页首标题承载，不缺功能，不再挂账（详见 `docs/11` 第 7b 节）。
+
+### 阶段结论
+
+- **L4 完成，可进入 L5。** 全部 5 项任务落地，验收基线为「三件套 + `check:dates` 48 项 + `check:local-data` 24 项 + `verify:local` 77 项」。
+- 未验证项：真机软键盘与 iOS 安全区、L5–L6 功能、云端一切、跨浏览器差异。
 
 

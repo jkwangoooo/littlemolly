@@ -40,7 +40,7 @@ select { width: 100%; border: 1px solid #aaa29b; border-radius: 5px; padding: 10
 .page {
   width: min(100% - 32px, 760px);
   margin: 0 auto;
-  padding: 36px 0 48px;
+  padding: 36px 0 96px;
 }
 
 .panel {
@@ -104,6 +104,30 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .nav-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
 .nav-tabs button { flex: 1; border: 1px solid #d7a7b9; color: #8d1644; background: #fff8fb; }
 .nav-tabs button.active { color: #fff; background: #a11b4a; }
+
+/* 底部固定导航：今日 / 本周 / 选项（docs/02）。 */
+.bottom-nav {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  width: min(100%, 760px);
+  border-top: 1px solid #eee7e3;
+  background: #fff;
+  box-shadow: 0 -4px 20px rgb(36 33 31 / 8%);
+}
+.bottom-nav button {
+  flex: 1;
+  min-height: 52px;
+  border: 0;
+  border-radius: 0;
+  color: #625d58;
+  background: transparent;
+}
+.bottom-nav button.active { color: #a11b4a; font-weight: 700; background: #fff8fb; }
+.bottom-nav button:not(:last-child) { border-right: 1px solid #f0ece9; }
 
 .date-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .date-heading h2 { margin-bottom: 4px; }
@@ -194,7 +218,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 /* ---------- 10 移动端 ---------- */
 @media (max-width: 480px) {
-  .page { width: min(100% - 24px, 620px); padding: 20px 0 32px; }
+  .page { width: min(100% - 24px, 620px); padding: 20px 0 80px; }
   .panel { padding: 18px; }
   h1 { font-size: 24px; }
   .actions > button { flex: 1 1 132px; }
@@ -202,6 +226,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .week-day { min-height: 116px; }
   .bottom-sheet { padding: 16px 18px 24px; }
+  .bottom-nav { width: 100%; }
   .progress-head { display: grid; gap: 4px; }
   .timeline-head { align-items: flex-start; flex-direction: column; }
   .task-row { flex-wrap: wrap; }

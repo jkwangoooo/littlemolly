@@ -11,8 +11,8 @@
 // 依赖：本机已安装 Chrome 或 Edge。不使用第三方 npm 包，不写入项目目录。
 // 可用 CHROME_PATH 指定浏览器可执行文件；用 APP_URL 指向已存在的服务时，脚本不再自行拉起服务器。
 //
-// 覆盖：数据库冷升级（v1 → v4，含老自由文本搬迁）→ 登录页 → 注册 → 周视图 → 历史只读 →
-// 模式切换与恢复默认 → 未来空日期引导 → 三餐多选 → 准备进度 → 健身多选（切「不健身」不清内容）→
+// 覆盖：数据库冷升级（v1 → v4，含老自由文本搬迁）→ 登录页 → 注册 → 周视图 → 底部导航 →
+// 历史只读 → 模式切换与恢复默认 → 未来空日期引导 → 三餐多选 → 准备进度 → 健身多选（切「不健身」不清内容）→
 // 补剂实例（打开面板补齐 / 模板行不可删 / 自定义行可删 / 不重复补齐）→ 执行区勾选（与准备区分离）→
 // 自定义事项增改删 → 复制昨天（带内容、不带任何状态、不改模式）→
 // 休息日家务（正常休息日自动带拖地洗衣 / 临时不上班不带 / 隐藏工作日准备项 / 可勾选）→
@@ -572,17 +572,48 @@ async function main() {
       migration.exerciseItem?.name === LEGACY_EXERCISE_TEXT && migration.exerciseItem?.optionId === null,
       JSON.stringify(migration.exerciseItem))
 
-    // 3. 周视图
+    // 3. 周视图 + 底部导航
     await evaluate(`window.__m.clickText('本周')`)
     await sleep(1000)
     const week = await evaluate(`
       JSON.stringify({
         days: document.querySelectorAll('.week-day').length,
         text: window.__m.text(),
+        bottomNav: (() => {
+          const nav = document.querySelector('.bottom-nav');
+          if (!nav) return null;
+          return [...nav.querySelectorAll('button')].map((button) => ({ text: button.textContent.trim(), active: button.classList.contains('active') }));
+        })(),
       })
     `)
     const weekData = JSON.parse(week)
     record('本周视图固定显示 7 天', weekData.days === 7, `week-day 数量 = ${weekData.days}`)
+    record('底部导航含今日 / 本周 / 选项三入口且当前高亮本周',
+      weekData.bottomNav?.length === 3 &&
+        weekData.bottomNav.map((item) => item.text).join(',') === '今日,本周,选项' &&
+        weekData.bottomNav.find((item) => item.text === '本周')?.active === true,
+      `底部导航=${JSON.stringify(weekData.bottomNav)}`)
+    await evaluate(`window.__m.clickText('今日')`)
+    await sleep(900)
+
+    // 3b. 底部导航可切换到选项页并高亮
+    await evaluate(`window.__m.clickText('选项')`)
+    await sleep(1200)
+    const optionsNav = await evaluate(`
+      JSON.stringify({
+        hasOptions: window.__m.text().includes('常用食物'),
+        active: (() => {
+          const nav = document.querySelector('.bottom-nav');
+          if (!nav) return null;
+          const button = [...nav.querySelectorAll('button')].find((item) => item.textContent.trim() === '选项');
+          return button ? button.classList.contains('active') : null;
+        })(),
+      })
+    `)
+    const optionsNavData = JSON.parse(optionsNav)
+    record('底部导航可切到选项页且高亮选项',
+      optionsNavData.hasOptions === true && optionsNavData.active === true,
+      `选项页=${optionsNavData.hasOptions}, 高亮=${optionsNavData.active}`)
     await evaluate(`window.__m.clickText('今日')`)
     await sleep(900)
 
@@ -667,6 +698,7 @@ async function main() {
         window.__m.clickContains('三餐已安排', '.row-main');
         await window.__m.wait(900);
         const title = (document.querySelector('.bottom-sheet h2') || {}).textContent || '';
+        const bodyLockedWhileOpen = document.body.style.overflow === 'hidden';
         const candidates = window.__m.pickerOptions('.panel-group[data-meal="breakfast"]');
         const picked = [];
         for (const name of ${JSON.stringify(BREAKFAST_FOODS)}) {
@@ -679,8 +711,11 @@ async function main() {
         window.__m.clickText('保存');
         await window.__m.wait(1600);
         const body = window.__m.text();
+        const bodyUnlockedAfterSave = document.body.style.overflow !== 'hidden';
         return JSON.stringify({
           title,
+          bodyLockedWhileOpen,
+          bodyUnlockedAfterSave,
           candidates,
           picked,
           checkedBeforeSave,
@@ -690,6 +725,9 @@ async function main() {
         });
       })()
     `))
+    record('打开底部面板锁定 body 滚动，保存后恢复',
+      meals.bodyLockedWhileOpen === true && meals.bodyUnlockedAfterSave === true,
+      `打开时锁定=${meals.bodyLockedWhileOpen}, 保存后恢复=${meals.bodyUnlockedAfterSave}`)
     record('三餐面板按早 / 中 / 晚分组多选常用食物',
       meals.title === '编辑三餐' &&
         meals.candidates.length === 5 &&

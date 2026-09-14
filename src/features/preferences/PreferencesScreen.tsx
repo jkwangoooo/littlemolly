@@ -16,6 +16,8 @@ import {
 import { AccountCard } from './components/AccountCard'
 import { OptionEditor } from './components/OptionEditor'
 import { OptionSection, type OptionGroup } from './components/OptionSection'
+import { BottomNav } from '../../shared/components/BottomNav'
+import type { View } from '../../shared/types/view'
 import {
   DELETE_CONFIRM,
   DISABLE_CONFIRM,
@@ -34,11 +36,9 @@ type EditorState = { kind: OptionKind; mode: 'create' | 'rename'; option: AnyOpt
  * 校验与落库都在服务层，失败时保留弹层内容并显示具体原因。
  */
 export function PreferencesScreen({
-  onBackToDay,
-  onOpenWeek,
+  onNavigate,
 }: {
-  onBackToDay: () => void
-  onOpenWeek: () => void
+  onNavigate: (view: View) => void
 }) {
   const { lists, selectable, loading, loadError, reload } = useOptionLists()
   const { status, saveError, canRetry, runSave, retryLastSave } = useSaveRunner()
@@ -123,18 +123,6 @@ export function PreferencesScreen({
           <h1>选项</h1>
         </div>
       </header>
-
-      <nav className="nav-tabs" aria-label="主导航">
-        <button type="button" onClick={onBackToDay}>
-          今日
-        </button>
-        <button type="button" onClick={onOpenWeek}>
-          本周
-        </button>
-        <button className="active" type="button">
-          选项
-        </button>
-      </nav>
 
       <section className="panel stack">
         <p className="muted">{OPTION_PAGE_HINT}</p>
@@ -265,6 +253,8 @@ export function PreferencesScreen({
           <p className="muted">{pendingDelete.option.name}</p>
         </ConfirmDialog>
       ) : null}
+
+      <BottomNav current="options" onNavigate={onNavigate} />
     </main>
   )
 }

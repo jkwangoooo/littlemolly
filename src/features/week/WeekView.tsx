@@ -13,6 +13,8 @@ import { describeDataError } from '../../shared/errors'
 import { listDayPlans } from '../../services/local/dayPlanService'
 import { signOut } from '../../services/local/authService'
 import { resolveWeekDayStatus, WEEK_DAY_STATUS_TEXT } from './weekStatus'
+import { BottomNav } from '../../shared/components/BottomNav'
+import type { View } from '../../shared/types/view'
 
 function WeekDayCell({
   date,
@@ -49,13 +51,11 @@ function WeekDayCell({
 export function WeekView({
   selectedDate,
   onSelectDate,
-  onBackToDay,
-  onOpenOptions,
+  onNavigate,
 }: {
   selectedDate: string
   onSelectDate: (date: string) => void
-  onBackToDay: () => void
-  onOpenOptions: () => void
+  onNavigate: (view: View) => void
 }) {
   const [dates] = useState(() => getWeekDates(getBusinessDateKey()))
   const [plans, setPlans] = useState<DayPlan[]>([])
@@ -90,18 +90,6 @@ export function WeekView({
         </button>
       </header>
 
-      <nav className="nav-tabs" aria-label="主导航">
-        <button type="button" onClick={onBackToDay}>
-          今日
-        </button>
-        <button className="active" type="button">
-          本周
-        </button>
-        <button type="button" onClick={onOpenOptions}>
-          选项
-        </button>
-      </nav>
-
       <section className="panel stack">
         <div>
           <p className="date-kicker">固定周视图</p>
@@ -132,6 +120,8 @@ export function WeekView({
           ))}
         </div>
       </section>
+
+      <BottomNav current="week" onNavigate={onNavigate} />
     </main>
   )
 }

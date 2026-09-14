@@ -1,16 +1,12 @@
-/** 今日页顶部页签：执行今天 / 准备明天 / 本周 / 选项。 */
+/** 今日页顶部页签：执行今天 / 准备明天。主入口「今日/本周/选项」统一走底部导航。 */
 export function DayNavTabs({
   isPrepare,
   onExecuteToday,
   onPrepareTomorrow,
-  onOpenWeek,
-  onOpenOptions,
 }: {
   isPrepare: boolean
   onExecuteToday: () => void
   onPrepareTomorrow: () => void
-  onOpenWeek: () => void
-  onOpenOptions: () => void
 }) {
   return (
     <nav className="nav-tabs" aria-label="今日导航">
@@ -19,12 +15,6 @@ export function DayNavTabs({
       </button>
       <button className={isPrepare ? 'active' : ''} type="button" onClick={onPrepareTomorrow}>
         准备明天
-      </button>
-      <button type="button" onClick={onOpenWeek}>
-        本周
-      </button>
-      <button type="button" onClick={onOpenOptions}>
-        选项
       </button>
     </nav>
   )
