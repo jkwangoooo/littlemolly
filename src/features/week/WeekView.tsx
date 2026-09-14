@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { AppSession } from '../../shared/types/auth'
 import type { DayPlan } from '../../shared/types/dayPlan'
 import { classifyDate, defaultModeForDate, formatDateLabel, getBusinessDateKey, getWeekDates, WEEKDAY_LABELS } from '../../shared/date/dateUtils'
-import { listDayPlans } from '../../services/localDayPlanService'
-import { signOut } from '../../services/authService'
+import { listDayPlans } from '../../services/local/dayPlanService'
+import { signOut } from '../../services/local/authService'
 
-export function WeekView({ selectedDate, onSelectDate, onBackToDay }: { selectedDate: string; onSelectDate: (date: string) => void; onBackToDay: () => void; session: AppSession }) {
+export function WeekView({ selectedDate, onSelectDate, onBackToDay }: { selectedDate: string; onSelectDate: (date: string) => void; onBackToDay: () => void }) {
   const [dates] = useState(() => getWeekDates(getBusinessDateKey()))
   const [plans, setPlans] = useState<DayPlan[]>([])
   const [error, setError] = useState<string | null>(null)

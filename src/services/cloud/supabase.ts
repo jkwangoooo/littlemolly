@@ -1,3 +1,5 @@
+// 云端适配层，L0-L5 期间冻结、不参与运行时。
+// 本地优先阶段的业务数据只走 src/services/local/；本目录保留供 L6 迁移参考，页面与本地服务不得引用。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL

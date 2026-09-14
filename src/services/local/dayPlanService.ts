@@ -1,14 +1,7 @@
-import type { CustomTask, DailyMeal, DayMode, DayPlan } from '../shared/types/dayPlan'
-import { addDays, defaultModeForDate, getBusinessDateKey } from '../shared/date/dateUtils'
+import type { CustomTask, DailyMeal, DayMode, DayPlan } from '../../shared/types/dayPlan'
+import { addDays, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
 import { currentUser } from './authService'
 import { getAll, newId, put, remove } from './localDb'
-
-export type LocalDataError = Error & { code?: string; details?: string; hint?: string; status?: number }
-
-export function normalizeSupabaseError(error: unknown): LocalDataError {
-  if (error instanceof Error) return error as LocalDataError
-  return new Error(typeof error === 'string' ? error : '发生未知错误。') as LocalDataError
-}
 
 function userId(): string {
   const user = currentUser()

@@ -1,5 +1,7 @@
-import type { CustomTask, DailyMeal, DayMode, DayPlan } from '../shared/types/dayPlan'
-import { defaultModeForDate, getBusinessDateKey } from '../shared/date/dateUtils'
+// 云端适配层，L0-L5 期间冻结、不参与运行时。
+// 保留价值：编码了 day_plans / daily_meals / custom_tasks 的字段清单与 copy_yesterday_stage3 RPC 调用方式，供 L6 参考。
+import type { CustomTask, DailyMeal, DayMode, DayPlan } from '../../shared/types/dayPlan'
+import { defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
 import { requireSupabase } from './supabase'
 
 export type SupabaseDataError = Error & {

@@ -1,4 +1,5 @@
-import type { SyncTestRecord } from '../shared/types/sync'
+// 云端适配层，L0-L5 期间冻结、不参与运行时。阶段 1 的同步验证服务，L6 迁移时可复用其思路。
+import type { SyncTestRecord } from './types'
 import { requireSupabase } from './supabase'
 
 const tableName = 'sync_test_records'

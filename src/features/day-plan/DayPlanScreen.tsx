@@ -1,22 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AppSession } from '../../shared/types/auth'
 import type { CustomTask, DailyMeal, DayMode, DayPlan, MealType } from '../../shared/types/dayPlan'
-import type { SaveStatus } from '../../shared/types/sync'
+import type { SaveStatus } from '../../shared/types/save'
 import { addDays, classifyDate, defaultModeForDate, formatDateLabel, getBusinessDateKey, WEEKDAY_LABELS } from '../../shared/date/dateUtils'
-import { copyYesterday, deleteCustomTask, getDayPlan, listCustomTasks, listMeals, normalizeSupabaseError, restoreDefaultDayPlan, saveCustomTask, saveMeals, upsertDayPlan } from '../../services/localDayPlanService'
-import { signOut } from '../../services/authService'
+import { describeDataError } from '../../shared/errors'
+import { copyYesterday, deleteCustomTask, getDayPlan, listCustomTasks, listMeals, restoreDefaultDayPlan, saveCustomTask, saveMeals, upsertDayPlan } from '../../services/local/dayPlanService'
+import { signOut } from '../../services/local/authService'
 import { WeekView } from '../week/WeekView'
 
 type Panel = 'meals' | 'morning' | 'exercise' | 'task' | null
 const mealNames: Record<MealType, string> = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐' }
 const statusText = (s: SaveStatus) => s === 'saving' ? '正在保存' : s === 'saved' ? '已保存' : s === 'error' ? '保存失败' : '尚未修改'
-const errorText = (e: unknown) => {
-  const error = normalizeSupabaseError(e)
-  const metadata = [error.code && `错误码 ${error.code}`, error.details, error.hint && `提示：${error.hint}`].filter(Boolean)
-  return [error.message, ...metadata].join('；')
-}
+const errorText = (e: unknown) => describeDataError(e)
 
-export function DayPlanScreen({ session }: { session: AppSession }) {
+export function DayPlanScreen() {
   const today = getBusinessDateKey(); const [view, setView] = useState<'day'|'week'>('day'); const [selectedDate, setSelectedDate] = useState(today); const [tab, setTab] = useState<'execute'|'prepare'>('execute')
   const [plan, setPlan] = useState<DayPlan | null>(null); const [meals, setMeals] = useState<DailyMeal[]>([]); const [tasks, setTasks] = useState<CustomTask[]>([]); const [loading, setLoading] = useState(true); const [status, setStatus] = useState<SaveStatus>('idle'); const [error, setError] = useState<string | null>(null); const [pendingMode, setPendingMode] = useState<DayMode | null>(null); const [panel, setPanel] = useState<Panel>(null); const [editingTask, setEditingTask] = useState<CustomTask | null>(null); const [confirmDelete, setConfirmDelete] = useState<CustomTask | null>(null); const [confirmCopy, setConfirmCopy] = useState(false)
   const retryAction = useRef<(() => Promise<void>) | null>(null)
@@ -36,7 +32,7 @@ export function DayPlanScreen({ session }: { session: AppSession }) {
   async function doCopy() { setConfirmCopy(false); await runSave(async () => { const next = await copyYesterday(selectedDate); setPlan(next); if (next) { setMeals(await listMeals(next.id)); setTasks(await listCustomTasks(next.id)) } }) }
   async function restoreDefault() { await runSave(async () => { const next = await restoreDefaultDayPlan(selectedDate, defaultModeForDate(selectedDate)); setPlan(next) }) }
   async function confirmDeleteTask(task: CustomTask) { setConfirmDelete(null); await runSave(async () => { await deleteCustomTask(selectedDate, task.id); setTasks((current) => current.filter((item) => item.id !== task.id)) }) }
-  if (view === 'week') return <WeekView selectedDate={selectedDate} onSelectDate={(d) => { setSelectedDate(d); setView('day') }} onBackToDay={() => setView('day')} session={session} />
+  if (view === 'week') return <WeekView selectedDate={selectedDate} onSelectDate={(d) => { setSelectedDate(d); setView('day') }} onBackToDay={() => setView('day')} />
   const weekday = WEEKDAY_LABELS[new Date(`${selectedDate}T00:00:00Z`).getUTCDay() === 0 ? 6 : new Date(`${selectedDate}T00:00:00Z`).getUTCDay()-1]
   return <main className="page"><header className="topbar"><div><p className="eyebrow">幸福小Molly</p><h1>{isPrepare ? '准备明天' : '执行今天'}</h1></div><button className="secondary" type="button" onClick={() => void signOut()}>退出登录</button></header>
     <nav className="nav-tabs"><button className={!isPrepare?'active':''} type="button" onClick={() => {setTab('execute');setSelectedDate(today)}}>执行今天</button><button className={isPrepare?'active':''} type="button" onClick={() => {setTab('prepare');setSelectedDate(addDays(today,1))}}>准备明天</button><button type="button" onClick={() => setView('week')}>本周</button></nav>

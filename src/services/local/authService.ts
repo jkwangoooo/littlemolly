@@ -1,4 +1,4 @@
-import type { AppSession, AppUser } from '../shared/types/auth'
+import type { AppSession, AppUser } from '../../shared/types/auth'
 import { getAll, hashPassword, newId, readSession, put, type LocalUser, writeSession } from './localDb'
 
 function toSession(user: LocalUser): AppSession { return { user: { id: user.id, email: user.email } } }
