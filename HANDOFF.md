@@ -1,19 +1,21 @@
 # 幸福小Molly：开发交接
 
-## 当前交接摘要（2026-09-13）
+## 当前交接摘要（2026-09-14）
 
 - 当前开发方向是本地优先：浏览器 IndexedDB 是唯一业务数据源；Supabase、RLS、跨设备同步和上线迁移均后置，不是当前开发或验收的阻塞条件。
-- 当前技术基线是 React + TypeScript + Vite + IndexedDB。`src/services/localDb.ts`、`src/services/authService.ts` 和 `src/services/localDayPlanService.ts` 是本地适配层；页面只通过服务层读写，未来可整体替换为云端实现。
+- 当前技术基线是 React + TypeScript + Vite + IndexedDB。服务层已按职责拆为 `src/services/local/`（当前生效）与 `src/services/cloud/`（L6 前冻结、不得被页面引用）；页面只通过服务层读写。会话状态只在 `src/app/App.tsx` 持有。
 - 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐文本、晨间事项、健身决定、自定义事项、复制昨天、历史只读和保存失败重试。
-- 当前项目处于 **L0：本地基线整理与契约固定** 之前。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`；下一步只执行 L0，不提前扩展云端或上线验收。
-- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`；`main` 已推送首次提交 `634dd7b`。`.env.local`、构建产物和本地依赖均被忽略，未上传。
+- **L0 进行中：第 1 批（目录与职责整理）已完成并验证**；L0 剩余项为服务契约固定、IndexedDB 版本迁移机制、加载与空状态补齐、可重复验收步骤。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
+- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，提交为 `7f35041 → 1802fe8 → e8b4ec2`。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
+- **推送未完成**：本机 SSH 公钥 `~/.ssh/id_ed25519`（指纹 `SHA256:IhxITPsvRvgR2KDaYbDC32P/ag+TEiaViRluMTWMztI`）尚未加入 GitHub 账号，`git push` 返回 `Permission denied (publickey)`。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
 ## 当前待办
 
-1. 执行 L0：清理遗留 Supabase 命名、固定本地服务接口与数据契约、补齐现有状态和可重复验收步骤。
+1. 完成 L0 剩余任务：服务契约固定、IndexedDB 版本迁移机制、加载与空状态、可重复验收步骤；可一并处理 `DayPlanScreen.tsx` / `WeekView.tsx` 的单行超长代码拆分。
 2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`，并在桌面和 390px 手机视口完成真实交互检查。
-3. 完成 L0 后更新本文件的当前交接摘要，再进入 L1；L1-L5 完成前不恢复云端迁移工作。
+3. 项目所有者将本机公钥加入 GitHub，然后执行 `git push -u origin main` 完成首次推送。
+4. 完成 L0 后更新本文件的当前交接摘要，再进入 L1；L1-L5 完成前不恢复云端迁移工作。
 
 ## 已有文档
 
@@ -436,3 +438,48 @@
 - 当前主要缺口是选项管理、三餐/健身多选、补剂模板与每日实例、周末拖地洗衣、休息日自由规划、底部选项导航、IndexedDB 版本迁移及导入导出。
 - 新的执行顺序和验收门槛见 `docs/05-local-first-execution-plan.md`：L0 本地基线整理，L1 选项管理，L2 计划实例化，L3 休息日，L4 移动端交互，L5 本地可靠性，L6 最后进行云端迁移。
 - 下一步只执行 L0；在 L0/L1 的数据契约稳定前，不扩展云端代码或上线验收，也不提前实现后续阶段功能。
+
+## L0 第 1 批：接手盘点与目录职责整理（2026-09-14）
+
+### 背景
+
+- 接手时本目录**没有 `.git`**（尽管更早的交接记录称已推送 `634dd7b`），且缺少 `node_modules`。已先补齐依赖并重建版本控制基线。
+- 逐文件比对确认：本目录内容与远端 `main`（`7f35041`）**零差异**，即本目录就是远端最新版的干净副本，不存在分叉。因此以 `git update-ref refs/heads/main 7f35041` + `git reset --mixed` 接上远端历史，而不是新建无关联的 root 提交。
+
+### 本次修改文件
+
+- 新增：`src/services/local/`、`src/services/cloud/`、`src/features/auth/`、`src/shared/errors.ts`、`src/shared/types/save.ts`、`src/services/cloud/types.ts`、`public/favicon.svg`
+- 移动：`services/localDb.ts`、`services/authService.ts`、`services/localDayPlanService.ts` → `services/local/`；`services/supabase.ts`、`services/dayPlanService.ts`、`services/syncTestRecordService.ts` → `services/cloud/`；`features/auth-sync/AuthSyncScreen.tsx` → `features/auth/AuthScreen.tsx`；`shared/types/sync.ts` → `shared/types/save.ts`
+- 改写：`src/app/App.tsx`（由会话门禁持有 session）、`src/features/auth/AuthScreen.tsx`（只保留表单）
+- 调整：`src/features/day-plan/DayPlanScreen.tsx`（路径与错误文案统一、移除未使用的 `session` 参数）、`src/features/week/WeekView.tsx`（同上）、`index.html`（标题改为「幸福小Molly」、补 favicon 链接）
+- 文档：`docs/01-architecture-data-contract.md` 目录边界、`docs/06-takeover-assessment-and-plan.md`、`README.md` 未改
+
+### 实际运行的命令与结果
+
+- `npm install --no-audit --no-fund`：成功，新增 182 个包。
+- `npm run typecheck`：通过。
+- `npm run lint`：通过。
+- `npm run build`：通过，37 modules，产物 219.96 kB（gzip 68.60 kB）。
+- `git init -b main`、`git remote add origin`、`git fetch`、`git update-ref`、`git reset --mixed`、两次 `git commit`。
+
+### 浏览器验证证据
+
+用本机 Chrome 无头内核经 DevTools Protocol 实测（脚本 `.workbuddy/tmp/verify.mjs`，无第三方依赖），**9/9 通过**：
+
+1. 未登录渲染登录页（邮箱 / 密码 / 登录 / 注册）。
+2. 注册后进入日计划页，可见「执行今天 / 准备明天」。
+3. 「准备明天」勾选第一项后显示「本地保存状态：已保存」，进度 1/5。
+4. 刷新后会话恢复，仍停留在日计划页。
+5. 刷新后准备勾选从 IndexedDB 恢复（`checkbox.checked = true`）。
+6. 桌面 `1440x900` 无横向溢出（`scrollWidth=1425`）。
+7. 手机 `390x844` 无横向溢出（`scrollWidth=390`）。
+8. 退出登录后回到登录页。
+9. 控制台无 error / warning。
+
+### 阶段结论
+
+- **L0 第 1 批完成**（目录与职责整理、死参数清理、错误标准化统一、标题与 favicon 修复），现有业务行为未回退，已由上述 9 项真实浏览器验证覆盖。
+- 未完成项：服务契约固定、IndexedDB 显式版本迁移机制、加载与空状态补齐、可重复验收步骤；`DayPlanScreen.tsx`（最长单行 2109 字符）与 `WeekView.tsx`（1323 字符）尚未拆分为可读组件。
+- 未验证项：L1-L5 全部功能；云端相关一切（按本地优先方向本就不在本轮范围）。
+- 阻塞：本机公钥未加入 GitHub 账号，提交仍在本地，尚未推送。
+

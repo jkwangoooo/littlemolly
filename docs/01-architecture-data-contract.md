@@ -18,24 +18,28 @@
 
 ```text
 src/
-  app/                 路由、应用初始化、全局状态
+  app/                 应用入口、会话门禁、全局状态、全局样式
   features/
-    auth-sync/         登录、会话、保存队列和同步状态
+    auth/              登录与注册表单（会话状态由 app 持有）
     day-plan/          单日计划、准备进度、日期模式
     week/              周视图和日期导航
-    preferences/       食物、补剂、健身选项管理
+    preferences/       食物、补剂、健身选项管理（L1 起）
+  services/
+    local/             当前生效的服务实现（IndexedDB）
+    cloud/             L6 迁移参考实现，L0-L5 期间冻结、不参与运行时
   shared/
     components/        通用勾选框、底部面板、确认框
     date/              日期与周起始日计算
+    errors.ts          服务层统一错误类型与标准化
     types/             跨模块领域类型
-  services/            数据库访问适配层
 database/
   migrations/          只追加的数据库迁移
 docs/
 ```
 
 - 页面不得直接发数据库请求；请求只通过 `services/`。
-- `features/` 之间不得相互读写内部状态；共享规则放入 `shared/` 或服务层。
+- 只有 `services/local/` 是当前生效实现。`services/cloud/` 在 L6 之前不得被页面或本地服务引用，它只作为迁移参考保留。
+- `features/` 之间不得相互读写内部状态；共享规则放入 `shared/` 或服务层。会话状态只允许 `app/` 持有。
 - 不建立“万能计划 JSON”字段。需要筛选、约束或保留历史的对象必须有清晰字段或关联表。
 
 ## 数据模型

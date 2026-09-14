@@ -12,11 +12,11 @@
 
 ## 云端迁移（上线前）
 
-当前版本不读取 `.env.local`，也不会连接 Supabase。上线阶段再将 `src/services/localDb.ts` 与本地认证/计划服务替换为云端实现，并按文件顺序执行 `database/migrations/202608270001_stage1_auth_sync.sql`、`database/migrations/202608310001_stage2_day_plans.sql`、`database/migrations/202608310002_stage3_workday_planning.sql`，随后补做跨设备、断网和 RLS 验收。
+当前版本不读取 `.env.local`，也不会连接 Supabase。上线阶段再将 `src/services/local/` 下的实现替换为云端适配器（参考已冻结的 `src/services/cloud/`），并按文件顺序执行 `database/migrations/202608270001_stage1_auth_sync.sql`、`database/migrations/202608310001_stage2_day_plans.sql`、`database/migrations/202608310002_stage3_workday_planning.sql`，随后补做跨设备、断网和 RLS 验收。
 
 ## 验收步骤
 
 1. 注册或登录后在“准备明天”完成五项准备、三餐、晨间、健身和自定义事项；刷新确认从本地数据库恢复。
 2. 在“执行今天”确认完成勾选独立于准备状态；本周点击日期可回到完整单日页。
 3. 使用“复制昨天”，确认计划内容被复制、五项准备和全部完成状态未复制，且目标日期模式与 `mode_override` 未改变。
-4. 使用账号 A/B 验证新增的三餐和自定义事项相互不可见；尝试新增、修改、删除历史从属记录必须被数据库拒绝。
+4. 使用两个本地账号验证各自的三餐和自定义事项相互不可见；尝试新增、修改、删除历史从属记录必须被服务层拒绝。
