@@ -7,15 +7,15 @@
 - 日计划页已是「编排页 + 子组件 + hook」结构：`DayPlanScreen.tsx` 只做编排，展示在 `features/day-plan/components/`，数据读取在 `useDayPlanData`，保存状态机在 `useSaveRunner`；周视图状态判定集中在 `features/week/weekStatus.ts`。IndexedDB 的建表逻辑已收敛为按版本号递增的显式迁移表（`localDb.ts` 的 `STORES` / `MIGRATIONS`）。
 - 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐文本、晨间事项、健身决定、自定义事项、复制昨天、历史只读和保存失败重试。
 - **L0 进行中：第 1 批（目录与职责整理）与第 2 批（组件拆分、IndexedDB 迁移机制、可重复验收）已完成并验证**；L0 剩余项为服务契约类型面固定（L0-4）与加载/空状态占位（L0-5）。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
-- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，提交为 `7f35041 → 1802fe8 → e8b4ec2 → b3dcd15 → 1192cdb → b81bf71 → baf78db`。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
-- **推送未完成**：本机 SSH 公钥 `~/.ssh/id_ed25519`（指纹 `SHA256:IhxITPsvRvgR2KDaYbDC32P/ag+TEiaViRluMTWMztI`）尚未加入 GitHub 账号，`git push` 返回 `Permission denied (publickey)`。
+- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，提交为 `7f35041 → 1802fe8 → e8b4ec2 → b3dcd15 → 1192cdb → b81bf71 → baf78db → 716ee35 → 4c936e0`。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
+- **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，远端 `main` 现为 `4c936e0`，与本地一致，无未推送提交。分支跟踪已建立。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
 ## 当前待办
 
 1. 完成 L0 剩余两项：服务契约类型面固定（L0-4），日页加载占位与空日期/休息日引导（L0-5）。
 2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。
-3. 项目所有者将本机公钥加入 GitHub，然后执行 `git push -u origin main` 完成首次推送。
+3. ~~项目所有者将本机公钥加入 GitHub，然后执行 `git push -u origin main` 完成首次推送。~~ **已完成（2026-09-14）**，远端 `main` = `4c936e0`。
 4. 完成 L0 后更新本文件的当前交接摘要，再进入 L1；L1-L5 完成前不恢复云端迁移工作。进入 L1 前需先补上 `docs/01` 数据契约里尚未落库的 7 类对象仓库（L1/L2 主体工作量）。
 
 ## 已有文档
@@ -482,7 +482,7 @@
 - **L0 第 1 批完成**（目录与职责整理、死参数清理、错误标准化统一、标题与 favicon 修复），现有业务行为未回退，已由上述 9 项真实浏览器验证覆盖。
 - 未完成项：服务契约固定、IndexedDB 显式版本迁移机制、加载与空状态补齐、可重复验收步骤；`DayPlanScreen.tsx`（最长单行 2109 字符）与 `WeekView.tsx`（1323 字符）尚未拆分为可读组件。
 - 未验证项：L1-L5 全部功能；云端相关一切（按本地优先方向本就不在本轮范围）。
-- 阻塞：本机公钥未加入 GitHub 账号，提交仍在本地，尚未推送。
+- 阻塞（已解除）：本机公钥未加入 GitHub 账号，提交仍在本地，尚未推送。**2026-09-14 已授权并推送完成。**
 
 ## L0 第 2 批：组件拆分、存储迁移机制与可重复验收（2026-09-14）
 
@@ -540,5 +540,5 @@
 - 本批同时覆盖了 L0 清单中的 L0-2（云端归档确认）、L0-4 的「IndexedDB 升级逻辑收敛为按版本号递增的迁移列表」（类型面扩展留到 L1 落库时一并定稿）、L0-5 的周视图第四态、L0-6（可重复验收，`npm run verify:local`）。
 - 未完成项：L0-4 遗留的「为选项/每日实例预留对象仓库联合类型」（建议与新表一起定，避免空接口）、L0-5 遗留的「日页加载占位与未来空日期『准备这一天』引导」。
 - 未验证项：跨年周的周视图样例（日期工具已按固定周一至周日实现，可作后续回归补充）；L1-L6 全部内容。
-- 阻塞：本机公钥未加入 GitHub 账号，`b81bf71`、`baf78db` 两次提交仍在本地，尚未推送。
+- 阻塞（已解除）：本机公钥未加入 GitHub 账号，`b81bf71`、`baf78db` 两次提交仍在本地，尚未推送。**2026-09-14 已授权并推送完成，远端 `main` = `4c936e0`。**
 
