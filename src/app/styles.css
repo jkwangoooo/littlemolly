@@ -1,6 +1,6 @@
 /* 幸福小Molly 全局样式
    分段：1 主题 2 基础元素 3 布局 4 通用控件 5 状态与提示
-        6 今日页 7 周视图 8 弹层 9 移动端 */
+        6 今日页 7 选项页 8 周视图 9 弹层 10 移动端 */
 
 /* ---------- 1 主题 ---------- */
 :root {
@@ -132,7 +132,23 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .mini { min-height: 32px; padding: 5px 9px; font-size: 12px; }
 .retry { min-height: 32px; margin-left: 8px; }
 
-/* ---------- 7 周视图 ---------- */
+/* ---------- 7 选项页 ---------- */
+.option-section { display: grid; gap: 4px; }
+.option-section + .option-section { border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.option-empty { margin: 0; padding: 4px 0 8px; font-size: 13px; }
+
+.option-group { display: grid; }
+.option-group-label { margin: 10px 0 2px; color: #a11b4a; font-size: 13px; font-weight: 700; }
+
+.option-row.inactive strong { color: #817a74; }
+.option-row.inactive small { color: #a09892; }
+.option-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.account-card { border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.account-line { margin: 0; font-size: 14px; }
+.account-body { margin: 0; font-size: 13px; }
+
+/* ---------- 8 周视图 ---------- */
 .week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 
 .week-day { min-height: 132px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 10px; border: 1px solid #e0c0cd; border-radius: 8px; color: #383431; background: #fff; text-align: left; }
@@ -142,7 +158,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .week-day small { color: #625d58; font-weight: 500; }
 .week-status { margin-top: auto; color: #625d58; font-size: 12px; }
 
-/* ---------- 8 弹层 ---------- */
+/* ---------- 9 弹层 ---------- */
 .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgb(36 33 31 / 38%); }
 .confirm-modal { width: min(100%, 440px); border-radius: 8px; padding: 24px; background: #fff; box-shadow: 0 12px 40px rgb(36 33 31 / 22%); }
 
@@ -151,7 +167,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .bottom-sheet .field { margin-bottom: 12px; }
 .sheet-handle { width: 42px; height: 4px; margin: 0 auto 14px; border-radius: 2px; background: #c7bdb7; }
 
-/* ---------- 9 移动端 ---------- */
+/* ---------- 10 移动端 ---------- */
 @media (max-width: 480px) {
   .page { width: min(100% - 24px, 620px); padding: 20px 0 32px; }
   .panel { padding: 18px; }
@@ -164,4 +180,8 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .progress-head { display: grid; gap: 4px; }
   .timeline-head { align-items: flex-start; flex-direction: column; }
   .task-row { flex-wrap: wrap; }
+  /* 选项行有五个操作按钮，窄屏挤在一行会折得很难读：改成名称一行、操作一行平分宽度。 */
+  .option-row { align-items: stretch; flex-direction: column; gap: 8px; }
+  .option-actions { gap: 6px; }
+  .option-actions button { flex: 1 1 0; }
 }

@@ -9,6 +9,7 @@
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "check:dates": "node scripts/check-date-rules.mjs",
+    "check:local-data": "node scripts/check-local-data.mjs",
     "verify:local": "node scripts/verify-local.mjs",
     "preview": "vite preview"
   },

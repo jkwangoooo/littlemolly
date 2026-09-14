@@ -1,5 +1,5 @@
 import type { SaveStatus } from '../../../shared/types/save'
-import { SAVE_STATUS_TEXT } from '../dayPlanLabels'
+import { SAVE_STATUS_PREFIX, SAVE_STATUS_TEXT } from '../../../shared/saveStatus'
 
 /**
  * 保存状态条。本地保存成功只显示「已保存」，不伪装成云端同步成功。
@@ -21,7 +21,8 @@ export function SaveStatusBar({
   return (
     <>
       <p className={`status ${status}`} aria-live="polite">
-        本地保存状态：{SAVE_STATUS_TEXT[status]}
+        {SAVE_STATUS_PREFIX}
+        {SAVE_STATUS_TEXT[status]}
       </p>
       {saveError ? (
         <p className="notice" role="alert">

@@ -1,5 +1,6 @@
 import type { AppSession, AppUser } from '../../shared/types/auth'
 import { getAll, newId, put } from './localDb'
+import { seedExampleOptions } from './optionSeed'
 import { readSession, writeSession } from './sessionStore'
 
 /** users 仓库的落库结构。密码只存哈希，绝不存明文。 */
@@ -57,6 +58,9 @@ export async function signUp(email: string, password: string): Promise<void> {
     created_at: new Date().toISOString(),
   }
   await put('users', user)
+  // 新账号预置少量示例选项：让选项页和（L2 的）选择器一开始就有内容可用。
+  // 只依赖 optionSeed，不经 optionService，避免与 currentUser 形成循环依赖。
+  await seedExampleOptions(user.id)
   writeSession(toSession(user))
 }
 

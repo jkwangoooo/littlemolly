@@ -14,6 +14,7 @@ import {
   upsertDayPlan,
 } from '../../services/local/dayPlanService'
 import { WeekView } from '../week/WeekView'
+import { PreferencesScreen } from '../preferences/PreferencesScreen'
 import { CustomTaskList } from './components/CustomTaskList'
 import { DateHeading } from './components/DateHeading'
 import { DayNavTabs } from './components/DayNavTabs'
@@ -24,10 +25,10 @@ import { ModeCard } from './components/ModeCard'
 import { PrepList, type PrepKey } from './components/PrepList'
 import { SaveStatusBar } from './components/SaveStatusBar'
 import { HISTORY_READONLY_TEXT, LOADING_TEXT, MODE_SWITCH_MESSAGE } from './dayPlanLabels'
+import { useSaveRunner } from '../../shared/hooks/useSaveRunner'
 import { useDayPlanData } from './useDayPlanData'
-import { useSaveRunner } from './useSaveRunner'
 
-type View = 'day' | 'week'
+type View = 'day' | 'week' | 'options'
 type Tab = 'execute' | 'prepare'
 
 /**
@@ -210,6 +211,20 @@ export function DayPlanScreen() {
           setView('day')
         }}
         onBackToDay={() => setView('day')}
+        onOpenOptions={() => setView('options')}
+      />
+    )
+  }
+
+  if (view === 'options') {
+    return (
+      <PreferencesScreen
+        onBackToDay={() => {
+          setTab('execute')
+          setSelectedDate(today)
+          setView('day')
+        }}
+        onOpenWeek={() => setView('week')}
       />
     )
   }
@@ -237,6 +252,7 @@ export function DayPlanScreen() {
           setSelectedDate(addDays(today, 1))
         }}
         onOpenWeek={() => setView('week')}
+        onOpenOptions={() => setView('options')}
       />
 
       <section className="panel stack">

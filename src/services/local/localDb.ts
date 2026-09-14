@@ -1,5 +1,5 @@
 const DB_NAME = 'happy-little-molly-local'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 /**
  * 本地对象仓库契约。新增仓库时必须同时做四件事，缺一不可：
@@ -9,7 +9,14 @@ const DB_VERSION = 1
  * 4. 在 MIGRATIONS 里登记该版本新增的仓库。
  * 只做第 1 步会导致类型放行但运行时报错。
  */
-export type LocalStore = 'users' | 'day_plans' | 'daily_meals' | 'custom_tasks'
+export type LocalStore =
+  | 'users'
+  | 'day_plans'
+  | 'daily_meals'
+  | 'custom_tasks'
+  | 'food_options'
+  | 'supplement_templates'
+  | 'exercise_options'
 
 type IndexDefinition = { name: string; keyPath: string | string[]; unique?: boolean }
 type StoreDefinition = { name: LocalStore; keyPath: string; indexes?: IndexDefinition[] }
@@ -37,12 +44,22 @@ const STORES: StoreDefinition[] = [
     keyPath: 'id',
     indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }],
   },
+  { name: 'food_options', keyPath: 'id', indexes: [{ name: 'user_id', keyPath: 'user_id' }] },
+  { name: 'supplement_templates', keyPath: 'id', indexes: [{ name: 'user_id', keyPath: 'user_id' }] },
+  { name: 'exercise_options', keyPath: 'id', indexes: [{ name: 'user_id', keyPath: 'user_id' }] },
 ]
 
 /** 版本号 → 该版本引入的对象仓库。升级时按版本升序补齐，已存在的跳过。 */
 const MIGRATIONS: Record<number, LocalStore[]> = {
   1: ['users', 'day_plans', 'daily_meals', 'custom_tasks'],
+  2: ['food_options', 'supplement_templates', 'exercise_options'],
 }
+
+/**
+ * 结构快照，仅供 `scripts/check-local-data.mjs` 做迁移回归（「迁移只追加」是硬性规则）。
+ * 业务代码请使用上面的读写函数，不要引用这个对象。
+ */
+export const LOCAL_SCHEMA = { version: DB_VERSION, stores: STORES, migrations: MIGRATIONS } as const
 
 function applyMigration(database: IDBDatabase, storeName: LocalStore): void {
   if (database.objectStoreNames.contains(storeName)) return

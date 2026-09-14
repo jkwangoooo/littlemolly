@@ -11,9 +11,10 @@
 // 依赖：本机已安装 Chrome 或 Edge。不使用第三方 npm 包，不写入项目目录。
 // 可用 CHROME_PATH 指定浏览器可执行文件；用 APP_URL 指向已存在的服务时，脚本不再自行拉起服务器。
 //
-// 覆盖：登录页 → 注册 → 周视图 → 历史只读 → 模式切换与恢复默认 → 未来空日期引导 →
-// 三餐保存 → 准备进度 → 健身面板 → 自定义事项增改删 → 复制昨天（内容/状态/模式）→
-// 刷新恢复 → 桌面与手机视口 → 退出登录 → 控制台干净。
+// 覆盖：数据库冷升级（v1 → v2）→ 登录页 → 注册 → 周视图 → 历史只读 → 模式切换与恢复默认 →
+// 未来空日期引导 → 三餐保存 → 准备进度 → 健身面板 → 自定义事项增改删 →
+// 复制昨天（内容/状态/模式）→ 选项页（增改排序启停删、补剂时段分组、可用数量口径）→
+// 刷新恢复 → 账号间选项隔离 → 桌面与手机视口 → 退出登录 → 控制台干净。
 
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -123,6 +124,7 @@ class Cdp {
     this.seq = 0
     this.pending = new Map()
     this.events = []
+    this.handlers = new Map()
     ws.addEventListener('message', (event) => {
       const message = JSON.parse(event.data)
       if (message.id && this.pending.has(message.id)) {
@@ -132,8 +134,13 @@ class Cdp {
         else resolve(message.result)
       } else if (message.method) {
         this.events.push(message)
+        this.handlers.get(message.method)?.(message.params)
       }
     })
+  }
+  /** 需要即时响应的事件（如 Fetch 拦截）用这里注册；其余事件留在 this.events 里事后统计。 */
+  on(method, handler) {
+    this.handlers.set(method, handler)
   }
   send(method, params = {}) {
     const id = ++this.seq
@@ -167,8 +174,27 @@ async function connect(port) {
   return new Cdp(ws)
 }
 
+const stamp = Date.now()
+const EMAIL = `verify-${stamp}@local.test`
+const EMAIL_B = `verify-b-${stamp}@local.test`
+const PASSWORD = 'verify123'
+const BREAKFAST = '测试早餐'
+const TASK_NAME = '测试事项'
+const FOOD_NAME = '测试专属食物'
+const FOOD_RENAMED = '测试食物已改名'
+const TEMP_NAME = '临时待删食物'
+const SUPPLEMENT_NAME = '测试补剂'
+const DB_NAME = 'happy-little-molly-local'
+/** v1 只包含这四张表；升级到 v2 后必须补上三张选项表且旧数据不丢。 */
+const V1_STORES = ['custom_tasks', 'daily_meals', 'day_plans', 'users']
+const V2_STORES = ['exercise_options', 'food_options', 'supplement_templates']
+const SENTINEL_USER = { id: 'verify-sentinel-user', email: 'verify-sentinel@local.test', password_hash: 'x', created_at: '2020-01-01T00:00:00.000Z' }
+const SENTINEL_PLAN = { id: 'verify-sentinel-plan', user_id: SENTINEL_USER.id, plan_date: '2020-01-01', mode: 'work', mode_override: false }
+
+const results = []
+
 // 注入到页面的交互辅助函数。重写界面时请保留 .prep-row / .execution-row / .task-row /
-// .bottom-sheet / .confirm-modal / .mode-card / .progress-head 这些类名，脚本依赖它们。
+// .bottom-sheet / .confirm-modal / .mode-card / .progress-head / .option-row 这些类名，脚本依赖它们。
 const HELPERS = `
 window.__m = {
   byText: (text, tag) => [...document.querySelectorAll(tag || 'button')].find((el) => el.textContent.trim() === text),
@@ -191,11 +217,63 @@ window.__m = {
   modeLabel: () => (document.querySelector('.mode-card strong') || {}).textContent || '',
   prepChecked: () => [...document.querySelectorAll('.prep-row input[type=checkbox]')].map((box) => box.checked),
   progress: () => (document.querySelector('.progress-head strong') || {}).textContent || '',
+  optionSection: (kind) => document.querySelector('.option-section[data-option-kind="' + kind + '"]'),
+  optionNames: (kind) => {
+    const section = window.__m.optionSection(kind);
+    if (!section) return [];
+    return [...section.querySelectorAll('.option-row strong')].map((el) => el.textContent.trim());
+  },
+  optionGroupLabels: (kind) => {
+    const section = window.__m.optionSection(kind);
+    if (!section) return [];
+    return [...section.querySelectorAll('.option-group-label')].map((el) => el.textContent.trim());
+  },
+  optionRow: (name) => [...document.querySelectorAll('.option-row')].find((row) => ((row.querySelector('strong') || {}).textContent || '').trim() === name),
+  optionStatus: (name) => { const row = window.__m.optionRow(name); return row ? (row.querySelector('small') || {}).textContent.trim() : 'NO_ROW'; },
+  optionSummary: (kind) => { const section = window.__m.optionSection(kind); const el = section && section.querySelector('.option-summary'); return el ? el.textContent.trim() : 'NO_SUMMARY'; },
+  optionGroupNames: (kind, label) => {
+    const section = window.__m.optionSection(kind);
+    if (!section) return [];
+    return [...section.querySelectorAll('.option-group')]
+      .filter((group) => ((group.querySelector('.option-group-label') || {}).textContent || '').trim() === label)
+      .flatMap((group) => [...group.querySelectorAll('.option-row strong')].map((el) => el.textContent.trim()));
+  },
+  clickSectionContains: (kind, text) => {
+    const section = window.__m.optionSection(kind);
+    if (!section) return 'NO_SECTION:' + kind;
+    const button = [...section.querySelectorAll('button')].find((item) => item.textContent.includes(text));
+    if (!button) return 'NO_BUTTON:' + text;
+    button.click();
+    return 'OK';
+  },
+  clickOptionButton: (name, label) => {
+    const row = window.__m.optionRow(name);
+    if (!row) return 'NO_ROW:' + name;
+    const button = [...row.querySelectorAll('button')].find((item) => item.textContent.trim() === label);
+    if (!button) return 'NO_BUTTON:' + label;
+    button.click();
+    return 'OK';
+  },
+  accountText: () => { const card = document.querySelector('.account-card'); return card ? card.innerText : 'NO_ACCOUNT_CARD'; },
+  dbSchema: () => new Promise((resolve, reject) => {
+    const request = indexedDB.open(${JSON.stringify(DB_NAME)});
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const names = [...db.objectStoreNames].sort();
+      const indexes = {};
+      for (const name of names) {
+        const store = db.transaction(name).objectStore(name);
+        indexes[name] = [...store.indexNames].sort();
+      }
+      resolve(JSON.stringify({ version: db.version, names, indexes }));
+      db.close();
+    };
+  }),
 };
 'ready'
 `
 
-const results = []
 function record(name, ok, detail = '') {
   results.push({ name, ok })
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  → ${detail}` : ''}`)
@@ -203,12 +281,6 @@ function record(name, ok, detail = '') {
 function firstLine(value, limit = 90) {
   return String(value ?? '').split('\n').filter(Boolean).join(' / ').slice(0, limit)
 }
-
-const stamp = Date.now()
-const EMAIL = `verify-${stamp}@local.test`
-const PASSWORD = 'verify123'
-const BREAKFAST = '测试早餐'
-const TASK_NAME = '测试事项'
 
 async function main() {
   const browserPath = findBrowser()
@@ -264,6 +336,54 @@ async function main() {
       }
     }
 
+    // 0. 冷升级：先造一个 v1 老库，再让应用去打开它。
+    //    做法是把入口模块的响应换成一个空模块，让页面停在「同源、但没有跑应用」的状态，
+    //    这样才能在应用碰到数据库之前，用原生 IndexedDB 建出只会由 v1 代码产生的老库。
+    //    由此验证 docs/01 的硬性规则：迁移只追加，老数据在升级后仍然可读。
+    cdp.on('Fetch.requestPaused', (params) => {
+      const isEntry = params.request.url.includes('/src/main.tsx')
+      const task = isEntry
+        ? cdp.send('Fetch.fulfillRequest', {
+            requestId: params.requestId,
+            responseCode: 200,
+            responseHeaders: [{ name: 'Content-Type', value: 'application/javascript' }],
+            body: '',
+          })
+        : cdp.send('Fetch.continueRequest', { requestId: params.requestId })
+      void task.catch(() => {})
+    })
+    await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] })
+    await cdp.send('Page.navigate', { url: appUrl })
+    await sleep(2000)
+    const seededV1 = await evaluate(`
+      new Promise((resolve, reject) => {
+        const request = indexedDB.open(${JSON.stringify(DB_NAME)}, 1);
+        request.onerror = () => reject(request.error);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          db.createObjectStore('users', { keyPath: 'id' }).createIndex('email', 'email', { unique: true });
+          const plans = db.createObjectStore('day_plans', { keyPath: 'id' });
+          plans.createIndex('user_date', ['user_id', 'plan_date'], { unique: true });
+          plans.createIndex('user_id', 'user_id');
+          const meals = db.createObjectStore('daily_meals', { keyPath: 'id' });
+          meals.createIndex('plan_type', ['day_plan_id', 'meal_type'], { unique: true });
+          meals.createIndex('day_plan_id', 'day_plan_id');
+          db.createObjectStore('custom_tasks', { keyPath: 'id' }).createIndex('day_plan_id', 'day_plan_id');
+        };
+        request.onsuccess = () => {
+          const db = request.result;
+          const tx = db.transaction(['users', 'day_plans'], 'readwrite');
+          tx.objectStore('users').put(${JSON.stringify(SENTINEL_USER)});
+          tx.objectStore('day_plans').put(${JSON.stringify(SENTINEL_PLAN)});
+          tx.oncomplete = () => { db.close(); resolve(['users', 'day_plans']); };
+          tx.onerror = () => reject(tx.error);
+        };
+      })
+    `)
+    await cdp.send('Fetch.disable')
+    record('可在同源页面上造出 v1 老库（四张表）', Array.isArray(seededV1) && seededV1.length === 2, String(seededV1))
+    await goto()
+
     // 1. 登录页
     await goto()
     const initial = await text()
@@ -281,6 +401,31 @@ async function main() {
     await sleep(1800)
     const afterSignUp = await text()
     record('注册后进入日计划页', afterSignUp.includes('执行今天') && afterSignUp.includes('准备明天'), signedUp)
+
+    // 2b. 冷升级结果：应用是懒打开数据库的（登录页不读数据），注册写入才真正碰到库，
+    //     因此在这里断言 v1 老库已经被应用升到 v2，且老数据仍在。
+    const upgrade = JSON.parse(await evaluate(`
+      (async () => {
+        const schema = JSON.parse(await window.__m.dbSchema());
+        const sentinel = await new Promise((resolve, reject) => {
+          const request = indexedDB.open(${JSON.stringify(DB_NAME)});
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            const db = request.result;
+            const get = db.transaction('users', 'readonly').objectStore('users').get(${JSON.stringify(SENTINEL_USER.id)});
+            get.onsuccess = () => { resolve(get.result ?? null); db.close(); };
+            get.onerror = () => reject(get.error);
+          };
+        });
+        return JSON.stringify({ schema, sentinel });
+      })()
+    `))
+    record('v1 老库被升级到 v2 且七张表齐备',
+      upgrade.schema.version === 2 && [...V1_STORES, ...V2_STORES].every((name) => upgrade.schema.names.includes(name)),
+      `version=${upgrade.schema.version}, tables=${upgrade.schema.names.join(',')}`)
+    record('升级后 v1 老数据仍可读',
+      upgrade.sentinel?.email === SENTINEL_USER.email,
+      `读取到 ${upgrade.sentinel ? upgrade.sentinel.email : 'null'}`)
 
     // 3. 周视图
     await evaluate(`window.__m.clickText('本周')`)
@@ -329,6 +474,20 @@ async function main() {
     await sleep(1300)
     const restored = await evaluate(`window.__m.text().includes('按星期自动判断')`)
     record('恢复默认清除人工覆盖', restored === true)
+
+    // 5b. 切换日期后保存状态不得残留上一天的结论（L0 报告 R9）
+    const statusReset = JSON.parse(await evaluate(`
+      (async () => {
+        const read = () => (document.querySelector('.status') || {}).textContent || '';
+        const before = read();
+        window.__m.clickAria('后一天', '.icon-button');
+        await window.__m.wait(1300);
+        return JSON.stringify({ before, after: read() });
+      })()
+    `))
+    record('切换日期后保存状态不再残留上一天的结论',
+      statusReset.before.includes('已保存') && statusReset.after.includes('尚未修改'),
+      `${statusReset.before.trim()} → ${statusReset.after.trim()}`)
 
     // 6. 准备明天：三餐面板（先确保目标日是工作日，避免周五运行时落在休息日）
     await evaluate(`window.__m.clickText('准备明天')`)
@@ -504,7 +663,213 @@ async function main() {
     const persisted = await text()
     record('刷新后规划内容从本地数据库恢复', persisted.includes(BREAKFAST), firstLine(persisted, 120))
 
-    // 14. 视口
+    // 14. 选项页（L1）：三个分区、示例选项、可用数量口径与本地模式说明
+    await evaluate(`window.__m.clickText('选项')`)
+    await sleep(1200)
+    const optionPage = JSON.parse(await evaluate(`
+      JSON.stringify({
+        sections: ['food', 'supplement', 'exercise'].filter((kind) => !!window.__m.optionSection(kind)),
+        hint: window.__m.text().includes('停用只影响以后的新计划'),
+        food: window.__m.optionNames('food'),
+        supplement: window.__m.optionNames('supplement'),
+        supplementGroups: window.__m.optionGroupLabels('supplement'),
+        exercise: window.__m.optionNames('exercise'),
+        summaries: {
+          food: window.__m.optionSummary('food'),
+          supplement: window.__m.optionSummary('supplement'),
+          exercise: window.__m.optionSummary('exercise'),
+        },
+        account: window.__m.accountText(),
+      })
+    `))
+    record('选项页渲染食物 / 补剂 / 健身三个分区', optionPage.sections.length === 3, optionPage.sections.join(','))
+    record('新账号自动带出可编辑的示例选项',
+      optionPage.food.length === 5 && optionPage.supplement.length === 3 && optionPage.exercise.length === 4,
+      `食物 ${optionPage.food.length} / 补剂 ${optionPage.supplement.length} / 健身 ${optionPage.exercise.length}`)
+    record('补剂示例按早 / 中 / 晚分组', JSON.stringify(optionPage.supplementGroups) === JSON.stringify(['早', '中', '晚']),
+      optionPage.supplementGroups.join(','))
+    record('选项页说明了停用只影响以后的新计划', optionPage.hint === true)
+    record('初始全部启用，可用数量与清单一致',
+      optionPage.summaries.food === '启用 5 项 · 停用 0 项' &&
+        optionPage.summaries.supplement === '启用 3 项 · 停用 0 项' &&
+        optionPage.summaries.exercise === '启用 4 项 · 停用 0 项',
+      `食物「${optionPage.summaries.food}」`)
+    record('本地模式说明不伪装云端同步成功',
+      optionPage.account.includes('本地模式') && !/已同步|同步成功|上次同步/.test(optionPage.account),
+      firstLine(optionPage.account, 80))
+    await shot('04-选项页')
+
+    // 15. 选项页（L1）：新增 / 重名校验 / 排序 / 改名 / 停用 / 删除
+    const mutations = JSON.parse(await evaluate(`
+      (async () => {
+        const out = {};
+        window.__m.clickSectionContains('food', '添加食物');
+        await window.__m.wait(700);
+        out.addTitle = (document.querySelector('.bottom-sheet h2') || {}).textContent || '';
+        window.__m.fill('名称', ${JSON.stringify(FOOD_NAME)});
+        await window.__m.wait(150);
+        window.__m.clickText('添加');
+        await window.__m.wait(1300);
+        out.afterAdd = window.__m.optionNames('food');
+        out.addSummary = window.__m.optionSummary('food');
+
+        // 重名必须被拒绝，且面板保留输入供改正
+        window.__m.clickSectionContains('food', '添加食物');
+        await window.__m.wait(700);
+        window.__m.fill('名称', ${JSON.stringify(FOOD_NAME)});
+        await window.__m.wait(150);
+        window.__m.clickText('添加');
+        await window.__m.wait(1200);
+        out.duplicateNotice = (document.querySelector('.notice') || {}).textContent || '';
+        out.sheetKept = !!document.querySelector('.bottom-sheet');
+        window.__m.clickText('取消');
+        await window.__m.wait(600);
+
+        // 上移：与「清炒时蔬」交换位置
+        window.__m.clickOptionButton(${JSON.stringify(FOOD_NAME)}, '上移');
+        await window.__m.wait(1300);
+        out.afterMove = window.__m.optionNames('food');
+
+        window.__m.clickOptionButton(${JSON.stringify(FOOD_NAME)}, '改名');
+        await window.__m.wait(700);
+        window.__m.fill('名称', ${JSON.stringify(FOOD_RENAMED)});
+        await window.__m.wait(150);
+        window.__m.clickText('保存');
+        await window.__m.wait(1300);
+        out.afterRename = window.__m.optionNames('food');
+
+        // 停用：需二次确认，且「可用数量」随之下降（该数量与 L2 选择器同源）
+        window.__m.clickOptionButton(${JSON.stringify(FOOD_RENAMED)}, '停用');
+        await window.__m.wait(700);
+        out.disableAsked = (document.querySelector('.confirm-modal') || {}).innerText || '';
+        window.__m.clickText('确认停用');
+        await window.__m.wait(1300);
+        out.afterDisable = {
+          names: window.__m.optionNames('food'),
+          status: window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)}),
+          summary: window.__m.optionSummary('food'),
+        };
+
+        // 删除：需二次确认，删完即从清单消失
+        window.__m.clickSectionContains('food', '添加食物');
+        await window.__m.wait(700);
+        window.__m.fill('名称', ${JSON.stringify(TEMP_NAME)});
+        await window.__m.wait(150);
+        window.__m.clickText('添加');
+        await window.__m.wait(1300);
+        window.__m.clickOptionButton(${JSON.stringify(TEMP_NAME)}, '删除');
+        await window.__m.wait(700);
+        out.deleteAsked = (document.querySelector('.confirm-modal') || {}).innerText || '';
+        window.__m.clickText('确认删除');
+        await window.__m.wait(1300);
+        out.afterDelete = window.__m.optionNames('food');
+        out.finalSummary = window.__m.optionSummary('food');
+        return JSON.stringify(out);
+      })()
+    `))
+    const SEED_FOODS = ['燕麦牛奶', '水煮蛋', '鸡胸沙拉', '番茄鸡蛋面', '清炒时蔬']
+    record('新增食物立即出现在清单末尾',
+      mutations.addTitle === '添加食物' && JSON.stringify(mutations.afterAdd) === JSON.stringify([...SEED_FOODS, FOOD_NAME]),
+      `面板标题=${mutations.addTitle}, 清单=${mutations.afterAdd.join(',')}`)
+    record('重名被拒绝且面板保留输入',
+      mutations.duplicateNotice.includes('已有同名选项') && mutations.sheetKept === true,
+      firstLine(mutations.duplicateNotice, 60))
+    record('上移按同组交换顺序',
+      JSON.stringify(mutations.afterMove) ===
+        JSON.stringify([...SEED_FOODS.slice(0, 4), FOOD_NAME, SEED_FOODS[4]]),
+      mutations.afterMove.join(','))
+    record('改名只改目标项',
+      JSON.stringify(mutations.afterRename) ===
+        JSON.stringify([...SEED_FOODS.slice(0, 4), FOOD_RENAMED, SEED_FOODS[4]]),
+      mutations.afterRename.join(','))
+    record('停用需二次确认且停用项保留在清单里',
+      mutations.disableAsked.includes('不会再出现在新计划的选择器中') &&
+        mutations.afterDisable.status === '已停用' &&
+        mutations.afterDisable.names.includes(FOOD_RENAMED),
+      `确认框含停用说明=${mutations.disableAsked.includes('不会再出现在新计划的选择器中')}, 行状态=${mutations.afterDisable.status}`)
+    record('停用后可用数量下降（与选择器同源）',
+      mutations.afterDisable.summary === '启用 5 项 · 停用 1 项',
+      mutations.afterDisable.summary)
+    record('删除需二次确认且删除后从清单消失',
+      mutations.deleteAsked.includes('不再出现在候选清单里') &&
+        !mutations.afterDelete.includes(TEMP_NAME) &&
+        mutations.afterDelete.length === 6,
+      `确认框含删除说明=${mutations.deleteAsked.includes('不再出现在候选清单里')}, 剩余=${mutations.afterDelete.length}`)
+    record('删除临时项后停用计数不受影响', mutations.finalSummary === '启用 5 项 · 停用 1 项', mutations.finalSummary)
+
+    // 16. 选项页（L1）：补剂按时段落位，健身项目保持独立
+    const supplement = JSON.parse(await evaluate(`
+      (async () => {
+        const out = {};
+        window.__m.clickSectionContains('supplement', '添加补剂');
+        await window.__m.wait(700);
+        out.periodField = (document.querySelector('.bottom-sheet') || {}).innerText.includes('时段');
+        window.__m.fill('名称', ${JSON.stringify(SUPPLEMENT_NAME)});
+        await window.__m.wait(150);
+        window.__m.fill('时段', 'noon');
+        await window.__m.wait(150);
+        window.__m.clickText('添加');
+        await window.__m.wait(1300);
+        out.names = window.__m.optionNames('supplement');
+        out.groups = window.__m.optionGroupLabels('supplement');
+        out.midGroup = window.__m.optionGroupNames('supplement', '中');
+        out.summary = window.__m.optionSummary('supplement');
+        out.exercise = window.__m.optionNames('exercise');
+        out.exerciseSummary = window.__m.optionSummary('exercise');
+        return JSON.stringify(out);
+      })()
+    `))
+    record('补剂面板要求选择早 / 中 / 晚时段', supplement.periodField === true)
+    record('新增补剂按 sort_order 落到「中」分组',
+      JSON.stringify(supplement.names) === JSON.stringify(['维生素 D', '鱼油', SUPPLEMENT_NAME, '钙片']) &&
+        JSON.stringify(supplement.midGroup) === JSON.stringify(['鱼油', SUPPLEMENT_NAME]),
+      `清单=${supplement.names.join(',')}；中组=${supplement.midGroup.join(',')}`)
+    record('健身分区不参与时段分组且保持独立',
+      JSON.stringify(supplement.exercise) === JSON.stringify(['快走', '瑜伽', '力量训练', '拉伸']) &&
+        supplement.exerciseSummary === '启用 4 项 · 停用 0 项',
+      supplement.exercise.join(','))
+    await shot('05-选项页-补剂分组')
+
+    // 17. 选项：刷新后仍在（本地持久化）
+    await goto()
+    await evaluate(`window.__m.clickText('选项')`)
+    await sleep(1200)
+    const optionReload = JSON.parse(await evaluate(`
+      JSON.stringify({
+        food: window.__m.optionNames('food'),
+        foodStatus: window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)}),
+        foodSummary: window.__m.optionSummary('food'),
+        supplement: window.__m.optionNames('supplement'),
+        groups: window.__m.optionGroupLabels('supplement'),
+      })
+    `))
+    record('刷新后选项清单与顺序保持不变',
+      JSON.stringify(optionReload.food) === JSON.stringify(mutations.afterDelete) &&
+        JSON.stringify(optionReload.supplement) === JSON.stringify(supplement.names),
+      optionReload.food.join(','))
+    record('刷新后停用状态与可用数量保持不变',
+      optionReload.foodStatus === '已停用' && optionReload.foodSummary === '启用 5 项 · 停用 1 项',
+      `${optionReload.foodStatus} / ${optionReload.foodSummary}`)
+    record('刷新后补剂仍按早 / 中 / 晚分组',
+      JSON.stringify(optionReload.groups) === JSON.stringify(['早', '中', '晚']),
+      optionReload.groups.join(','))
+
+    // 18. 选项页视口
+    for (const [label, width, height] of [
+      ['桌面 1440x900', 1440, 900],
+      ['手机 390x844', 390, 844],
+    ]) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 500 })
+      await sleep(700)
+      const metrics = JSON.parse(await evaluate('JSON.stringify({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth })'))
+      record(`选项页 ${label} 无横向溢出`, metrics.scroll <= metrics.inner, `scrollWidth=${metrics.scroll}, innerWidth=${metrics.inner}`)
+      await shot(`06-选项页-视口-${label}`)
+    }
+    await cdp.send('Emulation.clearDeviceMetricsOverride')
+    await evaluate(`window.__m.clickText('今日')`)
+    await sleep(900)
+
+    // 19. 日计划页视口
     for (const [label, width, height] of [
       ['桌面 1440x900', 1440, 900],
       ['手机 390x844', 390, 844],
@@ -513,18 +878,48 @@ async function main() {
       await sleep(700)
       const metrics = JSON.parse(await evaluate('JSON.stringify({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth })'))
       record(`${label} 无横向溢出`, metrics.scroll <= metrics.inner, `scrollWidth=${metrics.scroll}, innerWidth=${metrics.inner}`)
-      await shot(`03-视口-${label}`)
+      await shot(`07-日计划-视口-${label}`)
     }
     await cdp.send('Emulation.clearDeviceMetricsOverride')
 
-    // 15. 退出登录
+    // 20. 退出登录
     await sleep(400)
     await evaluate(`window.__m.clickText('退出登录')`)
     await sleep(1500)
     const afterSignOut = await text()
     record('退出登录后回到登录页', afterSignOut.includes('邮箱') && afterSignOut.includes('注册'))
 
-    // 16. 控制台
+    // 21. 第二个本地账号：各自的选项互不可见（docs/05 L1「不同本地账号之间互不可见」）
+    await evaluate(`
+      (async () => {
+        window.__m.fill('邮箱', ${JSON.stringify(EMAIL_B)});
+        window.__m.fill('密码', ${JSON.stringify(PASSWORD)});
+        await window.__m.wait(200);
+        window.__m.clickText('注册');
+      })()
+    `)
+    await sleep(1800)
+    await evaluate(`window.__m.clickText('选项')`)
+    await sleep(1200)
+    const secondAccount = JSON.parse(await evaluate(`
+      JSON.stringify({
+        food: window.__m.optionNames('food'),
+        supplement: window.__m.optionNames('supplement'),
+        exercise: window.__m.optionNames('exercise'),
+        account: window.__m.accountText(),
+      })
+    `))
+    const allSecondAccountNames = [...secondAccount.food, ...secondAccount.supplement, ...secondAccount.exercise]
+    record('第二个账号只看到自己的示例选项',
+      JSON.stringify(secondAccount.food) === JSON.stringify(SEED_FOODS) &&
+        secondAccount.supplement.length === 3 &&
+        secondAccount.exercise.length === 4,
+      `食物=${secondAccount.food.join(',')}`)
+    record('第二个账号看不到第一个账号的选项',
+      !allSecondAccountNames.includes(FOOD_RENAMED) && !allSecondAccountNames.includes(SUPPLEMENT_NAME) && !allSecondAccountNames.includes(TEMP_NAME))
+    record('账号卡显示当前登录邮箱', secondAccount.account.includes(EMAIL_B), firstLine(secondAccount.account, 60))
+
+    // 22. 控制台
     const noisy = cdp.events.filter((event) => {
       if (event.method === 'Runtime.exceptionThrown') return true
       if (event.method === 'Log.entryAdded') return ['error', 'warning'].includes(event.params.entry.level)

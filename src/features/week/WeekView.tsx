@@ -50,10 +50,12 @@ export function WeekView({
   selectedDate,
   onSelectDate,
   onBackToDay,
+  onOpenOptions,
 }: {
   selectedDate: string
   onSelectDate: (date: string) => void
   onBackToDay: () => void
+  onOpenOptions: () => void
 }) {
   const [dates] = useState(() => getWeekDates(getBusinessDateKey()))
   const [plans, setPlans] = useState<DayPlan[]>([])
@@ -94,6 +96,9 @@ export function WeekView({
         </button>
         <button className="active" type="button">
           本周
+        </button>
+        <button type="button" onClick={onOpenOptions}>
+          选项
         </button>
       </nav>
 
