@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.workbuddy/
 .env
 .env.local
 .env.*.local
