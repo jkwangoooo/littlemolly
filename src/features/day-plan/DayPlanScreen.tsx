@@ -18,11 +18,12 @@ import { CustomTaskList } from './components/CustomTaskList'
 import { DateHeading } from './components/DateHeading'
 import { DayNavTabs } from './components/DayNavTabs'
 import { EditorSheet, type EditorKind } from './components/EditorSheet'
+import { EmptyDayHint } from './components/EmptyDayHint'
 import { ExecuteList, type ExecutionTarget } from './components/ExecuteList'
 import { ModeCard } from './components/ModeCard'
 import { PrepList, type PrepKey } from './components/PrepList'
 import { SaveStatusBar } from './components/SaveStatusBar'
-import { HISTORY_READONLY_TEXT, MODE_SWITCH_MESSAGE } from './dayPlanLabels'
+import { HISTORY_READONLY_TEXT, LOADING_TEXT, MODE_SWITCH_MESSAGE } from './dayPlanLabels'
 import { useDayPlanData } from './useDayPlanData'
 import { useSaveRunner } from './useSaveRunner'
 
@@ -56,6 +57,10 @@ export function DayPlanScreen() {
   const writable = relation !== 'history'
   const isPrepare = tab === 'prepare'
   const mode = data.plan?.mode ?? defaultModeForDate(selectedDate)
+
+  // 未来空日期的引导块：明天起的未规划日期显示一次说明，用户任意一次真实写入（勾选或保存面板）
+  // 都会创建当天计划，引导随之消失；它自己不落库，也不阻止用户空着不填（docs/02）。
+  const showEmptyDayHint = (relation === 'tomorrow' || relation === 'future') && !data.plan
 
   const progress = data.plan
     ? [
@@ -252,8 +257,14 @@ export function DayPlanScreen() {
 
         {relation === 'history' ? <p className="history-note">{HISTORY_READONLY_TEXT}</p> : null}
 
-        {data.loading ? null : (
+        {data.loading ? (
+          <p className="muted loading-note" role="status">
+            {LOADING_TEXT}
+          </p>
+        ) : (
           <>
+            {showEmptyDayHint ? <EmptyDayHint /> : null}
+
             <ModeCard
               mode={mode}
               modeOverride={Boolean(data.plan?.mode_override)}

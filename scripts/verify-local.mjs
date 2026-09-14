@@ -10,9 +10,13 @@
 //
 // 依赖：本机已安装 Chrome 或 Edge。不使用第三方 npm 包，不写入项目目录。
 // 可用 CHROME_PATH 指定浏览器可执行文件；用 APP_URL 指向已存在的服务时，脚本不再自行拉起服务器。
+//
+// 覆盖：登录页 → 注册 → 周视图 → 历史只读 → 模式切换与恢复默认 → 未来空日期引导 →
+// 三餐保存 → 准备进度 → 健身面板 → 自定义事项增改删 → 复制昨天（内容/状态/模式）→
+// 刷新恢复 → 桌面与手机视口 → 退出登录 → 控制台干净。
 
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -20,6 +24,8 @@ import { fileURLToPath } from 'node:url'
 
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const EXPLICIT_APP_URL = process.env.APP_URL ?? null
+/** 设置 SHOT_DIR 可把关键界面截图落盘，用于人工核对观感；不设置则完全不写文件。 */
+const SHOT_DIR = process.env.SHOT_DIR ?? null
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 向系统要一个当前空闲的端口，避免撞上已在 5173 跑着的别的服务。 */
@@ -246,6 +252,18 @@ async function main() {
     }
     const text = () => evaluate('window.__m.text()')
 
+    if (SHOT_DIR) mkdirSync(SHOT_DIR, { recursive: true })
+    // 截图是可选的人工核对辅助：任何失败都只告警，绝不能让验收结果受影响。
+    const shot = async (label) => {
+      if (!SHOT_DIR) return
+      try {
+        const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+        writeFileSync(join(SHOT_DIR, `${label}.png`), Buffer.from(data, 'base64'))
+      } catch (reason) {
+        console.warn(`截图 ${label} 失败（不影响验收）：${reason.message}`)
+      }
+    }
+
     // 1. 登录页
     await goto()
     const initial = await text()
@@ -315,6 +333,20 @@ async function main() {
     // 6. 准备明天：三餐面板（先确保目标日是工作日，避免周五运行时落在休息日）
     await evaluate(`window.__m.clickText('准备明天')`)
     await sleep(1100)
+
+    // 6a. 未来空日期引导：只做说明，不落库（docs/02「引导用户准备这一天，但不强制填写」）
+    const emptyHint = await evaluate(`
+      JSON.stringify({
+        shown: !!document.querySelector('.empty-day'),
+        titled: window.__m.text().includes('这一天还没有计划'),
+        guides: window.__m.text().includes('准备这一天'),
+      })
+    `)
+    const hintData = JSON.parse(emptyHint)
+    record('未来空日期显示「准备这一天」引导', hintData.shown && hintData.titled && hintData.guides,
+      `引导块=${hintData.shown}, 标题=${hintData.titled}, 含引导语=${hintData.guides}`)
+    await shot('01-未来空日期引导')
+
     const workday = await evaluate(`
       (async () => {
         if (window.__m.modeLabel() !== '休息日') return 'ALREADY_WORK';
@@ -338,6 +370,11 @@ async function main() {
     const mealsData = JSON.parse(mealsSaved)
     record('三餐面板可编辑并保存', sheetTitle === '编辑三餐' && mealsData.status && mealsData.summary,
       `面板标题=${sheetTitle}, 已保存=${mealsData.status}, 摘要含内容=${mealsData.summary}`)
+
+    // 6b. 计划产生后引导自动消失，说明引导块只是提示、不是必须停留的状态
+    const hintGone = await evaluate(`!document.querySelector('.empty-day')`)
+    record('计划保存后空日期引导自动消失', hintGone === true)
+    await shot('02-计划已填写')
 
     // 7. 勾选准备项与进度
     const progress = await evaluate(`
@@ -426,11 +463,12 @@ async function main() {
     record('自定义事项删除需二次确认且可删除', deletedData.asked === true && deletedData.remaining === 0,
       `确认框=${deletedData.asked}, 剩余=${deletedData.remaining}`)
 
-    // 12. 复制昨天：内容复制但不带准备状态
+    // 12. 复制昨天：内容复制但不带准备状态，且不改目标日模式与 mode_override
     const copied = await evaluate(`
       (async () => {
         window.__m.clickAria('后一天', '.icon-button');
         await window.__m.wait(1200);
+        const modeBefore = window.__m.modeLabel();
         window.__m.clickText('复制昨天');
         await window.__m.wait(700);
         const asked = (document.querySelector('.confirm-modal') || {}).innerText || '';
@@ -443,6 +481,9 @@ async function main() {
           hasMeal: body.includes(${JSON.stringify(BREAKFAST)}),
           prep,
           progress: window.__m.progress(),
+          modeBefore,
+          modeAfter: window.__m.modeLabel(),
+          overrideAfter: body.includes('人工覆盖默认模式'),
         });
       })()
     `)
@@ -450,6 +491,9 @@ async function main() {
     const prepAllCleared = copyData.prep.length === 0 || copyData.prep.every((value) => value === false)
     record('复制昨天带内容但不带准备勾选', copyData.asked && copyData.hasMeal && prepAllCleared,
       `确认文案=${copyData.asked}, 含早餐=${copyData.hasMeal}, 准备项=${JSON.stringify(copyData.prep)}`)
+    record('复制昨天不改目标日模式与人工覆盖',
+      copyData.modeBefore === copyData.modeAfter && copyData.overrideAfter === false,
+      `模式 ${copyData.modeBefore} → ${copyData.modeAfter}, 复制后存在人工覆盖=${copyData.overrideAfter}`)
 
     // 13. 刷新恢复
     await goto()
@@ -469,6 +513,7 @@ async function main() {
       await sleep(700)
       const metrics = JSON.parse(await evaluate('JSON.stringify({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth })'))
       record(`${label} 无横向溢出`, metrics.scroll <= metrics.inner, `scrollWidth=${metrics.scroll}, innerWidth=${metrics.inner}`)
+      await shot(`03-视口-${label}`)
     }
     await cdp.send('Emulation.clearDeviceMetricsOverride')
 

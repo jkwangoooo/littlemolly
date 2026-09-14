@@ -1,4 +1,5 @@
 import type { CustomTask } from '../../../shared/types/dayPlan'
+import { EMPTY_TASKS_TEXT } from '../dayPlanLabels'
 
 /**
  * 自定义时间线事项，按时间升序显示。历史日期只渲染内容，不渲染任何编辑入口。
@@ -28,6 +29,12 @@ export function CustomTaskList({
           </button>
         ) : null}
       </div>
+
+      {tasks.length === 0 ? (
+        <p className="muted empty-note">
+          {writable ? EMPTY_TASKS_TEXT.writable : EMPTY_TASKS_TEXT.readonly}
+        </p>
+      ) : null}
 
       {tasks.map((task) => (
         <div className="execution-row task-row" key={task.id}>

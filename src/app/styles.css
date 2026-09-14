@@ -90,6 +90,14 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 .history-note { margin: 0; border-left: 3px solid #817a74; padding: 10px 12px; color: #625d58; background: #f4f1ef; }
 
+.loading-note { margin: 0; padding: 18px 0; text-align: center; }
+
+.empty-day { display: grid; gap: 6px; border: 1px dashed #d7a7b9; border-radius: 8px; padding: 16px 18px; background: #fff8fb; }
+.empty-day strong { font-size: 15px; }
+.empty-day p { margin: 0; font-size: 13px; }
+
+.empty-note { margin: 0; padding: 12px 0 4px; font-size: 13px; }
+
 /* ---------- 6 今日页 ---------- */
 .nav-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
 .nav-tabs button { flex: 1; border: 1px solid #d7a7b9; color: #8d1644; background: #fff8fb; }

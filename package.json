@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
+    "check:dates": "node scripts/check-date-rules.mjs",
     "verify:local": "node scripts/verify-local.mjs",
     "preview": "vite preview"
   },
