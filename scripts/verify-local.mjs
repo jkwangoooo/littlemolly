@@ -3,19 +3,70 @@
 // 检查桌面 / 手机视口无横向溢出、控制台无 error / warning。
 //
 // 用法：
-//   1. 另开终端运行 npm run dev
-//   2. 运行 npm run verify:local
+//   npm run verify:local
+//
+// 脚本自带 Vite 开发服务器：会挑一个空闲端口自行拉起，结束时回收，
+// 因此不会误验收「端口上恰好跑着的别的服务」，也不需要另开终端。
 //
 // 依赖：本机已安装 Chrome 或 Edge。不使用第三方 npm 包，不写入项目目录。
-// 可用 CHROME_PATH 指定浏览器可执行文件，APP_URL 覆盖应用地址。
+// 可用 CHROME_PATH 指定浏览器可执行文件；用 APP_URL 指向已存在的服务时，脚本不再自行拉起服务器。
 
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:5173/'
+const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const EXPLICIT_APP_URL = process.env.APP_URL ?? null
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** 向系统要一个当前空闲的端口，避免撞上已在 5173 跑着的别的服务。 */
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const probe = createServer()
+    probe.unref()
+    probe.on('error', reject)
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address()
+      probe.close(() => resolve(port))
+    })
+  })
+}
+
+/** 拉起本项目自己的 Vite 开发服务器，返回 { child, url }。 */
+async function startDevServer() {
+  const port = await findFreePort()
+  const url = `http://127.0.0.1:${port}/`
+  const viteBin = join(PROJECT_ROOT, 'node_modules', 'vite', 'bin', 'vite.js')
+  if (!existsSync(viteBin)) throw new Error(`未找到 Vite（${viteBin}），请先运行 npm install。`)
+
+  const child = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+    cwd: PROJECT_ROOT,
+    stdio: 'ignore',
+  })
+  child.on('error', () => {})
+
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (child.exitCode !== null) throw new Error('Vite 开发服务器启动后立即退出。')
+    const reachable = await fetch(url).then((response) => response.ok).catch(() => false)
+    if (reachable) return { child, url }
+    await sleep(250)
+  }
+  stopProcess(child)
+  throw new Error('Vite 开发服务器未在预期时间内就绪。')
+}
+
+/** 结束自己拉起的进程；Windows 上按 PID 连子进程一起收，不用按进程名通杀。 */
+function stopProcess(child) {
+  if (!child || child.exitCode !== null) return
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+  } else {
+    child.kill()
+  }
+}
 
 function findBrowser() {
   const candidates = [
@@ -157,13 +208,21 @@ async function main() {
   const browserPath = findBrowser()
   const userDataDir = join(tmpdir(), `molly-verify-${stamp}`)
   let child = null
+  let devServer = null
 
   try {
-    const appReachable = await fetch(APP_URL).then(() => true).catch(() => false)
-    if (!appReachable) {
-      console.error(`无法访问 ${APP_URL}，请先在另一个终端运行 npm run dev。`)
-      process.exitCode = 1
-      return
+    let appUrl = EXPLICIT_APP_URL
+    if (appUrl) {
+      const reachable = await fetch(appUrl).then(() => true).catch(() => false)
+      if (!reachable) {
+        console.error(`APP_URL 指定的 ${appUrl} 无法访问。`)
+        process.exitCode = 1
+        return
+      }
+    } else {
+      devServer = await startDevServer()
+      appUrl = devServer.url
+      console.log(`使用临时开发服务器：${appUrl}`)
     }
 
     const launched = await launchBrowser(browserPath, userDataDir)
@@ -181,7 +240,7 @@ async function main() {
       return outcome.result.value
     }
     const goto = async () => {
-      await cdp.send('Page.navigate', { url: APP_URL })
+      await cdp.send('Page.navigate', { url: appUrl })
       await sleep(2200)
       await evaluate(HELPERS)
     }
@@ -440,6 +499,7 @@ async function main() {
     }
   } finally {
     if (child) child.kill()
+    stopProcess(devServer?.child ?? null)
     await sleep(500)
     rmSync(userDataDir, { recursive: true, force: true })
   }

@@ -17,16 +17,16 @@
 ## 本地验收命令
 
 ```bash
-npm run typecheck   # 类型检查
-npm run lint        # 静态检查
-npm run build       # 生产构建
-npm run verify:local  # 真实浏览器闭环验收（需先在另一个终端运行 npm run dev）
+npm run typecheck     # 类型检查
+npm run lint          # 静态检查
+npm run build         # 生产构建
+npm run verify:local  # 真实浏览器闭环验收（自带临时开发服务器，无需先跑 dev）
 ```
 
-`npm run verify:local` 会自动拉起本机 Chrome 或 Edge 的无头实例，实际走一遍
-「登录页 → 注册 → 准备明天勾选 → 本地保存 → 刷新恢复 → 桌面/手机视口无溢出 → 退出登录」，
-并检查控制台无 error / warning。结束时自动关闭浏览器，不残留进程。
-若浏览器不在默认位置，用 `CHROME_PATH` 指定可执行文件；应用地址可用 `APP_URL` 覆盖。
+`npm run verify:local` 会自动挑一个空闲端口拉起本项目的 Vite 开发服务器，并拉起本机 Chrome 或 Edge 的无头实例，实际走一遍
+「登录页 → 注册 → 周视图 → 历史日只读 → 模式切换与恢复默认 → 三餐保存 → 准备项进度 → 健身面板 → 自定义事项增改删 → 复制昨天不带准备勾选 → 刷新恢复 → 桌面/手机视口无溢出 → 退出登录」共 20 项检查，
+并检查控制台无 error / warning。结束时自动关闭浏览器与临时服务器，不残留进程、不占用固定端口。
+若浏览器不在默认位置，用 `CHROME_PATH` 指定可执行文件；若想指向一个已在运行的服务，用 `APP_URL` 覆盖（此时脚本不再自建服务器）。
 
 ## 验收步骤
 
