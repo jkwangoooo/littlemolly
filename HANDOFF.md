@@ -3,19 +3,20 @@
 ## 当前交接摘要（2026-09-14）
 
 - 当前开发方向是本地优先：浏览器 IndexedDB 是唯一业务数据源；Supabase、RLS、跨设备同步和上线迁移均后置，不是当前开发或验收的阻塞条件。
-- 当前技术基线是 React + TypeScript + Vite + IndexedDB。服务层已按职责拆为 `src/services/local/`（当前生效）与 `src/services/cloud/`（L6 前冻结、不得被页面引用）；页面只通过服务层读写。会话状态只在 `src/app/App.tsx` 持有。
+- 当前技术基线是 React + TypeScript + Vite + IndexedDB。服务层已按职责拆为 `src/services/local/`（当前生效）与 `src/services/cloud/`（L6 前冻结、不得被页面引用）；页面只通过服务层读写。会话状态只在 `src/app/App.tsx` 持有，本地会话读写集中在 `src/services/local/sessionStore.ts`。
+- 日计划页已是「编排页 + 子组件 + hook」结构：`DayPlanScreen.tsx` 只做编排，展示在 `features/day-plan/components/`，数据读取在 `useDayPlanData`，保存状态机在 `useSaveRunner`；周视图状态判定集中在 `features/week/weekStatus.ts`。IndexedDB 的建表逻辑已收敛为按版本号递增的显式迁移表（`localDb.ts` 的 `STORES` / `MIGRATIONS`）。
 - 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐文本、晨间事项、健身决定、自定义事项、复制昨天、历史只读和保存失败重试。
-- **L0 进行中：第 1 批（目录与职责整理）已完成并验证**；L0 剩余项为服务契约固定、IndexedDB 版本迁移机制、加载与空状态补齐、可重复验收步骤。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
-- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，提交为 `7f35041 → 1802fe8 → e8b4ec2`。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
+- **L0 进行中：第 1 批（目录与职责整理）与第 2 批（组件拆分、IndexedDB 迁移机制、可重复验收）已完成并验证**；L0 剩余项为服务契约类型面固定（L0-4）与加载/空状态占位（L0-5）。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
+- 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，提交为 `7f35041 → 1802fe8 → e8b4ec2 → b3dcd15 → 1192cdb → b81bf71 → baf78db`。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送未完成**：本机 SSH 公钥 `~/.ssh/id_ed25519`（指纹 `SHA256:IhxITPsvRvgR2KDaYbDC32P/ag+TEiaViRluMTWMztI`）尚未加入 GitHub 账号，`git push` 返回 `Permission denied (publickey)`。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
 ## 当前待办
 
-1. 完成 L0 剩余任务：服务契约固定、IndexedDB 版本迁移机制、加载与空状态、可重复验收步骤；可一并处理 `DayPlanScreen.tsx` / `WeekView.tsx` 的单行超长代码拆分。
-2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`，并在桌面和 390px 手机视口完成真实交互检查。
+1. 完成 L0 剩余两项：服务契约类型面固定（L0-4），日页加载占位与空日期/休息日引导（L0-5）。
+2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。
 3. 项目所有者将本机公钥加入 GitHub，然后执行 `git push -u origin main` 完成首次推送。
-4. 完成 L0 后更新本文件的当前交接摘要，再进入 L1；L1-L5 完成前不恢复云端迁移工作。
+4. 完成 L0 后更新本文件的当前交接摘要，再进入 L1；L1-L5 完成前不恢复云端迁移工作。进入 L1 前需先补上 `docs/01` 数据契约里尚未落库的 7 类对象仓库（L1/L2 主体工作量）。
 
 ## 已有文档
 
@@ -482,4 +483,59 @@
 - 未完成项：服务契约固定、IndexedDB 显式版本迁移机制、加载与空状态补齐、可重复验收步骤；`DayPlanScreen.tsx`（最长单行 2109 字符）与 `WeekView.tsx`（1323 字符）尚未拆分为可读组件。
 - 未验证项：L1-L5 全部功能；云端相关一切（按本地优先方向本就不在本轮范围）。
 - 阻塞：本机公钥未加入 GitHub 账号，提交仍在本地，尚未推送。
+
+## L0 第 2 批：组件拆分、存储迁移机制与可重复验收（2026-09-14）
+
+### 背景
+
+用户要求「先把整个结构处理好，打扫一下战场，让代码干净整洁、结构清晰、架构规范」。第 1 批解决了目录与职责归属，第 2 批处理**文件内部**的结构问题：单行超长组件、散装建表逻辑、会话与页面耦合、验收不可重复。**本批不改任何业务行为**，全部改动都以第 1 批已通过的 9 项浏览器行为为回归基线。
+
+### 本次修改文件
+
+- 新增 `src/services/local/sessionStore.ts`：会话持久化独立成文件，导出 `AUTH_CHANGE_EVENT`、`readSession`、`writeSession`（写入时派发事件）。
+- 新增 `src/shared/components/`：`BottomSheet.tsx`、`ConfirmDialog.tsx`（此前已存在并被使用，但从未纳入版本控制，本批补齐提交）。
+- 新增 `src/features/day-plan/components/` 8 个展示组件：`DateHeading`、`DayNavTabs`、`SaveStatusBar`、`ModeCard`、`PrepList`、`ExecuteList`、`CustomTaskList`、`EditorSheet`。
+- 新增 `src/features/day-plan/dayPlanLabels.ts`（文案常量）、`useDayPlanData.ts`（按日期读取 plan/meals/tasks）、`useSaveRunner.ts`（保存状态机与重试）。
+- 新增 `src/features/week/weekStatus.ts`：`resolveWeekDayStatus()` 与状态文案，**补齐周视图缺失的第四种「已完成」状态**（判定顺序：历史 > 未规划 > 今天执行中 > 已完成 > 待准备）。
+- 改写 `src/services/local/localDb.ts`：移除会话职责；建表收敛为 `STORES` 定义表 + `MIGRATIONS`（版本号 → 该版本引入的仓库）映射，`onupgradeneeded` 按版本升序补齐；首次打开时校验实际仓库是否都在 `STORES` 清单内，不一致则告警。**`DB_VERSION` 保持 1，行为不变**。
+- 改写 `src/services/local/authService.ts`：从 `./sessionStore` 读写会话，`LocalUser` 与 `hashPassword` 归本文件，`signUp` 返回值由 `Promise<string | null>` 收敛为 `Promise<void>`。
+- 改写 `src/app/App.tsx`：会话状态门禁；事件名改为导入 `AUTH_CHANGE_EVENT` 常量，不再硬编码字符串。
+- 改写 `src/features/auth/AuthScreen.tsx`：只保留表单，会话由 App 持有；不再接收服务端返回文本。
+- 改写 `src/features/day-plan/DayPlanScreen.tsx`：由单行 2109 字符改为 361 行纯编排页（持界面状态、串数据与保存、组装子组件）。
+- 改写 `src/features/week/WeekView.tsx`：拆出 `WeekDayCell` 子组件，状态判定外移到 `weekStatus.ts`。
+- 改写 `src/app/styles.css`：按 9 个编号分区重排；删除 `.account`、`.scope-note`、`.record` 等已无引用的死样式。
+- 扩展 `scripts/verify-local.mjs`：检查项由 9 项增至 20 项，新增 `clickAria` 等助手（无第三方依赖，直接用 Chrome/Edge 无头 + DevTools Protocol）。
+- `package.json`：新增 `verify:local` 脚本（第 1 批已加，本批扩展脚本内容）。
+
+### 实际运行的命令与结果
+
+- `npm run typecheck`：通过，无输出。
+- `npm run lint`：通过，无输出。
+- `npm run build`：通过，**52 modules**，`dist/assets/index-CUsL8HGz.js` 222.36 kB（gzip 69.79 kB）、`index-BRO3KEwm.css` 5.69 kB。
+- `npm run verify:local`：**20/20 通过**。
+
+### 本批过程中修复的真实缺陷
+
+- `DayPlanScreen.tsx` 拆分时出现的非法标识符 `const target-meal = ...`（连字符）与自定义事项缺少勾选处理函数：已改为 `const meal` 并补 `toggleTask()`，接到 `CustomTaskList` 的 `onToggle`。
+- `AuthScreen.tsx` 在校验 `signUp` 返回值收紧后仍声明 `let serverMessage: string | null`，类型已不兼容：已改为直接 await 后给固定文案。
+- `App.tsx` 硬编码 `'molly-auth-change'`，与 `sessionStore` 中的常量存在漂移风险：已改为导入常量。
+- 周视图第四种状态「已完成」缺失（接手盘点 R5）：已补 `weekStatus.ts` 并纳入验收检查。
+
+### 浏览器验证证据（20/20）
+
+覆盖：未登录登录页 → 注册进入日计划页 → 周视图固定 7 天 → 历史日只读且无模式切换 → 模式切换确认与生效 → 恢复默认清除覆盖 → 三餐编辑保存 → 准备项勾选与进度/保存状态一致 → 健身面板保存 → 自定义事项新增/编辑/删除二次确认 → 复制昨天带内容不带准备勾选 → 刷新后会话与本地内容恢复 → 桌面 1440x900 无横向溢出（`scrollWidth=1425`）→ 手机 390x844 无横向溢出（`scrollWidth=390`）→ 退出登录回到登录页 → 控制台无 error / warning。
+
+### 结构卫生核对结果
+
+- TSX 中使用的全部类名均在 `styles.css` 有定义；反向核对出的 `status/saving/saved/error/history/selected/week-day` 均为模板字符串拼接使用，**无死样式**。
+- 全量扫描 `src/`：无 `console.log`/`console.debug`、无 `TODO`/`FIXME`、无 `@ts-ignore`/`@ts-nocheck`/`eslint-disable`、无 `any`。
+- 校验冻结的云端层未被任何页面引用，且未被打入产物（产物中检索 `supabase`/`PostgREST`/`GoTrueClient`/`copy_yesterday_stage3` 均为 0 命中，纯 tree-shaking 剔除）。
+
+### 阶段结论
+
+- **L0 第 2 批完成**，业务行为零回退，由 20 项真实浏览器验证覆盖。
+- 本批同时覆盖了 L0 清单中的 L0-2（云端归档确认）、L0-4 的「IndexedDB 升级逻辑收敛为按版本号递增的迁移列表」（类型面扩展留到 L1 落库时一并定稿）、L0-5 的周视图第四态、L0-6（可重复验收，`npm run verify:local`）。
+- 未完成项：L0-4 遗留的「为选项/每日实例预留对象仓库联合类型」（建议与新表一起定，避免空接口）、L0-5 遗留的「日页加载占位与未来空日期『准备这一天』引导」。
+- 未验证项：跨年周的周视图样例（日期工具已按固定周一至周日实现，可作后续回归补充）；L1-L6 全部内容。
+- 阻塞：本机公钥未加入 GitHub 账号，`b81bf71`、`baf78db` 两次提交仍在本地，尚未推送。
 
