@@ -1,3 +1,4 @@
+import type { LocalStore } from '../../services/local/localDb'
 import type { OptionKind } from '../../shared/types/options'
 
 /** 三个选项分区的标题，与 docs/02 选项页一致。 */
@@ -53,3 +54,51 @@ export const ACCOUNT_TEXT = {
   mode: '本地模式',
   body: '数据保存在当前浏览器中，账号与计划都未上传。云端同步在 L6 迁移阶段才做，当前没有同步时间可显示。',
 } as const
+
+// ---------------------------------------------------------------- 本地备份（L5）
+
+export const BACKUP_TITLE = '本地数据备份'
+
+export const BACKUP_HINT =
+  '备份只包含当前账号的数据，保存成一个 JSON 文件。清理浏览器数据、换电脑或换浏览器之前，先导出一份。'
+
+/** 仓库中文名，用于把「共 N 条（日计划 3 · 常用食物 6）」翻译成人能读的摘要。 */
+export const BACKUP_STORE_LABEL: Record<LocalStore, string> = {
+  users: '账号',
+  day_plans: '日计划',
+  daily_meals: '三餐',
+  daily_meal_items: '餐次内容',
+  custom_tasks: '自定义事项',
+  food_options: '常用食物',
+  supplement_templates: '固定补剂',
+  exercise_options: '健身项目',
+  daily_supplements: '补剂执行',
+  daily_exercise_items: '健身执行',
+  routine_tasks: '家务',
+}
+
+export const BACKUP_EMPTY_NOTE = '当前账号还没有任何数据，导出的备份会没有内容可恢复。'
+
+export const BACKUP_EXPORT_ACTION = '生成备份'
+export const BACKUP_DOWNLOAD_ACTION = '下载备份文件'
+export const BACKUP_COPY_ACTION = '复制备份内容'
+export const BACKUP_COPIED_NOTE = '已复制到剪贴板，可以粘贴到别处保存。'
+export const BACKUP_COPY_FAILED_NOTE = '浏览器不允许自动复制，请手动全选文本域内容。'
+
+export const BACKUP_FILE_LABEL = '选择备份文件'
+export const BACKUP_PASTE_LABEL = '或直接粘贴备份内容'
+export const BACKUP_PASTE_PLACEHOLDER = '把备份 JSON 粘贴到这里，再点「检查这份备份」。'
+export const BACKUP_INSPECT_ACTION = '检查这份备份'
+export const BACKUP_CLEAR_ACTION = '清空输入'
+
+/** 导入前确认：说清「替换」而不是「合并」，这是全流程里唯一会造成数据丢失的一步。 */
+export const BACKUP_IMPORT_CONFIRM = {
+  title: '导入这份备份？',
+  body: '导入会用备份内容替换当前账号的全部数据，当前账号已有的计划与选项都会被清空，且无法撤销。其他本地账号不受影响。',
+  confirmLabel: '确认导入并替换',
+} as const
+
+export const BACKUP_IMPORT_HINT =
+  '导入的是「替换」而不是「合并」：当前账号的数据会被备份内容整体覆盖。备份文件格式不对时不会写入任何内容。'
+
+export const BACKUP_INVALID_CHANNEL = '请选择文件或粘贴备份内容。'

@@ -10,6 +10,9 @@
 // 真实浏览器只能验证「新装出来是多少张表」，无法验证「旧版本升级时旧表没被动过」，
 // 所以这里对着迁移表本身做静态断言，与 npm run verify:local 的运行时检查互补。
 
+// 必须先注册扩展名补全钩子，再动态导入源码（源码用的是不带 .ts 的相对导入）。
+import './ts-resolve.mjs'
+
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -81,6 +84,26 @@ for (const [name, index] of [
   check(`${name} 带有 ${index} 索引`, indexNames.includes(index), true)
 }
 
+// ---- 写入必须先过字段契约（L5 加固）：绕过 localDb 的 put / runTransaction，坏数据就再也拦不住 ----
+const localDbSource = readFileSync(join(PROJECT_ROOT, 'src/services/local/localDb.ts'), 'utf8')
+check(
+  'put 在任何写入请求之前调用 assertRecord',
+  /export async function put[\s\S]{0,240}?\n\s*assertRecord\(/.test(localDbSource),
+  true,
+)
+check(
+  'runTransaction 对每条待写记录先 assertRecord',
+  /export async function runTransaction[\s\S]{0,1400}?for \(const item of work\.put \?\? \[\]\) assertRecord\(/.test(localDbSource),
+  true,
+)
+
+/** 直接调 objectStore().put/add 的地方：这些写入绕过了 assertRecord。 */
+const directWrites = walk(join(PROJECT_ROOT, 'src'))
+  .filter((file) => !file.endsWith('localDb.ts'))
+  .filter((file) => /objectStore\([^)]*\)\s*\.\s*(put|add)\s*\(/.test(readFileSync(file, 'utf8')))
+  .map((file) => relative(PROJECT_ROOT, file))
+check('除 localDb.ts 外没有绕过契约校验的直接写库', directWrites, [])
+
 // ---- 界面层不得直接碰数据库：页面只能经 src/services/ ----
 function walk(dir) {
   const found = []
@@ -95,10 +118,21 @@ function walk(dir) {
 const uiFiles = [...walk(join(PROJECT_ROOT, 'src/app')), ...walk(join(PROJECT_ROOT, 'src/features'))]
 check('界面层存在可扫描的源文件', uiFiles.length > 0, true)
 
+/**
+ * 取出一份源码里所有「值导入」的模块路径。
+ *
+ * `import type ...` 编译后被完全擦除，不产生运行时耦合，所以先排除；剩下的才是真会执行的依赖。
+ * 这里不能用逐行过滤：多行 type 导入的 `from '...'` 落在单独一行上，逐行过滤会漏掉它。
+ */
+function runtimeImportPaths(source) {
+  return [...source.matchAll(/import\s+(?!type\b)[^'"]*?from\s*['"]([^'"]+)['"]/g)].map((match) => match[1])
+}
+
 const dbLeaks = uiFiles
   .filter((file) => {
     const source = readFileSync(file, 'utf8')
-    return /from\s+['"][^'"]*services\/local\/localDb['"]/.test(source) || /\bindexedDB\b/.test(source)
+    const hitsLocalDb = runtimeImportPaths(source).some((path) => /(^|\/)localDb$/.test(path))
+    return hitsLocalDb || /\bindexedDB\b/.test(source)
   })
   .map((file) => relative(PROJECT_ROOT, file))
 check('界面层没有直接引用 localDb / indexedDB', dbLeaks, [])

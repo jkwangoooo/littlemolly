@@ -14,6 +14,7 @@ import {
   setOptionActive,
 } from '../../services/local/optionService'
 import { AccountCard } from './components/AccountCard'
+import { BackupCard } from './components/BackupCard'
 import { OptionEditor } from './components/OptionEditor'
 import { OptionSection, type OptionGroup } from './components/OptionSection'
 import { BottomNav } from '../../shared/components/BottomNav'
@@ -210,6 +211,8 @@ export function PreferencesScreen({
               onDelete={sectionProps.onDelete('exercise')}
               busy={busy}
             />
+
+            <BackupCard busy={busy} runSave={runSave} onImported={reload} />
 
             <AccountCard email={email} onSignOut={() => void signOut()} />
           </>

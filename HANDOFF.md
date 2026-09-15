@@ -11,19 +11,21 @@
 - **L2 已完成（2026-09-14），可进入 L3。** 完成报告见 `docs/09-L2-completion-report.md`：三餐升级为早/中/晚多选食物 + 备注（`daily_meals`）；补剂从模板生成每日实例、可逐项勾选执行、自定义行可增删（`daily_supplements`）；健身升级为多选项目 + 备注（`daily_exercises`）；全部保存时写入名称快照、改名/停用选项不改写历史；复制昨天只带内容与快照不带状态；`DB_VERSION` 2→3（共 10 张表），迁移含 `backfillSnapshots` 将旧自由文本转为快照项。验收：`npm run typecheck/lint/build` 通过、`check:local-data` 21/21 通过、`verify:local` **66/66** 通过（含 v2→v3 冷升级）。
 - **L3 已完成（2026-09-14），可进入 L4。** 完成报告见 `docs/10-L3-completion-report.md`：正常周六/周日自动补齐「拖地/洗衣」两个每日实例（`routine_tasks` 表）、仅勾选完成；临时不上班（工作日人工切休息日，`mode_override=true`）不自动带家务；休息日保留补剂/健身/自定义事项、隐藏衣服/三餐/晨间等工作日准备项；休息日切工作日保留二次确认；`DB_VERSION` 3→4（共 11 张表）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **74/74** 通过（含 v3→v4 冷升级）。
 - **L4 已完成（2026-09-15），可进入 L5。** 完成报告见 `docs/11-L4-completion-report.md`：底部固定导航「今日/本周/选项」上线（`BottomNav` 共享组件，三页统一接线，移除各页顶部重复主入口）；「执行今天/准备明天」保留为日页顶部页签；BottomSheet/ConfirmDialog 打开时锁定 body 滚动、关闭恢复（滚动位置不漂移）；三餐/补剂/健身已是带勾选选项行（L2 达标）；桌面宽屏布局保留（导航与内容区同宽居中）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **77/77** 通过（两次连续），截图人工核对手机/桌面观感。
+- **L5 已完成（2026-09-15），可进入 L6。** 完成报告见 `docs/12-L5-completion-report.md`：写入前字段契约校验（`recordSchemas.ts`，`put` / `runTransaction` 入库前 `assertRecord`，坏数据落不了库）；跨仓库原子事务 `runTransaction`（导入备份与复制昨天「要么全生效要么全不生效」）；异常恢复四处加固（`onblocked` 明确报错 / 打开失败清缓存可重试 / `onversionchange` 让出连接 / 请求级错误 `guardRequest` 上抛，修掉「写失败被当成成功」）；本地数据导出与导入（选项页「本地数据备份」卡片，检查 → 二次确认 → 单事务替换当前账号数据，`user_id` 重映射支持换设备搬家，格式错误一条不写，空备份拒绝）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 27/27、`check:backup` **55/55**（新建）、`verify:local` **94/94** 通过（含备份往返、非法备份不覆盖、运行时契约守卫生效、清空站点数据后换设备搬家）。
 - 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）→ `cd61dfc`（L0 完成报告）；L1 的提交为 `6408eb0`（选项管理与本地数据结构）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
 ## 当前待办
 
-1. 进入 **L5：本地可靠性、备份与回归**。增加 schema 校验、事务封装、重复写入和异常恢复处理；提供本地数据导出/导入（导入前确认，格式错误不得覆盖现有数据）；补齐核心规则测试（日期、历史只读、模式切换、准备进度、实例化、复制和账号隔离）；完成桌面/手机、多日期、刷新、清空缓存后的行为回归。
-   - 迁移机制已在 L0–L3 落地为显式版本表（`localDb.ts` 的 `STORES` / `MIGRATIONS`，当前 `DB_VERSION = 4`、11 张表），L5 的 schema 校验与异常恢复在此之上加固。
-   - L4 遗留：真机软键盘顶起与 iOS 安全区（`env(safe-area-inset-bottom)`）待真机验收时人工确认/补齐。
-2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。
-3. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。（L2/L3 已完成此步骤，后续阶段若再新增表需继续遵循。）
-4. R9 已在 L1 修复并纳入验收断言，不再挂账。
-5. L1-L5 完成前不恢复云端迁移工作。
+1. 进入 **L6：上线迁移准备**。为本地服务实现等价的 Supabase 适配器（不改页面业务接口），把本地对象仓库映射到云端表、RLS 与历史日期约束，编写本地数据到云端的迁移和冲突处理方案，最后再做登录、跨设备同步、断网失败、RLS 双账号和真实上线验收。
+   - L6 进入条件（`docs/05`）已满足：L0–L5 全部完成，本地数据模型与页面行为稳定（`DB_VERSION = 4`、11 张表自 L3 起未变）。
+   - 备份文件格式（`backupFormat.ts`）与字段契约（`recordSchemas.ts`）是现成的映射对照表：11 个本地仓库 ↔ 云端表，字段名与类型已全部显式列出。
+   - L4/L5 遗留：真机软键盘顶起与 iOS 安全区（`env(safe-area-inset-bottom)`）待真机验收时人工确认/补齐。
+2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`、`npm run check:backup`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。
+3. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。**同时必须在 `recordSchemas.ts` 的 `RECORD_SCHEMAS` 补该仓库字段契约**，否则 `put` 会在运行时抛「未定义字段」；`check:backup` 会比对仓库清单与契约同源。
+4. 改动 `localDb` 写入口径（`put` / `remove` / `runTransaction`）时注意：请求级错误必须经 `guardRequest` 上抛，只挂 `transaction.onerror` 会让「写失败」被当成成功。
+5. R9 已在 L1 修复并纳入验收断言，不再挂账。
 
 ## 已有文档
 

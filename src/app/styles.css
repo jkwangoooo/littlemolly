@@ -197,6 +197,18 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .account-line { margin: 0; font-size: 14px; }
 .account-body { margin: 0; font-size: 13px; }
 
+/* 备份卡片：文本域是导出结果与导入输入的同一处，等宽字体便于人眼核对内容。 */
+.backup-card { border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.backup-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: pre;
+}
+.backup-file { flex: 1 1 220px; }
+.backup-file input[type="file"] { padding: 7px 10px; font-weight: 400; }
+
 /* ---------- 8 周视图 ---------- */
 .week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 

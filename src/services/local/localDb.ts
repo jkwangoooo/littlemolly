@@ -1,5 +1,8 @@
+import { assertRecord } from './recordSchemas'
+
 const DB_NAME = 'happy-little-molly-local'
-const DB_VERSION = 4
+/** 当前结构版本。备份文件里会记下它，便于以后判断「这份备份是哪一代的库导出的」。 */
+export const DB_VERSION = 4
 
 /**
  * 本地对象仓库契约。新增仓库时必须同时做四件事，缺一不可：
@@ -155,6 +158,10 @@ function openDatabase(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
     request.onerror = () => reject(request.error ?? new Error('无法打开本地数据库。'))
+    // 另一个标签页还占用着旧版本连接时，升级会被阻塞。不挂这个回调就只能干等，
+    // 界面会一直停在「正在保存」而看不出原因。
+    request.onblocked = () =>
+      reject(new Error('本地数据库正被其他标签页占用，请关闭其他窗口后重试。'))
 
     request.onupgradeneeded = (event) => {
       const database = request.result
@@ -176,6 +183,13 @@ function openDatabase(): Promise<IDBDatabase> {
           console.warn(`对象仓库 ${existing} 不在 STORES 清单中，请检查迁移表。`)
         }
       }
+      // 别处（另一个标签页或新版本代码）要求升级时，只有主动让出连接，
+      // 对方才不会被 onblocked 卡住。让出后本页下次读写会重新打开数据库，
+      // 走一遍迁移，因此中间不会有「读到旧结构」的窗口期。
+      database.onversionchange = () => {
+        database.close()
+        databasePromise = null
+      }
       resolve(database)
     }
   })
@@ -183,14 +197,38 @@ function openDatabase(): Promise<IDBDatabase> {
 
 let databasePromise: Promise<IDBDatabase> | null = null
 
+/**
+ * 取数据库连接。
+ *
+ * 失败时必须清掉缓存：否则一次打开失败（例如升级被其他标签页阻塞）之后，
+ * 后续每次读写都会拿到同一个已经 rejected 的 promise，页面从此永远报同一个错。
+ * 清掉之后下一次调用会重新尝试打开，用户关掉别的标签页再点「重试」就能恢复。
+ */
 function database(): Promise<IDBDatabase> {
-  databasePromise ??= openDatabase()
+  databasePromise ??= openDatabase().catch((reason: unknown) => {
+    databasePromise = null
+    throw reason
+  })
   return databasePromise
 }
 
 /** 生成记录主键。 */
 export function newId(): string {
   return createId()
+}
+
+/**
+ * 写入请求的失败必须被监听到。
+ *
+ * 只挂 `transaction.onerror` 是不够的：仓储层的类型或约束错误先在**请求**上触发，
+ * 若没人接，浏览器不会把它传给事务，事务照样 complete——「写失败却被当成成功」。
+ * 这里把请求错误转成 reject，让调用方看到真实原因。
+ */
+function guardRequest(request: IDBRequest, fallback: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    request.onerror = () => reject(request.error ?? new Error(fallback))
+    request.onsuccess = () => resolve()
+  })
 }
 
 export async function getAll<T>(storeName: LocalStore): Promise<T[]> {
@@ -202,12 +240,18 @@ export async function getAll<T>(storeName: LocalStore): Promise<T[]> {
   })
 }
 
+/**
+ * 写入一条记录。入库前先过一遍字段契约（L5）：缺字段、类型错、枚举越界、
+ * 多出未定义字段都会被拒，避免坏数据落库后界面才崩。
+ */
 export async function put<T extends { id: string }>(storeName: LocalStore, value: T): Promise<T> {
+  assertRecord(storeName, value)
   const db = await database()
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(storeName, 'readwrite')
     transaction.onerror = () => reject(transaction.error ?? new Error('写入本地数据库失败。'))
-    transaction.objectStore(storeName).put(value)
+    transaction.onabort = () => reject(transaction.error ?? new Error('写入本地数据库被中止。'))
+    void guardRequest(transaction.objectStore(storeName).put(value), '写入本地数据库失败。').catch(reject)
     transaction.oncomplete = () => resolve(value)
   })
 }
@@ -217,7 +261,54 @@ export async function remove(storeName: LocalStore, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(storeName, 'readwrite')
     transaction.onerror = () => reject(transaction.error ?? new Error('删除本地数据失败。'))
-    transaction.objectStore(storeName).delete(id)
+    transaction.onabort = () => reject(transaction.error ?? new Error('删除本地数据被中止。'))
+    void guardRequest(transaction.objectStore(storeName).delete(id), '删除本地数据失败。').catch(reject)
     transaction.oncomplete = () => resolve()
+  })
+}
+
+// ---------------------------------------------------------------- 跨仓库事务
+
+/** 一次事务里要做的写入；函数体内只允许同步发起请求，不要 await 别的东西。 */
+export type TransactionWork = {
+  put?: Array<{ store: LocalStore; value: { id: string } }>
+  remove?: Array<{ store: LocalStore; id: string }>
+  clear?: LocalStore[]
+}
+
+/**
+ * 把多个仓库的写入放进同一个事务：要么全部生效，要么全部不生效。
+ *
+ * 为什么需要它：单个 put 各自开事务时，一次「复制昨天」要跨 6 张表写几十条，
+ * 中途失败会留下写了一半的目标日；导入备份更是必须整体成功或整体回滚。
+ *
+ * 注意：事务是「按需提交」的——中途一旦 await 了事务外的 promise，事务就会先提交，
+ * 因此这里的写入必须在同一个同步段里全部发出。查询请先在事务外做完。
+ */
+export async function runTransaction(work: TransactionWork): Promise<void> {
+  const names = [
+    ...new Set([...(work.clear ?? []), ...(work.put ?? []).map((item) => item.store), ...(work.remove ?? []).map((item) => item.store)]),
+  ]
+  if (!names.length) return
+
+  for (const item of work.put ?? []) assertRecord(item.store, item.value)
+
+  const db = await database()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(names, 'readwrite')
+    const failure = new Error('写入本地数据库失败。')
+    transaction.onerror = () => reject(transaction.error ?? failure)
+    transaction.onabort = () => reject(transaction.error ?? failure)
+    transaction.oncomplete = () => resolve()
+
+    for (const storeName of work.clear ?? []) {
+      void guardRequest(transaction.objectStore(storeName).clear(), '清空本地数据失败。').catch(reject)
+    }
+    for (const item of work.remove ?? []) {
+      void guardRequest(transaction.objectStore(item.store).delete(item.id), '删除本地数据失败。').catch(reject)
+    }
+    for (const item of work.put ?? []) {
+      void guardRequest(transaction.objectStore(item.store).put(item.value), '写入本地数据库失败。').catch(reject)
+    }
   })
 }

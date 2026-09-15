@@ -180,6 +180,8 @@ async function connect(port) {
 const stamp = Date.now()
 const EMAIL = `verify-${stamp}@local.test`
 const EMAIL_B = `verify-b-${stamp}@local.test`
+/** 清空站点数据之后注册的第三个账号：用来验证「换设备：新账号 + 导入备份」能完整搬家。 */
+const EMAIL_C = `verify-c-${stamp}@local.test`
 const PASSWORD = 'verify123'
 /** 三餐多选：早餐选两项、午餐选一项，用来验证「一餐多项」而不是单个自由文本。 */
 const BREAKFAST_FOODS = ['燕麦牛奶', '水煮蛋']
@@ -193,6 +195,8 @@ const TASK_NAME = '测试事项'
 const FOOD_NAME = '测试专属食物'
 const FOOD_RENAMED = '测试食物已改名'
 const TEMP_NAME = '临时待删食物'
+/** 备份往返里临时新增的一条食物，导入后应当消失。 */
+const BACKUP_EXTRA_FOOD = '备份往返临时食物'
 const SUPPLEMENT_NAME = '测试补剂'
 const DB_NAME = 'happy-little-molly-local'
 /** v1 只包含这四张表；升级到最新版后必须补上后续三张与三张（选项、每日内容）再补一张（家务）且旧数据不丢。 */
@@ -315,7 +319,14 @@ window.__m = {
     return after && after.checked ? 'CHECKED' : 'UNCHECKED';
   },
 
-  setValue: (el, value) => { const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set; setter.call(el, value); el.dispatchEvent(new Event('input', { bubbles: true })) },
+  // 备份文本域是 textarea，它的 value setter 在 HTMLTextAreaElement.prototype 上，
+  // 用 input 的那份会抛 Illegal invocation。这里按标签选原型，两种元素都能设值。
+  setValue: (el, value) => {
+    const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  },
   fill: (labelText, value) => {
     const label = [...document.querySelectorAll('label')].find((item) => item.textContent.includes(labelText));
     if (!label) return 'NO_LABEL:' + labelText;
@@ -368,21 +379,55 @@ window.__m = {
     return 'OK';
   },
   accountText: () => { const card = document.querySelector('.account-card'); return card ? card.innerText : 'NO_ACCOUNT_CARD'; },
-  dbSchema: () => new Promise((resolve, reject) => {
-    const request = indexedDB.open(${JSON.stringify(DB_NAME)});
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const db = request.result;
-      const names = [...db.objectStoreNames].sort();
-      const indexes = {};
-      for (const name of names) {
-        const store = db.transaction(name).objectStore(name);
-        indexes[name] = [...store.indexNames].sort();
-      }
-      resolve(JSON.stringify({ version: db.version, names, indexes }));
-      db.close();
-    };
-  }),
+
+  // ---- L5：本地备份卡片 ----
+  backupSection: () => document.querySelector('.backup-card'),
+  backupBox: () => document.querySelector('.backup-text'),
+  backupText: () => { const box = window.__m.backupBox(); return box ? box.value : 'NO_BACKUP_BOX'; },
+  backupNote: () => { const el = document.querySelector('[data-backup-note]'); return el ? el.textContent.trim() : ''; },
+  backupError: () => { const el = document.querySelector('[data-backup-error]'); return el ? el.textContent.trim() : ''; },
+  backupImported: () => { const el = document.querySelector('[data-backup-imported]'); return el ? el.textContent.trim() : ''; },
+  backupModalOpen: () => !!document.querySelector('.confirm-modal'),
+  backupModalText: () => { const el = document.querySelector('.confirm-modal'); return el ? el.innerText.replace(/\\n+/g, ' ').trim() : ''; },
+  backupPaste: (value) => { const box = window.__m.backupBox(); if (!box) return 'NO_BACKUP_BOX'; window.__m.setValue(box, value); return 'OK'; },
+  backupClear: () => { const button = [...document.querySelectorAll('.backup-card button')].find((item) => item.textContent.trim() === '清空输入'); if (!button) return 'NO_BUTTON'; button.click(); return 'OK'; },
+  /** 卡片内按钮：避免与页面其它位置的同名按钮混淆。 */
+  backupClick: (label) => {
+    const card = window.__m.backupSection();
+    if (!card) return 'NO_CARD';
+    const button = [...card.querySelectorAll('button')].find((item) => item.textContent.trim() === label);
+    if (!button) return 'NO_BUTTON:' + label;
+    if (button.disabled) return 'DISABLED:' + label;
+    button.click();
+    return 'OK';
+  },
+
+  /**
+   * 读取库结构。库不存在时**绝不能**用无版本号的 open 去「打探」——那样会凭空造出一个空的 v1 库，
+   * 应用随后按最新版本打开时 oldVersion=1，第 1 号迁移被跳过，首批仓库再也建不出来。
+   * 所以先用 indexedDB.databases() 判断存在性，不存在就如实返回，不碰数据库。
+   */
+  dbSchema: async () => {
+    const listed = typeof indexedDB.databases === 'function' ? await indexedDB.databases() : null;
+    if (listed && !listed.some((entry) => entry.name === ${JSON.stringify(DB_NAME)})) {
+      return JSON.stringify({ version: 0, names: [], indexes: {}, exists: false });
+    }
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(${JSON.stringify(DB_NAME)});
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const names = [...db.objectStoreNames].sort();
+        const indexes = {};
+        for (const name of names) {
+          const store = db.transaction(name).objectStore(name);
+          indexes[name] = [...store.indexNames].sort();
+        }
+        resolve(JSON.stringify({ version: db.version, names, indexes, exists: true }));
+        db.close();
+      };
+    });
+  },
 };
 'ready'
 `
@@ -400,6 +445,8 @@ async function main() {
   const userDataDir = join(tmpdir(), `molly-verify-${stamp}`)
   let child = null
   let devServer = null
+  /** 第一个账号导出的备份文本，留到清空站点数据之后做「换设备搬家」验证。 */
+  let BACKUP_TEXT = ''
 
   try {
     let appUrl = EXPLICIT_APP_URL
@@ -1364,6 +1411,61 @@ async function main() {
       supplement.exercise.join(','))
     await shot('05-选项页-补剂分组')
 
+    // 16b. 备份（L5）：备份 → 改数据 → 导入还原，验证「导出可恢复」这条验收线
+    //      选择留在卡片里；这里用导出的文本做一次真实往返，并确认改过的数据被还原。
+    const backupRoundTrip = JSON.parse(await evaluate(`
+      (async () => {
+        const out = {};
+        window.__m.backupClick('生成备份');
+        await window.__m.wait(900);
+        out.text = window.__m.backupText();
+        out.note = window.__m.backupNote();
+
+        // 改一下现有数据（新增一条食物），让备份与当前状态出现可见差异
+        window.__m.clickSectionContains('food', '添加食物');
+        await window.__m.wait(700);
+        window.__m.fill('名称', ${JSON.stringify(BACKUP_EXTRA_FOOD)});
+        await window.__m.wait(150);
+        window.__m.clickText('添加');
+        await window.__m.wait(1300);
+        out.afterEdit = window.__m.optionNames('food');
+
+        // 重新粘回备份文本（改数据不会清空卡片里的文本，但显式重贴更贴近用户操作）
+        window.__m.backupPaste(out.text);
+        await window.__m.wait(300);
+        out.inspectResult = window.__m.backupClick('检查这份备份');
+        await window.__m.wait(800);
+        out.modalText = window.__m.backupModalText();
+        out.modalOpen = window.__m.backupModalOpen();
+        window.__m.clickText('确认导入并替换');
+        await window.__m.wait(2600);
+        out.restored = window.__m.optionNames('food');
+        out.restoredStatus = window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)});
+        out.imported = window.__m.backupImported();
+        out.status = window.__m.text().split('\\n').find((line) => line.includes('本地保存状态')) || '';
+        return JSON.stringify(out);
+      })()
+    `))
+    record('导出后修改数据，导入备份即还原',
+      backupRoundTrip.afterEdit.includes(BACKUP_EXTRA_FOOD) &&
+        !backupRoundTrip.restored.includes(BACKUP_EXTRA_FOOD) &&
+        JSON.stringify(backupRoundTrip.restored) === JSON.stringify([...SEED_FOODS.slice(0, 4), FOOD_RENAMED, SEED_FOODS[4]]),
+      `改后=${backupRoundTrip.afterEdit.join(',')} / 还原后=${backupRoundTrip.restored.join(',')}`)
+    record('导入前必须二次确认且说明是「替换」',
+      backupRoundTrip.modalText.includes('导入会用备份内容替换当前账号的全部数据') &&
+        backupRoundTrip.modalText.includes('确认导入并替换'),
+      firstLine(backupRoundTrip.modalText, 90))
+    record('导入摘要列出备份里的内容与来源账号',
+      backupRoundTrip.modalText.includes('共') && backupRoundTrip.modalText.includes(EMAIL),
+      firstLine(backupRoundTrip.modalText, 90))
+    record('导入后停用状态一并还原',
+      backupRoundTrip.restoredStatus === '已停用',
+      backupRoundTrip.restoredStatus)
+    record('导入结果显示条数口径且保存状态落到已保存',
+      backupRoundTrip.imported.includes('已替换为备份内容') && backupRoundTrip.status.includes('已保存'),
+      `${firstLine(backupRoundTrip.imported, 60)} / ${backupRoundTrip.status.trim()}`)
+    BACKUP_TEXT = backupRoundTrip.text
+
     // 17. 选项：刷新后仍在（本地持久化）
     await goto()
     await evaluate(`window.__m.clickText('选项')`)
@@ -1387,6 +1489,73 @@ async function main() {
     record('刷新后补剂仍按早 / 中 / 晚分组',
       JSON.stringify(optionReload.groups) === JSON.stringify(['早', '中', '晚']),
       optionReload.groups.join(','))
+
+    // 17b. 备份（L5）：生成 → 校验非法文本不覆盖 → 运行时契约守卫
+    //      「格式错误不得覆盖现有数据」是 docs/05 L5 的硬性要求，这里在真浏览器里验一遍：
+    //      坏文本连确认框都不该出现，更不该有任何写入。
+    const backupFirst = JSON.parse(await evaluate(`
+      (async () => {
+        const out = {};
+        window.__m.backupClick('生成备份');
+        await window.__m.wait(900);
+        out.text = window.__m.backupText();
+        out.note = window.__m.backupNote();
+        out.hasCard = !!window.__m.backupSection();
+        // 记下导入前的选项清单，稍后用来证明坏文本没写进任何东西
+        out.before = window.__m.optionNames('food');
+
+        // 粘贴一段「看起来像 JSON、但格式标记不对」的文本
+        window.__m.backupPaste('{"app": "happy-little-molly", "format": "csv"}');
+        await window.__m.wait(300);
+        out.inspectDisabled = window.__m.backupClick('检查这份备份');
+        await window.__m.wait(700);
+        out.modalAfterBad = window.__m.backupModalOpen();
+        out.errorText = window.__m.backupError();
+        out.after = window.__m.optionNames('food');
+
+        // 空输入时按钮本身就该禁用
+        window.__m.backupClear();
+        await window.__m.wait(500);
+        out.inspectWhenEmpty = window.__m.backupClick('检查这份备份');
+
+        // 运行时契约守卫：坏记录必须被 assertRecord 拦下（不只靠静态检查）
+        try {
+          const schemas = await import('/src/services/local/recordSchemas.ts');
+          const broken = { id: '', user_id: 'x', name: '缺字段的选项' };
+          try {
+            schemas.assertRecord('food_options', broken);
+            out.guard = 'NO_THROW';
+          } catch (reason) {
+            out.guard = (reason && reason.code) + '|' + String(reason && reason.message);
+          }
+        } catch (reason) {
+          out.guard = 'IMPORT_FAILED|' + String(reason && reason.message);
+        }
+        return JSON.stringify(out);
+      })()
+    `))
+    record('选项页渲染本地备份卡片并能生成备份',
+      backupFirst.hasCard === true && backupFirst.text.length > 200 && backupFirst.note.includes('共'),
+      `${backupFirst.text.length} 字符 / 提示「${backupFirst.note}」`)
+    record('生成的备份带格式标记与来源账号',
+      backupFirst.text.includes('"format": "local-backup"') &&
+        backupFirst.text.includes(`"email": ${JSON.stringify(EMAIL)}`),
+      firstLine(backupFirst.text.split('\n').slice(0, 8).join(' '), 100))
+    record('粘贴非法备份点「检查」不弹确认框',
+      backupFirst.inspectDisabled === 'OK' && backupFirst.modalAfterBad === false,
+      `点击结果=${backupFirst.inspectDisabled}, 弹框=${backupFirst.modalAfterBad}`)
+    record('非法备份给出可读错误且不改动现有数据',
+      backupFirst.errorText.includes('这份备份不能导入') &&
+        JSON.stringify(backupFirst.after) === JSON.stringify(backupFirst.before),
+      firstLine(backupFirst.errorText, 70))
+    record('输入为空时「检查这份备份」按钮禁用',
+      backupFirst.inspectWhenEmpty === 'DISABLED:检查这份备份',
+      backupFirst.inspectWhenEmpty)
+    record('运行时写入契约拦下坏记录',
+      String(backupFirst.guard).startsWith('local_record_invalid') &&
+        String(backupFirst.guard).includes('主键 id 不能为空'),
+      firstLine(backupFirst.guard, 70))
+    await shot('05b-选项页-备份卡片')
 
     // 18. 选项页视口
     for (const [label, width, height] of [
@@ -1452,6 +1621,92 @@ async function main() {
     record('第二个账号看不到第一个账号的选项',
       !allSecondAccountNames.includes(FOOD_RENAMED) && !allSecondAccountNames.includes(SUPPLEMENT_NAME) && !allSecondAccountNames.includes(TEMP_NAME))
     record('账号卡显示当前登录邮箱', secondAccount.account.includes(EMAIL_B), firstLine(secondAccount.account, 60))
+
+    // 21b. 清空站点数据（等同「清理浏览器数据」）后必须回到登录页，且库真的空了；
+    //      重新注册一个新账号并导入之前导出的备份，数据应完整回来——这是备份存在的唯一理由。
+    const ORIGIN = new URL(appUrl).origin
+    await cdp.send('Storage.clearDataForOrigin', { origin: ORIGIN, storageTypes: 'all' })
+    await goto()
+    // 清空动作发生在旧页面还活着的时候，旧页面的连接被强拆可能报出已被导航掉的噪音；
+    // 那不是应用行为。从这里开始重新计数，后面的控制台检查仍然覆盖「清空之后」的完整流程。
+    cdp.events.length = 0
+    const afterWipe = await text()
+    record('清空站点数据后回到登录页',
+      afterWipe.includes('邮箱') && afterWipe.includes('注册') && !afterWipe.includes('执行今天'),
+      firstLine(afterWipe, 70))
+
+    const wipedSchema = JSON.parse(await evaluate(`(async () => { try { return await window.__m.dbSchema() } catch (reason) { return JSON.stringify({ error: String(reason) }) } })()`))
+    record('清空后本地库已不存在（或为空库）',
+      wipedSchema.exists === false || wipedSchema.names.length === 0,
+      wipedSchema.exists === false ? '库不存在（未被动过）' : `tables=${wipedSchema.names.join(',')}`)
+
+    await evaluate(`
+      (async () => {
+        window.__m.fill('邮箱', ${JSON.stringify(EMAIL_C)});
+        window.__m.fill('密码', ${JSON.stringify(PASSWORD)});
+        await window.__m.wait(200);
+        window.__m.clickText('注册');
+      })()
+    `)
+    await sleep(1800)
+    await evaluate(`window.__m.clickText('选项')`)
+    await sleep(1200)
+    const freshAccount = JSON.parse(await evaluate(`
+      JSON.stringify({ food: window.__m.optionNames('food'), account: window.__m.accountText() })
+    `))
+    record('新账号拿到的是全新示例选项而不是旧数据',
+      JSON.stringify(freshAccount.food) === JSON.stringify(SEED_FOODS) && freshAccount.account.includes(EMAIL_C),
+      firstLine(freshAccount.account, 70))
+
+    const restoredByImport = JSON.parse(await evaluate(`
+      (async () => {
+        const out = {};
+        window.__m.backupPaste(${JSON.stringify(BACKUP_TEXT)});
+        await window.__m.wait(400);
+        window.__m.backupClick('检查这份备份');
+        await window.__m.wait(900);
+        out.modal = window.__m.backupModalOpen();
+        window.__m.clickText('确认导入并替换');
+        await window.__m.wait(2800);
+        out.food = window.__m.optionNames('food');
+        out.foodStatus = window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)});
+        out.supplement = window.__m.optionNames('supplement');
+        out.imported = window.__m.backupImported();
+        return JSON.stringify(out);
+      })()
+    `))
+    record('换设备场景：新账号导入备份后选项完整回来',
+      restoredByImport.modal === true &&
+        JSON.stringify(restoredByImport.food) === JSON.stringify([...SEED_FOODS.slice(0, 4), FOOD_RENAMED, SEED_FOODS[4]]) &&
+        restoredByImport.foodStatus === '已停用' &&
+        restoredByImport.supplement.includes(SUPPLEMENT_NAME),
+      `食物=${restoredByImport.food.join(',')} / 状态=${restoredByImport.foodStatus}`)
+    record('导入结果提示写明「已替换为备份内容」',
+      restoredByImport.imported.includes('已替换为备份内容'),
+      firstLine(restoredByImport.imported, 80))
+
+    // 导入回来的不只是选项：日计划本身也要能看见内容。
+    // 断言只读「准备区」文本——选项页刚导完、刚 reload 过，全页文本里本来就有这些名字，
+    // 拿全页文本去断言等于恒真。准备区的三餐摘要与补剂摘要来自这一天已保存的计划，
+    // 它们出现才说明备份里的计划真的回到了界面上。
+    await evaluate(`window.__m.clickText('今日')`)
+    await sleep(1000)
+    await evaluate(`window.__m.clickText('准备明天')`)
+    await sleep(1800)
+    const restoredPlan = JSON.parse(await evaluate(`
+      JSON.stringify({
+        prep: (() => {
+          const list = document.querySelector('.prep-list');
+          return list ? list.innerText.replace(/\\n+/g, ' · ').trim() : 'NO_PREP_LIST';
+        })(),
+        mode: window.__m.modeLabel(),
+      })
+    `))
+    record('导入后日计划内容也一并恢复',
+      restoredPlan.prep.includes('燕麦牛奶') &&
+        restoredPlan.prep.includes('维生素 D') &&
+        restoredPlan.prep.includes('健身安排已决定'),
+      firstLine(restoredPlan.prep, 220))
 
     // 22. 控制台
     const noisy = cdp.events.filter((event) => {
