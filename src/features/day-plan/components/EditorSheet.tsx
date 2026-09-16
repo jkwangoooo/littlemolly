@@ -10,7 +10,7 @@ import type {
 } from '../../../shared/types/dayPlan'
 import { MEAL_TYPES } from '../../../shared/types/dayPlan'
 import type { ExerciseInput, MealInput, SupplementInput } from '../../../services/api/dayPlanService'
-import { BottomSheet } from '../../../shared/components/BottomSheet'
+import { EditorDialog } from '../../../shared/components/EditorDialog'
 import {
   PANEL_ADD_TASK_TITLE,
   PANEL_LOADING_TEXT,
@@ -113,10 +113,16 @@ export function EditorSheet({
 
   const needsOptions = kind === 'meals' || kind === 'supplements' || kind === 'exercise'
   const title = kind === 'task' && !task ? PANEL_ADD_TASK_TITLE : PANEL_TITLE[kind]
+  /**
+   * 自定义事项只有三个短字段，用居中卡片（更聚焦，视线不必甩到屏幕最下方）；
+   * 三餐 / 补剂 / 健身 / 晨间内容多，继续用底部抽屉，长表单在抽屉里更舒展。
+   */
+  const placement = kind === 'task' ? 'center' : 'bottom'
 
   return (
-    <BottomSheet
+    <EditorDialog
       title={title}
+      placement={placement}
       saveDisabled={!writable}
       onSave={() => onSave(buildPayload())}
       onCancel={onCancel}
@@ -185,6 +191,6 @@ export function EditorSheet({
           ) : null}
         </>
       ) : null}
-    </BottomSheet>
+    </EditorDialog>
   )
 }

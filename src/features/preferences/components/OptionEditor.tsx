@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { OptionKind, SupplementPeriod } from '../../../shared/types/options'
 import { SUPPLEMENT_PERIODS } from '../../../shared/types/options'
-import { BottomSheet } from '../../../shared/components/BottomSheet'
+import { EditorDialog } from '../../../shared/components/EditorDialog'
 import { OPTION_CREATE_TITLE, SUPPLEMENT_PERIOD_LABEL } from '../preferencesLabels'
 
 /**
@@ -27,7 +27,7 @@ export function OptionEditor({
   const [period, setPeriod] = useState<SupplementPeriod>(initialPeriod)
 
   return (
-    <BottomSheet
+    <EditorDialog
       title={mode === 'create' ? OPTION_CREATE_TITLE[kind] : '重命名选项'}
       saveLabel={mode === 'create' ? '添加' : '保存'}
       onSave={() => onSubmit(name, period)}
@@ -50,6 +50,6 @@ export function OptionEditor({
           </select>
         </label>
       ) : null}
-    </BottomSheet>
+    </EditorDialog>
   )
 }

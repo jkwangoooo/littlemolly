@@ -282,8 +282,34 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .week-status { margin-top: auto; color: #625d58; font-size: 12px; }
 
 /* ---------- 9 弹层 ---------- */
-.modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgb(36 33 31 / 38%); }
+/* 居中遮罩同时服务于确认框与居中编辑卡片。padding-bottom 让出软键盘：
+   iOS 弹键盘只缩小可视视口，遮罩若仍铺满布局视口，卡片下半部分会落在键盘底下。 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  padding-bottom: calc(20px + var(--vv-keyboard-inset, 0px));
+  background: rgb(36 33 31 / 38%);
+}
 .confirm-modal { width: min(100%, 440px); border-radius: 8px; padding: 24px; background: #fff; box-shadow: 0 12px 40px rgb(36 33 31 / 22%); }
+
+/* 居中编辑卡片（添加 / 编辑自定义事项）：字段少的短表单居中更聚焦。
+   与底部抽屉共享「标题固定 / 内容可滚 / 操作区钉底」结构，规则见 EditorDialog.tsx。 */
+.center-card {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 420px);
+  max-height: min(90vh, calc(var(--vv-height, 100vh) - 40px));
+  border-radius: 8px;
+  padding: 20px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgb(36 33 31 / 22%);
+}
+.center-card h2 { margin-bottom: 14px; }
+.center-card > .actions { flex: none; margin-top: 4px; border-top: 1px solid #eee7e3; padding-top: 12px; }
 
 /* 遮罩让出软键盘：iOS 弹键盘时只缩小可视视口，遮罩若仍铺满布局视口，
    抽屉底部（含保存按钮）就会落在键盘底下。--vv-keyboard-inset 由
@@ -303,10 +329,11 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 }
 /* 底部面板贴着屏幕底边弹出，最后一行的输入框同样要让开 Home 指示条。 */
 .bottom-sheet { padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
-/* 中间内容独立滚动，操作区因此永远钉在面板底部可见（见 BottomSheet.tsx 的注释）。 */
-.sheet-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+/* 中间内容独立滚动，操作区因此永远钉在弹层底部可见（见 EditorDialog.tsx 的注释）。
+   两种形态共用这一条。 */
+.editor-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .bottom-sheet > .actions { flex: none; margin-top: 4px; border-top: 1px solid #eee7e3; padding-top: 12px; }
-.bottom-sheet .field { margin-bottom: 12px; }
+.bottom-sheet .field, .center-card .field { margin-bottom: 12px; }
 .sheet-handle { width: 42px; height: 4px; margin: 0 auto 14px; border-radius: 2px; background: #c7bdb7; }
 
 /* ---------- 10 移动端 ---------- */
