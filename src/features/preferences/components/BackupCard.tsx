@@ -1,9 +1,8 @@
 import { useRef, useState, type ChangeEvent } from 'react'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { describeDataError } from '../../../shared/errors'
-import { backupFileName, describeBackupSummary, type BackupSummary } from '../../../services/local/backupFormat'
-import { exportBackup, importBackup, inspectBackup } from '../../../services/local/backupService'
-import type { LocalStore } from '../../../services/local/localDb'
+import { backupFileName, describeBackupSummary, type BackupStore, type BackupSummary } from '../../../services/api/backupFormat'
+import { exportBackup, importBackup, inspectBackup } from '../../../services/api/backupService'
 import {
   BACKUP_CLEAR_ACTION,
   BACKUP_COPIED_NOTE,
@@ -22,10 +21,11 @@ import {
   BACKUP_PASTE_PLACEHOLDER,
   BACKUP_STORE_LABEL,
   BACKUP_TITLE,
+  BACKUP_UNAVAILABLE_NOTE,
 } from '../preferencesLabels'
 
 /** 仓库名 → 中文名，供摘要展示。 */
-function labelOf(store: LocalStore): string {
+function labelOf(store: BackupStore): string {
   return BACKUP_STORE_LABEL[store]
 }
 
@@ -41,8 +41,40 @@ function labelOf(store: LocalStore): string {
  *
  * 保存状态不在这里重复显示：备份导入与选项写入共用页面顶部那条
  * 「本地保存状态：」，避免同一页出现两行状态、说法还可能不一致。
+ *
+ * 云端模式下整张卡片换成一句说明（`available` 为 false）：导出 / 导入操作的对象是
+ * 浏览器本地库，云端模式下它根本不存在，给一个必然报错的按钮比不给更糟。
  */
 export function BackupCard({
+  available,
+  busy,
+  runSave,
+  onImported,
+}: {
+  /** 本地后端专属能力；云端构建下为 false。 */
+  available: boolean
+  busy: boolean
+  runSave: (action: () => Promise<void>) => Promise<void>
+  /** 导入成功后由页面重新读取清单，让界面立刻反映备份内容。 */
+  onImported: () => Promise<void>
+}) {
+  if (!available) {
+    return (
+      <section className="option-section backup-card">
+        <div className="timeline-head">
+          <h3>{BACKUP_TITLE}</h3>
+        </div>
+        <p className="muted account-body" data-backup-unavailable>
+          {BACKUP_UNAVAILABLE_NOTE}
+        </p>
+      </section>
+    )
+  }
+  return <LocalBackupCard busy={busy} runSave={runSave} onImported={onImported} />
+}
+
+/** 本地后端下的完整备份卡片。 */
+function LocalBackupCard({
   busy,
   runSave,
   onImported,

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CustomTask, DayMode, DayPlan } from '../../shared/types/dayPlan'
 import { addDays, classifyDate, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
-import { signOut } from '../../services/local/authService'
+import { signOut } from '../../services/api/authService'
 import {
   copyYesterday,
   deleteCustomTask,
@@ -21,7 +21,7 @@ import {
   setRoutineCompleted,
   setSupplementCompleted,
   upsertDayPlan,
-} from '../../services/local/dayPlanService'
+} from '../../services/api/dayPlanService'
 import { WeekView } from '../week/WeekView'
 import { PreferencesScreen } from '../preferences/PreferencesScreen'
 import { CustomTaskList } from './components/CustomTaskList'

@@ -20,7 +20,7 @@ import {
   listMeals,
   listRoutineTasks,
   upsertDayPlan,
-} from '../../services/local/dayPlanService'
+} from '../../services/api/dayPlanService'
 
 export type DayPlanData = {
   plan: DayPlan | null

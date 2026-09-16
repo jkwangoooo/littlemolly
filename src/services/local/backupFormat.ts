@@ -43,6 +43,15 @@ export const BACKUP_META_STORES: LocalStore[] = ['users']
 
 export type BackupRecord = Record<string, unknown>
 
+/**
+ * 备份里出现的仓库名（界面与脚本用的别名）。
+ *
+ * 对外只暴露这个别名，不让界面直接依赖 `localDb` 的 `LocalStore`：
+ * 备份格式是两种后端共用的纯数据契约，界面不该因为「仓库名怎么定义」
+ * 而被绑到 IndexedDB 那一侧（L6 门面化的同一条理由）。
+ */
+export type BackupStore = LocalStore
+
 export interface BackupFile {
   app: string
   format: string

@@ -1,9 +1,9 @@
 # 幸福小Molly：开发交接
 
-## 当前交接摘要（2026-09-14）
+## 当前交接摘要（2026-09-16）
 
 - 当前开发方向是本地优先：浏览器 IndexedDB 是唯一业务数据源；Supabase、RLS、跨设备同步和上线迁移均后置，不是当前开发或验收的阻塞条件。
-- 当前技术基线是 React + TypeScript + Vite + IndexedDB。服务层已按职责拆为 `src/services/local/`（当前生效）与 `src/services/cloud/`（L6 前冻结、不得被页面引用）；页面只通过服务层读写。会话状态只在 `src/app/App.tsx` 持有，本地会话读写集中在 `src/services/local/sessionStore.ts`。
+- 当前技术基线是 React + TypeScript + Vite + IndexedDB。服务层自 L6 起分三层：`src/services/contracts.ts`（契约，函数名只写一遍、签名从本地实现取）、`src/services/api/`（门面，**页面只 import 这里**）、`src/services/local/`（默认实现）与 `src/services/cloud/`（Supabase 实现，与本地逐条等价，由 `cloud/parity.ts` 做编译期断言）。后端由构建模式决定：`npm run build` / `dev` 走本地，`npm run build:cloud` / `dev:cloud` 走云端（`vite.config.ts` 把 `@backend/*` 指到对应目录）。会话存储是后端无关的 `src/services/session.ts`（原 `services/local/sessionStore.ts` 已删除），会话状态只在 `src/app/App.tsx` 持有。
 - 日计划页已是「编排页 + 子组件 + hook」结构：`DayPlanScreen.tsx` 只做编排，展示在 `features/day-plan/components/`，数据读取在 `useDayPlanData`，保存状态机在 `useSaveRunner`；周视图状态判定集中在 `features/week/weekStatus.ts`。IndexedDB 的建表逻辑已收敛为按版本号递增的显式迁移表（`localDb.ts` 的 `STORES` / `MIGRATIONS`，当前 `DB_VERSION = 4`，共 11 张对象仓库）。选项页同样只做编排（`features/preferences/PreferencesScreen.tsx`），读写全部经 `services/local/optionService.ts`，示例数据在 `services/local/optionSeed.ts`；保存状态前缀与文案集中在 `shared/saveStatus.ts`，日计划页与选项页共用一套措辞。
 - 已实现本地注册、登录、退出、刷新恢复、Asia/Shanghai 日期、日期模式、固定周视图、工作日准备/执行、三餐多选食物与备注、补剂模板实例化与逐项勾选、健身多选项目与备注、自定义事项、休息日家务（拖地/洗衣）、复制昨天、历史只读和保存失败重试。
 - **L0 已完成（2026-09-14），可进入 L1。** 完成报告见 `docs/07-L0-completion-report.md`：六项任务全部落地，现有业务行为零回退，并首次具备可重复的自动化验收。L0-L6 的唯一任务范围、顺序和验收条件见 `docs/05-local-first-execution-plan.md`，接手评估与 L0 拆解见 `docs/06-takeover-assessment-and-plan.md`。
@@ -12,17 +12,19 @@
 - **L3 已完成（2026-09-14），可进入 L4。** 完成报告见 `docs/10-L3-completion-report.md`：正常周六/周日自动补齐「拖地/洗衣」两个每日实例（`routine_tasks` 表）、仅勾选完成；临时不上班（工作日人工切休息日，`mode_override=true`）不自动带家务；休息日保留补剂/健身/自定义事项、隐藏衣服/三餐/晨间等工作日准备项；休息日切工作日保留二次确认；`DB_VERSION` 3→4（共 11 张表）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **74/74** 通过（含 v3→v4 冷升级）。
 - **L4 已完成（2026-09-15），可进入 L5。** 完成报告见 `docs/11-L4-completion-report.md`：底部固定导航「今日/本周/选项」上线（`BottomNav` 共享组件，三页统一接线，移除各页顶部重复主入口）；「执行今天/准备明天」保留为日页顶部页签；BottomSheet/ConfirmDialog 打开时锁定 body 滚动、关闭恢复（滚动位置不漂移）；三餐/补剂/健身已是带勾选选项行（L2 达标）；桌面宽屏布局保留（导航与内容区同宽居中）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **77/77** 通过（两次连续），截图人工核对手机/桌面观感。
 - **L5 已完成（2026-09-15），可进入 L6。** 完成报告见 `docs/12-L5-completion-report.md`：写入前字段契约校验（`recordSchemas.ts`，`put` / `runTransaction` 入库前 `assertRecord`，坏数据落不了库）；跨仓库原子事务 `runTransaction`（导入备份与复制昨天「要么全生效要么全不生效」）；异常恢复四处加固（`onblocked` 明确报错 / 打开失败清缓存可重试 / `onversionchange` 让出连接 / 请求级错误 `guardRequest` 上抛，修掉「写失败被当成成功」）；本地数据导出与导入（选项页「本地数据备份」卡片，检查 → 二次确认 → 单事务替换当前账号数据，`user_id` 重映射支持换设备搬家，格式错误一条不写，空备份拒绝）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 27/27、`check:backup` **55/55**（新建）、`verify:local` **94/94** 通过（含备份往返、非法备份不覆盖、运行时契约守卫生效、清空站点数据后换设备搬家）。
+- **L6 阶段一已完成（2026-09-16），行为基线与 L5 完全一致（`verify:local` 94/94），阶段二待启动。** 完成报告见 `docs/14-L6-completion-report.md`：① **服务门面与后端切换**——新增 `services/contracts.ts`、`services/backend.ts`、`services/api/*`（authService / dayPlanService / optionService / backupService / backupFormat），页面导入从 `services/local/*` 换成 `services/api/*`，函数名与签名一字未改；后端由构建模式决定（`npm run build:cloud` / `dev:cloud`），两种后端产物互不污染（本地构建 0 命中 `supabase|PostgREST|GoTrueClient`，云端构建 0 命中 `indexedDB|happy-little-molly-local`）。② **云端适配器补全**——`cloud/authService`（Supabase Auth + profiles + 注册后播种示例）、`cloud/sessionStore` 语义并入后端无关的 `services/session.ts`、`cloud/optionService`、`cloud/dayPlanService`（从「只覆盖主记录」补到与本地逐条等价，含 meals/items/supplements/exercise items/custom tasks/routine tasks）、`cloud/backupService`（云端模式明确拒绝并说明，不假装成功）、`cloud/parity.ts`（编译期断言：云端少一个函数或签名不一致 `typecheck` 直接失败）。③ **云端 SQL 对齐**——新增只追加迁移 `database/migrations/202609160001_stage4_local_parity.sql`：补齐 7 张缺失表（三餐内容项 / 补剂实例 / 健身项 / 家务 / 三类选项）并全部启用 RLS、接上历史日期触发器与 `updated_at` 触发器，新增 `copy_yesterday_stage4` RPC 覆盖新增表，引用选项的外键一律 `on delete set null`（否则「删选项」会被历史计划挡住）。④ **迁移与冲突方案**——`docs/13-L6-cloud-migration-and-conflict-plan.md`（仓库→表映射、不变量落点、上行迁移需受控豁免历史日期触发器、冲突与断网策略、回滚）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 27/27、`check:backup` 55/55、`check:cloud-parity` **50/50**（新建）、`verify:local` **94/94**。
 - 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）→ `cd61dfc`（L0 完成报告）；L1 的提交为 `6408eb0`（选项管理与本地数据结构）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
 ## 当前待办
 
-1. 进入 **L6：上线迁移准备**。为本地服务实现等价的 Supabase 适配器（不改页面业务接口），把本地对象仓库映射到云端表、RLS 与历史日期约束，编写本地数据到云端的迁移和冲突处理方案，最后再做登录、跨设备同步、断网失败、RLS 双账号和真实上线验收。
-   - L6 进入条件（`docs/05`）已满足：L0–L5 全部完成，本地数据模型与页面行为稳定（`DB_VERSION = 4`、11 张表自 L3 起未变）。
-   - 备份文件格式（`backupFormat.ts`）与字段契约（`recordSchemas.ts`）是现成的映射对照表：11 个本地仓库 ↔ 云端表，字段名与类型已全部显式列出。
+1. 继续 **L6 阶段二：真实项目验收 + 上行迁移实现**。阶段一（服务门面 / 云端适配器 / 云端表结构对齐 / 迁移与冲突方案）已完成，见 `docs/14-L6-completion-report.md`。
+   - **需要凭据的前置**：本机没有真实 Supabase 项目（无 `.env.local`），且没有 PostgreSQL 可执行文件，因此 `stage4_local_parity.sql` 只做过静态检查、四个迁移也从未真实执行。这一步必须先有项目。
+   - 阶段二顺序建议：① 在真实项目按文件名顺序执行四个迁移并核对表 / 策略 / 触发器；② 关闭邮箱验证（或配好 SMTP），否则 `signUp` 拿不到会话（适配器会明确报错，不会假装登录成功）；③ 跑真实链路（注册 / 登录 / 刷新恢复 / 跨设备同步 / 断网失败 / RLS 双账号）；④ 实现上行迁移 RPC `import_local_backup`，关键点是历史日期触发器的受控豁免，方案见 `docs/13-L6-cloud-migration-and-conflict-plan.md` §5。
+   - 阶段一留口：云端模式下「本地数据备份」卡片显示不可用说明（`supportsLocalBackup`），上行迁移落地后替换为真正的导入实现；`cloud/backupService.ts` 的导出名与签名届时保持不变。
    - L4/L5 遗留：真机软键盘顶起与 iOS 安全区（`env(safe-area-inset-bottom)`）待真机验收时人工确认/补齐。
-2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`、`npm run check:backup`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。
+2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`、`npm run check:backup`、`npm run check:cloud-parity`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。改动服务层或云端 SQL 后另跑 `npm run build:cloud` 并核对两种产物的互斥检索。
 3. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。**同时必须在 `recordSchemas.ts` 的 `RECORD_SCHEMAS` 补该仓库字段契约**，否则 `put` 会在运行时抛「未定义字段」；`check:backup` 会比对仓库清单与契约同源。
 4. 改动 `localDb` 写入口径（`put` / `remove` / `runTransaction`）时注意：请求级错误必须经 `guardRequest` 上抛，只挂 `transaction.onerror` 会让「写失败」被当成成功。
 5. R9 已在 L1 修复并纳入验收断言，不再挂账。
@@ -41,6 +43,9 @@
 - `docs/09-L2-completion-report.md`：L2 完成报告（计划内容实例化：三餐多选、补剂实例化、健身多选、名称快照、v2→v3 冷升级；任务达成、证据、缺陷、延后项与未验证项）。
 - `docs/10-L3-completion-report.md`：L3 完成报告（休息日与自由规划：拖地/洗衣每日实例、临时不上班不带家务、隐藏工作日准备项、v3→v4 冷升级；任务达成、证据、缺陷、延后项与未验证项）。
 - `docs/11-L4-completion-report.md`：L4 完成报告（首页导航与移动端交互：底部固定导航、面板滚动锁定、带勾选选项行核对、桌面宽屏保留；任务达成、证据、决策、延后项与未验证项）。
+- `docs/12-L5-completion-report.md`：L5 完成报告（本地可靠性、备份与回归：写入契约、原子事务、异常恢复加固、导出导入；任务达成、证据、决策、缺陷、延后项与未验证项）。
+- `docs/13-L6-cloud-migration-and-conflict-plan.md`：L6 云端迁移与冲突处理方案（两种后端共存方式、11 个仓库 → 云端表映射、七条不变量的云端落点、本地 → 云端上行迁移步骤与历史日期受控豁免、冲突与断网策略、回滚、验收清单与未验证项）。
+- `docs/14-L6-completion-report.md`：L6 阶段一完成报告（服务门面与后端切换、云端适配器补全、云端 SQL 对齐、契约与编译器级等价保证；任务达成、证据、决策、缺陷、延后项与未验证项）。
 
 ## 阶段 1 已完成内容
 

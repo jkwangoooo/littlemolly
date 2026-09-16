@@ -6,12 +6,13 @@ import type {
   DailySupplement,
   DayMode,
   DayPlan,
+  ExerciseInput,
+  MealInput,
   MealType,
-  PlanItemInput,
-  RoutineKind,
   RoutineTask,
+  SupplementInput,
 } from '../../shared/types/dayPlan'
-import { MEAL_TYPES } from '../../shared/types/dayPlan'
+import { MEAL_TYPES, ROUTINE_ORDER, ROUTINE_TITLES } from '../../shared/types/dayPlan'
 import type { SupplementPeriod } from '../../shared/types/options'
 import { SUPPLEMENT_PERIODS } from '../../shared/types/options'
 import { addDays, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
@@ -20,12 +21,17 @@ import { getAll, newId, put, remove } from './localDb'
 import { listSelectableOptions } from './optionService'
 
 /**
- * 单日计划的读写。
+ * 单日计划的读写（本地后端）。
  *
  * 内容与状态严格分离（docs/01 不变量 5 / 6）：
  * - 内容是「名称快照 + 时段/备注」，选项改名、停用、删除都不改写已有计划；
  * - 状态是各项 `completed` 与五个 `*_ready`，复制计划一律不带。
+ *
+ * 面板输入的形状（`MealInput` / `SupplementInput` / `ExerciseInput`）定义在
+ * `shared/types/dayPlan.ts`，与云端适配器共用；这里重新导出，保持原有导入路径可用。
  */
+
+export type { ExerciseInput, MealInput, SupplementInput }
 
 function userId(): string {
   const user = currentUser()
@@ -140,21 +146,6 @@ async function routinesForPlan(id: string): Promise<RoutineTask[]> {
 
 async function dropMealItems(dailyMealIds: Set<string>): Promise<void> {
   for (const item of await mealItemsFor(dailyMealIds)) await remove('daily_meal_items', item.id)
-}
-
-/** 一餐的完整内容：面板提交什么，这一餐就是什么。 */
-export type MealInput = { meal_type: MealType; note: string; items: PlanItemInput[] }
-export type SupplementInput = {
-  id: string | null
-  name: string
-  period: SupplementPeriod
-  planned: boolean
-  completed: boolean
-}
-export type ExerciseInput = {
-  decision: DayPlan['exercise_decision']
-  note: string
-  items: PlanItemInput[]
 }
 
 export async function getDayPlan(planDate: string): Promise<DayPlan | null> {
@@ -467,10 +458,6 @@ export async function deleteCustomTask(planDate: string, id: string): Promise<vo
 
 // ---------------------------------------------------------------- 休息日家务
 
-/** 家务固定顺序：拖地在先、洗衣在后（docs/00）。 */
-const ROUTINE_ORDER: RoutineKind[] = ['mop', 'laundry']
-const ROUTINE_TITLE: Record<RoutineKind, string> = { mop: '拖地', laundry: '洗衣' }
-
 function sortRoutines(list: RoutineTask[]): RoutineTask[] {
   return [...list].sort((left, right) => ROUTINE_ORDER.indexOf(left.kind) - ROUTINE_ORDER.indexOf(right.kind))
 }
@@ -503,7 +490,7 @@ export async function ensureRestDayRoutines(planDate: string): Promise<RoutineTa
       id: newId(),
       day_plan_id: plan.id,
       kind,
-      title: ROUTINE_TITLE[kind],
+      title: ROUTINE_TITLES[kind],
       completed: false,
     })
     changed = true

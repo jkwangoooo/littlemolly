@@ -130,7 +130,7 @@
 
 **验收**：从当前版本升级不丢数据；导出后可恢复；关键失败有可见提示；核心回归清单全部通过。
 
-### L6：上线迁移准备（后置，不进入当前开发）
+### L6：上线迁移准备（进行中：阶段一已完成，阶段二待启动）
 
 **目标**：在本地业务稳定后，再整体迁移到云端。
 
@@ -158,12 +158,27 @@ src/shared/date/             业务日期和周计算
 
 ## 7. 当前下一步
 
-**L0–L4 已完成**（报告见 `docs/07`–`docs/11` 四份完成报告）。下一步执行 **L5：本地可靠性、备份与回归**。
+**L0–L5 已完成**（报告见 `docs/07`–`docs/12` 六份完成报告）。**L6 阶段一已完成**，阶段二待启动（报告见 `docs/14`）。
 
-进入 L5 前已经就位的三件事，不要重复造：
+L6 阶段一落地的是前三项任务（适配器、映射与约束、迁移与冲突方案）：
 
-1. 迁移机制已是显式版本表（`localDb.ts` 的 `STORES` / `MIGRATIONS`，当前 `DB_VERSION = 4`、11 张表），L5 的 schema 校验与异常恢复在此之上加固。
-2. 新计划选择器的取数入口是 `listSelectableOptions(kind)`（`src/services/local/optionService.ts`），停用项天然不在结果里。
-3. 底部导航「今日/本周/选项」是唯一一级导航（`BottomNav`）；「执行今天/准备明天」是日页内部页签。改动导航时保持验收脚本的 `clickText` 文案不变。
+1. 页面已不认识后端：只 import `src/services/api/` 门面，后端由构建模式决定（`npm run build` 走本地，`npm run build:cloud` 走云端）。
+2. 「等价」是可编译检查的：`src/services/contracts.ts` 的签名从本地实现取，`cloud/parity.ts` 做断言，云端少一个函数就 `typecheck` 失败。
+3. 云端表结构已对齐：`database/migrations/202609160001_stage4_local_parity.sql` 补齐 7 张表 + RLS + 历史日期触发器，`copy_yesterday_stage4` 覆盖新增表。
 
-L5 必须守住 `docs/01` 的不变量：保存计划时写入名称快照；复制昨天只复制内容与快照；导入数据前确认且格式错误不得覆盖现有数据。
+L6 阶段二（**当前唯一阻塞项：需要真实 Supabase 项目凭据**）按此顺序推进，细节见 `docs/13`：
+
+1. 在真实项目按文件名顺序执行四个迁移，核对表 / 策略 / 触发器——本机既无 `psql` 也无 Docker，SQL 只做过静态检查。
+2. 关闭邮箱验证（或配好 SMTP），否则 `signUp` 拿不到会话（适配器会明确报错，不会假装登录成功）。
+3. 跑真实链路：注册 / 登录 / 刷新恢复 / 跨设备同步 / 断网失败 / RLS 双账号。
+4. 实现上行迁移 RPC `import_local_backup`：关键是历史日期触发器的受控豁免（`set local molly.allow_history`），因为本地备份里绝大多数是过去的计划，直接逐表 insert 会被触发器全数拒绝。
+5. 补云端验收脚本（现有 `verify:local` 只覆盖本地后端）。
+
+新增仓库或改动服务层时必须同时守住的四件事（L5/L6 沉淀）：
+
+- 新增 IndexedDB 仓库走满四步（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），并在 `RECORD_SCHEMAS` 补字段契约。
+- 新增/改动本地服务函数时，云端适配器要同步——`cloud/parity.ts` 会让漏改当场编译失败，别去动契约绕开它。
+- 新增云端表必须在 stage4 之后**追加**新迁移，并让 `check:cloud-parity` 的表覆盖 / RLS / 触发器断言继续通过。
+- 改 `localDb` 写入口径（`put` / `remove` / `runTransaction`）时，请求级错误必须经 `guardRequest` 上抛。
+
+L6 同样必须守住 `docs/01` 的不变量：保存计划时写入名称快照；复制昨天只复制内容与快照；导入前确认且格式错误不得覆盖现有数据；历史日期只读（云端另加数据库触发器一层）。

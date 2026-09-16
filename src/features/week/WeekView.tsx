@@ -10,8 +10,8 @@ import {
   WEEKDAY_LABELS,
 } from '../../shared/date/dateUtils'
 import { describeDataError } from '../../shared/errors'
-import { listDayPlans } from '../../services/local/dayPlanService'
-import { signOut } from '../../services/local/authService'
+import { listDayPlans } from '../../services/api/dayPlanService'
+import { signOut } from '../../services/api/authService'
 import { resolveWeekDayStatus, WEEK_DAY_STATUS_TEXT } from './weekStatus'
 import { BottomNav } from '../../shared/components/BottomNav'
 import type { View } from '../../shared/types/view'

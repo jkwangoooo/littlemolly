@@ -1,7 +1,7 @@
 import type { AppSession, AppUser } from '../../shared/types/auth'
+import { readSession, writeSession } from '../session'
 import { getAll, newId, put } from './localDb'
 import { seedExampleOptions } from './optionSeed'
-import { readSession, writeSession } from './sessionStore'
 
 /** users 仓库的落库结构。密码只存哈希，绝不存明文。 */
 export interface LocalUser {

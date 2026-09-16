@@ -1,22 +1,14 @@
-import type { ExerciseOption, FoodOption, SupplementPeriod, SupplementTemplate } from '../../shared/types/options'
+import type { ExerciseOption, FoodOption, SupplementTemplate } from '../../shared/types/options'
+import { EXAMPLE_EXERCISES, EXAMPLE_FOODS, EXAMPLE_SUPPLEMENTS } from '../optionExamples'
 import { getAll, newId, put } from './localDb'
 
 /**
- * 示例选项种子数据。
+ * 示例选项种子数据（本地实现）。
  *
  * 放在服务层而不是页面里：页面只调用 `seedExampleOptions()`，不持有任何默认清单，
- * 这样以后调整示例内容不需要动界面代码，也方便 L6 迁移时换成服务端下发。
+ * 这样以后调整示例内容不需要动界面代码。清单本身在 `services/optionExamples.ts`，
+ * 由本地与云端两套适配器共用，保证两种后端播种出同样的示例。
  */
-
-const EXAMPLE_FOODS = ['燕麦牛奶', '水煮蛋', '鸡胸沙拉', '番茄鸡蛋面', '清炒时蔬']
-
-const EXAMPLE_SUPPLEMENTS: Array<{ name: string; period: SupplementPeriod }> = [
-  { name: '维生素 D', period: 'morning' },
-  { name: '鱼油', period: 'noon' },
-  { name: '钙片', period: 'evening' },
-]
-
-const EXAMPLE_EXERCISES = ['快走', '瑜伽', '力量训练', '拉伸']
 
 function now(): string {
   return new Date().toISOString()

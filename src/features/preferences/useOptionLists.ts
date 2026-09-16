@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ExerciseOption, FoodOption, SupplementTemplate } from '../../shared/types/options'
 import { describeDataError } from '../../shared/errors'
-import { listOptions, listSelectableOptions } from '../../services/local/optionService'
+import { listOptions, listSelectableOptions } from '../../services/api/optionService'
 
 export type OptionLists = {
   food: FoodOption[]

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { signIn, signUp } from '../../services/local/authService'
+import { signIn, signUp } from '../../services/api/authService'
 
 function messageFrom(error: unknown): string {
   return error instanceof Error ? error.message : '发生未知错误。'

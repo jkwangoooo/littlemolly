@@ -1,6 +1,6 @@
 # 幸福小Molly（本地业务开发）
 
-此工程包含账号认证、Asia/Shanghai 日期引擎、日期模式、固定周一至周日周视图、工作日规划闭环（五项准备状态、三餐多选食物与备注、补剂模板实例化与逐项勾选、健身多选项目与备注、晨间事项、自定义事项）、休息日家务（拖地 / 洗衣）、复制昨天、选项管理（常用食物 / 固定补剂 / 健身项目的新增、改名、排序、启停、删除，按账号隔离）。导航为底部固定三入口（今日 / 本周 / 选项），编辑统一走底部面板并锁定背景滚动。当前开发模式使用浏览器 IndexedDB 保存账号和业务数据（当前 `DB_VERSION = 4`，共 11 张对象仓库），不依赖 Supabase 或网络；上线前再将服务层整体迁移到云端数据库。
+此工程包含账号认证、Asia/Shanghai 日期引擎、日期模式、固定周一至周日周视图、工作日规划闭环（五项准备状态、三餐多选食物与备注、补剂模板实例化与逐项勾选、健身多选项目与备注、晨间事项、自定义事项）、休息日家务（拖地 / 洗衣）、复制昨天、选项管理（常用食物 / 固定补剂 / 健身项目的新增、改名、排序、启停、删除，按账号隔离）、本地数据导出 / 导入备份。导航为底部固定三入口（今日 / 本周 / 选项），编辑统一走底部面板并锁定背景滚动。业务数据可跑在两种后端上：**默认本地**（浏览器 IndexedDB，当前 `DB_VERSION = 4`，共 11 张对象仓库，不依赖网络），或 `npm run dev:cloud` / `npm run build:cloud` 切到 **Supabase**（适配器与本地逐条等价，页面代码不变——见下节）。
 
 ## 启动
 
@@ -10,25 +10,54 @@
 
 浏览器地址通常为 `http://localhost:5173`。该地址由 Vite 运行输出为准。
 
-## 云端迁移（上线前）
+## 数据后端：本地（默认）/ 云端
 
-当前版本不读取 `.env.local`，也不会连接 Supabase。上线阶段再将 `src/services/local/` 下的实现替换为云端适配器（参考已冻结的 `src/services/cloud/`），并按文件顺序执行 `database/migrations/202608270001_stage1_auth_sync.sql`、`database/migrations/202608310001_stage2_day_plans.sql`、`database/migrations/202608310002_stage3_workday_planning.sql`，随后补做跨设备、断网和 RLS 验收。
+服务层现在分成两侧，**页面只 import `src/services/api/` 这一层门面**，不知道底下是谁：
+
+```
+src/services/
+  contracts.ts   契约：函数名只写一遍，签名从 local 实现取；云端少一个函数就 typecheck 失败
+  backend.ts     当前后端（由构建模式决定）
+  api/           门面，页面只认这里
+  local/         本地实现（IndexedDB），默认
+  cloud/         云端实现（Supabase），与 local 逐条等价，parity.ts 做编译期断言
+```
+
+后端由**构建模式**决定，不需要改代码：
+
+```bash
+npm run dev          # 本地后端（默认）
+npm run build        # 本地后端产物
+npm run dev:cloud    # 云端后端（需要 .env.local 里的 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY）
+npm run build:cloud  # 云端后端产物
+```
+
+两种后端的产物互不污染，可用产物检索核对：本地构建里搜不到 `supabase` / `GoTrueClient`，
+云端构建里搜不到 `indexedDB` / `happy-little-molly-local`。
+
+云端上线要在真实项目上执行 `database/migrations/` 里的四个 SQL（**按文件名顺序**：
+`stage1_auth_sync` → `stage2_day_plans` → `stage3_workday_planning` → `stage4_local_parity`），
+再补做跨设备同步、断网失败、RLS 双账号验收。上行迁移（把本地备份导入云端账号）与冲突处理
+见 `docs/13-L6-cloud-migration-and-conflict-plan.md`；**该方案已定稿但尚未在真实项目执行**。
 
 ## 本地验收命令
 
 ```bash
-npm run typecheck        # 类型检查
-npm run lint             # 静态检查
-npm run build            # 生产构建
-npm run check:dates      # 日期引擎规则回归（48 项，无需浏览器）
-npm run check:local-data # 本地数据结构回归（27 项，无需浏览器）
-npm run check:backup     # 备份格式回归（55 项，无需浏览器）
-npm run verify:local     # 真实浏览器闭环验收（94 项，自带临时开发服务器，无需先跑 dev）
+npm run typecheck           # 类型检查
+npm run lint                # 静态检查
+npm run build               # 生产构建（本地后端）
+npm run check:dates         # 日期引擎规则回归（48 项，无需浏览器）
+npm run check:local-data    # 本地数据结构回归（27 项，无需浏览器）
+npm run check:backup        # 备份格式回归（55 项，无需浏览器）
+npm run check:cloud-parity  # 后端一致性回归（50 项，无需浏览器）
+npm run verify:local        # 真实浏览器闭环验收（94 项，自带临时开发服务器，无需先跑 dev）
 ```
 
 `npm run check:dates` 直接导入 `src/shared/date/dateUtils.ts`（Node 22.18+ / 24 原生支持剥离类型），覆盖月末、年末、闰年、跨年周的日历运算，默认工作日 / 休息日判定，以及日期关系与非法日期拒绝。不需要浏览器、不需要构建产物。
 
-`npm run check:local-data` 同样直接导入源码，断言 IndexedDB 迁移表「只追加」（`DB_VERSION = 4` 与迁移表自洽、v1/v2/v3 迁移不被改写、11 个仓库定义与迁移表一一对应）、三张选项表 + 三张每日内容表 + 家务表带 `user_id` / `day_plan_id` 索引，以及界面层没有直接引用 `localDb` / `indexedDB` / `supabase`、没有写死任何示例选项名称。
+`npm run check:local-data` 同样直接导入源码，断言 IndexedDB 迁移表「只追加」（`DB_VERSION = 4` 与迁移表自洽、v1/v2/v3/v4 迁移不被改写、11 个仓库定义与迁移表一一对应）、三张选项表 + 三张每日内容表 + 家务表带 `user_id` / `day_plan_id` 索引，以及界面层没有直接引用 `localDb` / `indexedDB` / 云端 SDK、没有写死任何示例选项名称。示例选项清单自 L6 起提到 `src/services/optionExamples.ts`，本地与云端两侧播种共用同一份。
+
+`npm run check:cloud-parity` 是纯静态检查，守住 L6「云端适配器与本地等价、页面不改业务接口」这条承诺的四个易失效点：① 契约里的每个函数名两侧实现都真的导出（文本复核一遍，防止用类型断言绕过）；② 页面没有绕过门面直连 `services/local`；③ `@backend` 只出现在门面目录（`vite.config.ts` 用的是相对替换，换地方引用就会指错）；④ 云端 SQL 覆盖全部 11 个本地仓库、每张表都开了 RLS、日期相关表与 L6 新增子表都挂了历史日期触发器、引用选项的外键是 `on delete set null`、复制昨天已换成覆盖新增表的 `copy_yesterday_stage4`。
 
 `npm run verify:local` 会自动挑一个空闲端口拉起本项目的 Vite 开发服务器，并拉起本机 Chrome 或 Edge 的无头实例，实际走一遍
 「v1 老库冷升级 → v2 升级 → v3 升级（含 backfillSnapshots）→ v4 升级（家务表）→ 登录页 → 注册 → 周视图 → 底部导航三入口 → 历史日只读 → 模式切换与恢复默认 → 切日期后保存状态归零 → 未来空日期引导 → 三餐多选食物与备注保存/恢复（面板滚动锁定）→ 补剂实例化与逐项勾选 → 自定义补剂增删 → 健身多选与备注 → 准备项进度（含补剂） → 自定义事项增改删 → 复制昨天不带准备/完成状态且保留快照 → 休息日家务（正常休息日自动带拖地洗衣 / 临时不上班不带 / 隐藏工作日准备项 / 可勾选） → 选项页增改排序启停删与补剂时段分组 → 备份往返（导出 → 改数据 → 导入还原停用状态）→ 备份卡片生成 / 非法文本被拒 / 空输入禁用检查 / 运行时契约拦坏记录 → 刷新恢复 → 账号间选项隔离 → 桌面/手机视口无溢出 → 退出登录 → 清空站点数据后重新注册并导入备份完整搬家」共 94 项检查，

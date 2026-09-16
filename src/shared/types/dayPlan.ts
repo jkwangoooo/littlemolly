@@ -100,6 +100,15 @@ export interface RoutineTask {
   completed: boolean
 }
 
+/** 休息日家务固定顺序（docs/00）：拖地在先、洗衣在后。 */
+export const ROUTINE_ORDER: RoutineKind[] = ['mop', 'laundry']
+
+/**
+ * 家务展示名称。放在共享层是因为本地与云端两套适配器都要靠它补齐每日实例，
+ * 各写一份迟早会分叉成两种文案。
+ */
+export const ROUTINE_TITLES: Record<RoutineKind, string> = { mop: '拖地', laundry: '洗衣' }
+
 /**
  * 编辑面板提交的一项内容：只有名称与来源选项，快照字段由服务层补齐。
  * `optionId` 为空表示「没有来源选项」——旧记录迁移来的内容，或已停用选项留下的历史选择。
@@ -107,4 +116,29 @@ export interface RoutineTask {
 export interface PlanItemInput {
   optionId: string | null
   name: string
+}
+
+// ---------------------------------------------------------------- 面板输入形状
+//
+// 这三个类型在 L6 从 `services/local/dayPlanService.ts` 提到共享层：本地与云端两套适配器
+// 必须接受**完全一样**的面板输入，放在共享层就不会出现「两边各写一份、慢慢分叉」的情况。
+// 两个服务模块仍会重新导出它们，页面原有的导入路径不变。
+
+/** 一餐的完整内容：面板提交什么，这一餐就是什么。 */
+export type MealInput = { meal_type: MealType; note: string; items: PlanItemInput[] }
+
+/** 一条补剂实例：`id` 为空表示这次是新加的一条。 */
+export type SupplementInput = {
+  id: string | null
+  name: string
+  period: SupplementPeriod
+  planned: boolean
+  completed: boolean
+}
+
+/** 一次健身安排：决定与备注写进计划主记录，项目多选写进每日健身项。 */
+export type ExerciseInput = {
+  decision: DayPlan['exercise_decision']
+  note: string
+  items: PlanItemInput[]
 }

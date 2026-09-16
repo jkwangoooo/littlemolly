@@ -5,12 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:cloud": "vite --mode cloud",
     "build": "tsc -b && vite build",
+    "build:cloud": "tsc -b && vite build --mode cloud",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "check:dates": "node scripts/check-date-rules.mjs",
     "check:local-data": "node scripts/check-local-data.mjs",
     "check:backup": "node scripts/check-backup.mjs",
+    "check:cloud-parity": "node scripts/check-cloud-parity.mjs",
     "verify:local": "node scripts/verify-local.mjs",
     "preview": "vite preview"
   },

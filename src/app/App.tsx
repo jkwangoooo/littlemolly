@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppSession } from '../shared/types/auth'
-import { getSession } from '../services/local/authService'
-import { AUTH_CHANGE_EVENT } from '../services/local/sessionStore'
+import { getSession } from '../services/api/authService'
+import { AUTH_CHANGE_EVENT } from '../services/session'
 import { AuthScreen } from '../features/auth/AuthScreen'
 import { DayPlanScreen } from '../features/day-plan/DayPlanScreen'
 

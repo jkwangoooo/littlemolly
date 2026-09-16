@@ -137,16 +137,30 @@ const dbLeaks = uiFiles
   .map((file) => relative(PROJECT_ROOT, file))
 check('界面层没有直接引用 localDb / indexedDB', dbLeaks, [])
 
+/**
+ * 界面层不得直接引用云端 SDK。
+ *
+ * 判据是「真的引用了」而不是「提到过」：界面文案里出现产品名属于正常表达
+ * （例如云端模式下解释备份为什么不可用），把它当违规只会逼着文案绕着写。
+ * 真正要挡的是 import 云端 SDK、以及直接调用 `supabase.xxx()` 这类用法。
+ */
 const cloudLeaks = uiFiles
   .filter((file) => {
     const source = readFileSync(file, 'utf8')
-    return /from\s+['"]@supabase/.test(source) || /\bsupabase\b/i.test(source)
+    return (
+      /from\s+['"]@supabase/.test(source) ||
+      /\bsupabase\s*\./.test(source) ||
+      /\brequireSupabase\b/.test(source) ||
+      /\/services\/cloud\//.test(source)
+    )
   })
   .map((file) => relative(PROJECT_ROOT, file))
 check('界面层没有直接引用 supabase', cloudLeaks, [])
 
 // ---- 示例选项属于服务层数据，不能写死在页面逻辑里（docs/05 L1 验收）----
-const seedSource = readFileSync(join(PROJECT_ROOT, 'src/services/local/optionSeed.ts'), 'utf8')
+// L6 起清单提到 `src/services/optionExamples.ts`，由本地与云端两套适配器共用；
+// 本地播种（local/optionSeed.ts）与云端播种（cloud/optionSeed.ts）都只是读取它。
+const seedSource = readFileSync(join(PROJECT_ROOT, 'src/services/optionExamples.ts'), 'utf8')
 const seedNames = [...seedSource.matchAll(/'([^'\n]+)'/g)]
   .map((match) => match[1])
   .filter((value) => /[\u4e00-\u9fa5]/.test(value))

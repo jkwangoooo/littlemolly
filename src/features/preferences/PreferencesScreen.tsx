@@ -4,7 +4,8 @@ import { SUPPLEMENT_PERIODS } from '../../shared/types/options'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { useSaveRunner } from '../../shared/hooks/useSaveRunner'
 import { SAVE_STATUS_PREFIX, SAVE_STATUS_TEXT } from '../../shared/saveStatus'
-import { currentUser, signOut } from '../../services/local/authService'
+import { currentUser, signOut } from '../../services/api/authService'
+import { supportsLocalBackup } from '../../services/backend'
 import {
   createOption,
   deleteOption,
@@ -12,7 +13,7 @@ import {
   renameOption,
   seedExampleOptionsForCurrentUser,
   setOptionActive,
-} from '../../services/local/optionService'
+} from '../../services/api/optionService'
 import { AccountCard } from './components/AccountCard'
 import { BackupCard } from './components/BackupCard'
 import { OptionEditor } from './components/OptionEditor'
@@ -212,7 +213,7 @@ export function PreferencesScreen({
               busy={busy}
             />
 
-            <BackupCard busy={busy} runSave={runSave} onImported={reload} />
+            <BackupCard available={supportsLocalBackup} busy={busy} runSave={runSave} onImported={reload} />
 
             <AccountCard email={email} onSignOut={() => void signOut()} />
           </>

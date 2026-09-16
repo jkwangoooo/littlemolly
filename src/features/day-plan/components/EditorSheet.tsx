@@ -9,7 +9,7 @@ import type {
   MealType,
 } from '../../../shared/types/dayPlan'
 import { MEAL_TYPES } from '../../../shared/types/dayPlan'
-import type { ExerciseInput, MealInput, SupplementInput } from '../../../services/local/dayPlanService'
+import type { ExerciseInput, MealInput, SupplementInput } from '../../../services/api/dayPlanService'
 import { BottomSheet } from '../../../shared/components/BottomSheet'
 import {
   PANEL_ADD_TASK_TITLE,
