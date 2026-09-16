@@ -8,7 +8,7 @@
 
 **待办 A 完成。** 应用现在有完整的 PWA 外壳（manifest、四张 PNG 图标、手写 service worker），
 dev 模式仍然**不注册** service worker，`verify:local` 保持 **94/94** 不变；新增的 `verify:pwa`
-跑生产构建产物，**34/34 通过**。本地与云端两种构建产物互不污染的性质未被破坏。
+跑生产构建产物，**35/35 通过**。本地与云端两种构建产物互不污染的性质未被破坏。
 
 本地数据是否留得住，现在多了一层真实的保障（安装到主屏幕 → 独立存储分区 + 缓存的应用壳），
 但**没有变成「数据安全了」**：`persist()` 只是请求，备份仍是唯一的兜底路径，这一点在界面文案与
@@ -24,7 +24,7 @@ dev 模式仍然**不注册** service worker，`verify:local` 保持 **94/94** �
 | 4 | 只在生产构建注册 | `src/shared/pwa/serviceWorker.ts` 用 `import.meta.env.PROD` 早退；dev 下 `getRegistrations()` 为空（`verify:pwa` 第 2 项断言） |
 | 5 | `navigator.storage.persist()` | `src/shared/storage/storageStatus.ts`：先 feature-detect，启动时请求一次（幂等），与 `estimate()` 的用量一起记入模块快照 |
 | 6 | 安装引导与存储状态卡片 | `src/features/preferences/components/StorageCard.tsx`：用量 / 是否持久化 / 是否独立窗口三行事实；iOS 给「分享 → 添加到主屏幕」步骤；Android 用 `beforeinstallprompt` 出安装按钮 |
-| 7 | `scripts/verify-pwa.mjs` + `npm run verify:pwa` | 34 项，跑 `dist/`，自建零依赖静态服务器（空闲端口），`Storage.clearDataForOrigin` 显式列出 `indexeddb,local_storage,cache_storage,service_workers` |
+| 7 | `scripts/verify-pwa.mjs` + `npm run verify:pwa` | 35 项，跑 `dist/`，自建零依赖静态服务器（空闲端口），`Storage.clearDataForOrigin` 显式列出 `indexeddb,local_storage,cache_storage,service_workers` |
 
 「明确不做」的六项（SPA 路由、后台同步/推送、改业务服务层、改数据库结构、懒加载重构、动 docs/01 不变量）均未触碰。
 
@@ -90,6 +90,21 @@ maskable 的 M 再缩小到 0.82 倍以保证落在安全区内。
 所以卡片写「未获得（浏览器暂未批准）」「这个浏览器不支持申请」，不写「已保护」「已同步」；
 `verify:pwa` 有一条断言专门检查卡片文案里不出现「已同步」。
 
+### 4.7 iOS 安全区：装到主屏幕之后才真正显形的问题
+
+底部固定导航与底部面板都贴着屏幕下沿，而 `index.html` 的 viewport 原本没有 `viewport-fit=cover`，
+`.bottom-nav` 也没有让出安全区——**装上主屏幕后没有浏览器工具栏兜底，导航会直接压在 Home 指示条上**，
+也就是说「安装」这件事本身把这个问题变严重了。本任务顺手修掉：
+
+- `viewport-fit=cover`（没有它 `env(safe-area-inset-*)` 恒为 0，写了也没用）；
+- `.page` 上下内边距、`.bottom-nav` 下内边距、`.bottom-sheet` 下内边距、`.update-notice` 的 `bottom`
+  全部改成 `calc(原值 + env(safe-area-inset-*, 0px))`，窄屏覆盖值也跟着改；
+- `env()` 不被支持时那些是无效声明、整行被丢弃，回落到原有数值，因此对桌面浏览器零影响。
+
+**这一条是可自动验收的**：Chrome 152 支持 `Emulation.setSafeAreaInsetsOverride`，
+`verify:pwa` 给一个 34px 的底部安全区，断言导航的 `padding-bottom` 变成 34px、页面变成 114px。
+最初以为「安全区只能真机验」，实测 CDP 能模拟，于是把推断变成了断言。
+
 ## 5. 验收证据
 
 ### 5.1 工程三件套与静态回归（全部复现）
@@ -117,7 +132,7 @@ npx vite build --mode cloud --outDir dist-cloud → 135 modules / 489.90 kB（gz
 
 两种产物都带上了 PWA 外壳（`sw.js` / `manifest.webmanifest` / `icons/`）。
 
-### 5.3 `npm run verify:pwa`：34/34 通过
+### 5.3 `npm run verify:pwa`：35/35 通过
 
 ```
 PASS  生产构建产出完整应用壳（sw.js / manifest / 图标）
@@ -153,9 +168,10 @@ PASS  独立窗口下给出「已安装」说明而不是继续引导安装
 PASS  独立窗口首屏可正常渲染（已安装后的观感，截图已落盘）
 PASS  桌面 1440x900 无横向溢出  → scrollWidth=1425, innerWidth=1440
 PASS  手机 390x844 无横向溢出  → scrollWidth=390, innerWidth=390
+PASS  iOS 安全区：底部导航与页面为 Home 指示条让出空间  → viewport-fit=cover=true, 导航 padding-bottom=34px, 页面 padding-bottom=114px
 PASS  更新流程与存储卡片段控制台无 error / warning
 
-结果：34/34 通过
+结果：35/35 通过
 ```
 
 断网做了两层：先按提示词用 `Network.emulateNetworkConditions` 模拟，再把静态服务器**真的关掉**
@@ -199,8 +215,8 @@ CDP 的 `Emulation.setEmulatedMedia` **不支持** `display-mode`（实测 `matc
 2. `verify-local.mjs` 与 `verify-pwa.mjs` 各自有一份 CDP 连接 / 启动浏览器的辅助代码（约 70 行重复）。
    本次刻意没有合并：把已经稳定在 94/94 的验收脚本与新脚本一起重构，风险大于收益。
    后续若要合并，抽到 `scripts/lib/` 即可（浏览器定位已经这么做了）。
-3. L4/L5 遗留：真机软键盘顶起与 iOS 安全区（`env(safe-area-inset-bottom)`）仍未核对。
-   本次没有改底部导航的定位，因此这条照旧挂账。
+3. L4/L5 遗留：**iOS 安全区已在本次修掉并自动验收**（见 4.7）；剩下「真机软键盘顶起输入框」
+   这一条仍未核对——它需要真机与真实输入法，无头环境验不了，照旧挂账。
 
 ### 6.3 未验证项（缺条件，不是缺陷）
 
@@ -217,7 +233,7 @@ CDP 的 `Emulation.setEmulatedMedia` **不支持** `display-mode`（实测 `matc
 
 ## 7. 结论
 
-待办 A 的七项要求全部落地，行为基线未回退（`verify:local` 94/94），新增 `verify:pwa` 34/34。
+待办 A 的七项要求全部落地，行为基线未回退（`verify:local` 94/94），新增 `verify:pwa` 35/35。
 本地数据在移动端的留存路径从「只能导出备份」变成「安装到主屏幕 + 备份」两条，
 但**备份仍然是唯一的兜底**：卸载浏览器、手动清理数据、iOS 上始终不安装都会丢，
 这条事实在界面文案与本报告里保持同一个说法。

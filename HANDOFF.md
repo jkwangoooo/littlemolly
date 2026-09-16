@@ -13,7 +13,7 @@
 - **L4 已完成（2026-09-15），可进入 L5。** 完成报告见 `docs/11-L4-completion-report.md`：底部固定导航「今日/本周/选项」上线（`BottomNav` 共享组件，三页统一接线，移除各页顶部重复主入口）；「执行今天/准备明天」保留为日页顶部页签；BottomSheet/ConfirmDialog 打开时锁定 body 滚动、关闭恢复（滚动位置不漂移）；三餐/补剂/健身已是带勾选选项行（L2 达标）；桌面宽屏布局保留（导航与内容区同宽居中）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **77/77** 通过（两次连续），截图人工核对手机/桌面观感。
 - **L5 已完成（2026-09-15），可进入 L6。** 完成报告见 `docs/12-L5-completion-report.md`：写入前字段契约校验（`recordSchemas.ts`，`put` / `runTransaction` 入库前 `assertRecord`，坏数据落不了库）；跨仓库原子事务 `runTransaction`（导入备份与复制昨天「要么全生效要么全不生效」）；异常恢复四处加固（`onblocked` 明确报错 / 打开失败清缓存可重试 / `onversionchange` 让出连接 / 请求级错误 `guardRequest` 上抛，修掉「写失败被当成成功」）；本地数据导出与导入（选项页「本地数据备份」卡片，检查 → 二次确认 → 单事务替换当前账号数据，`user_id` 重映射支持换设备搬家，格式错误一条不写，空备份拒绝）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 27/27、`check:backup` **55/55**（新建）、`verify:local` **94/94** 通过（含备份往返、非法备份不覆盖、运行时契约守卫生效、清空站点数据后换设备搬家）。
 - **L6 阶段一已完成（2026-09-16），行为基线与 L5 完全一致（`verify:local` 94/94），阶段二待启动。** 完成报告见 `docs/14-L6-completion-report.md`：① **服务门面与后端切换**——新增 `services/contracts.ts`、`services/backend.ts`、`services/api/*`（authService / dayPlanService / optionService / backupService / backupFormat），页面导入从 `services/local/*` 换成 `services/api/*`，函数名与签名一字未改；后端由构建模式决定（`npm run build:cloud` / `dev:cloud`），两种后端产物互不污染（本地构建 0 命中 `supabase|PostgREST|GoTrueClient`，云端构建 0 命中 `indexedDB|happy-little-molly-local`）。② **云端适配器补全**——`cloud/authService`（Supabase Auth + profiles + 注册后播种示例）、`cloud/sessionStore` 语义并入后端无关的 `services/session.ts`、`cloud/optionService`、`cloud/dayPlanService`（从「只覆盖主记录」补到与本地逐条等价，含 meals/items/supplements/exercise items/custom tasks/routine tasks）、`cloud/backupService`（云端模式明确拒绝并说明，不假装成功）、`cloud/parity.ts`（编译期断言：云端少一个函数或签名不一致 `typecheck` 直接失败）。③ **云端 SQL 对齐**——新增只追加迁移 `database/migrations/202609160001_stage4_local_parity.sql`：补齐 7 张缺失表（三餐内容项 / 补剂实例 / 健身项 / 家务 / 三类选项）并全部启用 RLS、接上历史日期触发器与 `updated_at` 触发器，新增 `copy_yesterday_stage4` RPC 覆盖新增表，引用选项的外键一律 `on delete set null`（否则「删选项」会被历史计划挡住）。④ **迁移与冲突方案**——`docs/13-L6-cloud-migration-and-conflict-plan.md`（仓库→表映射、不变量落点、上行迁移需受控豁免历史日期触发器、冲突与断网策略、回滚）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 27/27、`check:backup` 55/55、`check:cloud-parity` **50/50**（新建）、`verify:local` **94/94**。
-- **PWA 外壳已完成（2026-09-16），`verify:local` 仍是 94/94，新增 `verify:pwa` 34/34。** 完成报告见 `docs/16-pwa-shell-completion-report.md`：① **安装要素**——`public/manifest.webmanifest`（standalone / 192+512 any+maskable 图标），index.html 补 `rel=manifest`、`apple-touch-icon` 180、`mobile-web-app-capable`、`apple-mobile-web-app-capable`、`apple-mobile-web-app-status-bar-style`；四张 PNG 图标由 `npm run icons` 用本机 Chrome 无头渲染 `favicon.svg` 生成（满幅不透明：iOS 会把透明像素渲染成黑底）。② **手写 service worker**（`public/sw.js`，无第三方依赖）——应用壳预缓存（构建产物文件名带内容哈希，装的时候从 index.html 解析）、HTML/manifest 网络优先 + 3 秒超时回退、静态资源缓存优先、**只处理同源 GET（跨域一律不缓存）**、缓存名带构建戳、activate 清旧缓存。③ **dev 不注册**——`src/shared/pwa/serviceWorker.ts` 用 `import.meta.env.PROD` 早退，原因见该文件注释（`verify-local.mjs` 的冷升级与清空数据两个用例依赖请求真的发到服务器），因此新增 `scripts/verify-pwa.mjs` 跑生产产物，而不是改既有用例。④ **更新策略保守**——不 `skipWaiting`、不 `clients.claim`，新版本停在 waiting，页面提示「新版本已下载，刷新后生效」，用户点刷新才接管。⑤ **存储与安装**——启动时请求一次 `navigator.storage.persist()`（先 feature-detect、幂等），「选项」页新增「存储与安装」卡片显示用量 / 是否持久化 / 是否独立窗口，iOS 给「分享 → 添加到主屏幕」步骤，Android 用 `beforeinstallprompt` 出按钮；文案只说事实，不写「已同步」「已保护」。
+- **PWA 外壳已完成（2026-09-16），`verify:local` 仍是 94/94，新增 `verify:pwa` 35/35。** 完成报告见 `docs/16-pwa-shell-completion-report.md`：① **安装要素**——`public/manifest.webmanifest`（standalone / 192+512 any+maskable 图标），index.html 补 `rel=manifest`、`apple-touch-icon` 180、`mobile-web-app-capable`、`apple-mobile-web-app-capable`、`apple-mobile-web-app-status-bar-style`；四张 PNG 图标由 `npm run icons` 用本机 Chrome 无头渲染 `favicon.svg` 生成（满幅不透明：iOS 会把透明像素渲染成黑底）。② **手写 service worker**（`public/sw.js`，无第三方依赖）——应用壳预缓存（构建产物文件名带内容哈希，装的时候从 index.html 解析）、HTML/manifest 网络优先 + 3 秒超时回退、静态资源缓存优先、**只处理同源 GET（跨域一律不缓存）**、缓存名带构建戳、activate 清旧缓存。③ **dev 不注册**——`src/shared/pwa/serviceWorker.ts` 用 `import.meta.env.PROD` 早退，原因见该文件注释（`verify-local.mjs` 的冷升级与清空数据两个用例依赖请求真的发到服务器），因此新增 `scripts/verify-pwa.mjs` 跑生产产物，而不是改既有用例。④ **更新策略保守**——不 `skipWaiting`、不 `clients.claim`，新版本停在 waiting，页面提示「新版本已下载，刷新后生效」，用户点刷新才接管。⑤ **存储与安装**——启动时请求一次 `navigator.storage.persist()`（先 feature-detect、幂等），「选项」页新增「存储与安装」卡片显示用量 / 是否持久化 / 是否独立窗口，iOS 给「分享 → 添加到主屏幕」步骤，Android 用 `beforeinstallprompt` 出按钮；文案只说事实，不写「已同步」「已保护」。
 - 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）→ `cd61dfc`（L0 完成报告）；L1 的提交为 `6408eb0`（选项管理与本地数据结构）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
@@ -23,7 +23,7 @@
 > **新窗口接手先读 `docs/15-next-session-handoff-and-prompt.md`**：里面有现状核对、验收基线、两条待办的完整可复制提示词与验收清单、以及复用清单（已踩过的坑）。下面两条待办互相独立。
 
 1. ~~**移动端持久化（PWA 层）**~~ —— **已完成（2026-09-16）**，报告见 `docs/16-pwa-shell-completion-report.md`。
-   - 现状：manifest / 四张 PNG 图标 / 手写 service worker / 存储状态卡片均已落地；dev 仍不注册 SW，`verify:local` 94/94 未回退，新增 `verify:pwa` 34/34。
+   - 现状：manifest / 四张 PNG 图标 / 手写 service worker / 存储状态卡片均已落地；dev 仍不注册 SW，`verify:local` 94/94 未回退，新增 `verify:pwa` 35/35。
    - 遗留（缺条件，不是缺陷）：iOS 真机上「添加到主屏幕后是否真的拿到独立存储分区、是否真的不计入 7 天计时」与 `persist()` 的实际返回值**未验证**，需真机核对；Android 安装按钮的渲染已由 `verify:pwa` 覆盖（无头 Chrome 确实会派发 `beforeinstallprompt`），但**点击后进入的系统安装流程未验证**。
    - 注意：安装只是降低风险，**备份仍是唯一的兜底路径**，这条说法不许在文案里被夸大。
 2. 继续 **L6 阶段二：真实项目验收 + 上行迁移实现**，提示词见 `docs/15` §5。阶段一（服务门面 / 云端适配器 / 云端表结构对齐 / 迁移与冲突方案）已完成，见 `docs/14-L6-completion-report.md`。
@@ -31,7 +31,7 @@
    - 阶段二顺序建议：① 在真实项目按文件名顺序执行四个迁移并核对表 / 策略 / 触发器；② 关闭邮箱验证（或配好 SMTP），否则 `signUp` 拿不到会话（适配器会明确报错，不会假装登录成功）；③ 跑真实链路（注册 / 登录 / 刷新恢复 / 跨设备同步 / 断网失败 / RLS 双账号）；④ 实现上行迁移 RPC `import_local_backup`，关键点是历史日期触发器的受控豁免，方案见 `docs/13-L6-cloud-migration-and-conflict-plan.md` §5。
    - 阶段一留口：云端模式下「本地数据备份」卡片显示不可用说明（`supportsLocalBackup`），上行迁移落地后替换为真正的导入实现；`cloud/backupService.ts` 的导出名与签名届时保持不变。
    - L4/L5 遗留：真机软键盘顶起与 iOS 安全区（`env(safe-area-inset-bottom)`）待真机验收时人工确认/补齐。
-3. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`、`npm run check:backup`、`npm run check:cloud-parity`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。**改动 PWA 外壳、manifest、图标或注册逻辑后另跑 `npm run verify:pwa`**（34 项，跑生产产物）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。改动服务层或云端 SQL 后另跑 `npm run build:cloud` 并核对两种产物的互斥检索——注意 `npm run build:cloud` 会写进 `dist/`，跑完要重新 `npm run build` 把本地产物放回去（或用 `npx vite build --mode cloud --outDir dist-cloud`）。
+3. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`、`npm run check:backup`、`npm run check:cloud-parity`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。**改动 PWA 外壳、manifest、图标或注册逻辑后另跑 `npm run verify:pwa`**（35 项，跑生产产物）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。改动服务层或云端 SQL 后另跑 `npm run build:cloud` 并核对两种产物的互斥检索——注意 `npm run build:cloud` 会写进 `dist/`，跑完要重新 `npm run build` 把本地产物放回去（或用 `npx vite build --mode cloud --outDir dist-cloud`）。
 4. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。**同时必须在 `recordSchemas.ts` 的 `RECORD_SCHEMAS` 补该仓库字段契约**，否则 `put` 会在运行时抛「未定义字段」；`check:backup` 会比对仓库清单与契约同源。
 5. 改动 `localDb` 写入口径（`put` / `remove` / `runTransaction`）时注意：请求级错误必须经 `guardRequest` 上抛，只挂 `transaction.onerror` 会让「写失败」被当成成功。
 6. R9 已在 L1 修复并纳入验收断言，不再挂账。
@@ -784,7 +784,7 @@ L2 已完成三餐 / 补剂 / 健身的内容实例化。但休息日（周六 /
 - `npx vite build --mode cloud --outDir dist-cloud`：通过，135 modules / 489.90 kB（gzip 141.83 kB）。
 - `npm run check:dates`：**48/48**；`npm run check:local-data`：**27/27**；`npm run check:backup`：**55/55**；`npm run check:cloud-parity`：**50/50**。
 - `npm run verify:local`：**94/94 通过**（未回退）。
-- `npm run verify:pwa`：**34/34 通过**（新建）。
+- `npm run verify:pwa`：**35/35 通过**（新建）。
 - 双向产物体检：本地产物 0 命中 `supabase|PostgREST|GoTrueClient|copy_yesterday`；云端产物 0 命中 `indexedDB|happy-little-molly-local`。
 - `npm run icons`：四张 PNG 生成并自校验尺寸（192 / 512 / 512 maskable / 180）。
 
@@ -814,11 +814,11 @@ L2 已完成三餐 / 补剂 / 健身的内容实例化。但休息日（周六 /
 - iOS 真机：「添加到主屏幕」后是否真的拿到独立存储分区、是否真的不计入 7 天计时——**未验证**。
 - iOS 上 `navigator.storage.persist()` 的实际返回值——**未验证**（代码走「不支持」分支）。
 - Android 安装按钮的**渲染**已由 `verify:pwa` 断言覆盖（无头 Chrome 确实会派发 `beforeinstallprompt`）；点击后进入的系统安装流程**未验证**（无头环境弹不出安装对话框）。
-- 真机软键盘与 iOS 安全区（L4/L5 遗留）——仍未核对。
+- iOS 安全区已在本次修掉并由 `Emulation.setSafeAreaInsetsOverride` 自动验收（导航 34px / 页面 114px）；**真机软键盘顶起输入框**仍未核对（需要真机与真实输入法）。
 
 ### 阶段结论
 
-- **待办 A（PWA 层）完成**，行为基线未回退，验收基线为「三件套 + 四个 check 脚本 + `verify:local` 94 项 + `verify:pwa` 34 项」。
+- **待办 A（PWA 层）完成**，行为基线未回退，验收基线为「三件套 + 四个 check 脚本 + `verify:local` 94 项 + `verify:pwa` 35 项」。
 - 下一步：`docs/15` §5 的待办 B（L6 阶段二：真实项目验收 + 上行迁移），需要真实 Supabase 凭据；本机无 `.env.local`，本轮未触碰云端任何代码与迁移。
 
 

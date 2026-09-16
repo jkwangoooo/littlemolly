@@ -41,6 +41,11 @@ select { width: 100%; border: 1px solid #aaa29b; border-radius: 5px; padding: 10
   width: min(100% - 32px, 760px);
   margin: 0 auto;
   padding: 36px 0 96px;
+  /* iOS 安全区：配合 index.html 的 viewport-fit=cover，内容会延伸到刘海与 Home 指示条下面，
+     必须自己让出空间。env() 不被支持时这两行是无效声明、会被整行丢弃，
+     于是回落到上面的 padding 简写值——行为与加安全区之前完全一致。 */
+  padding-top: calc(36px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
 }
 
 .panel {
@@ -117,6 +122,8 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   border-top: 1px solid #eee7e3;
   background: #fff;
   box-shadow: 0 -4px 20px rgb(36 33 31 / 8%);
+  /* Home 指示条那一块留在导航自身的背景里，按钮不会被它盖住。 */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .bottom-nav button {
   flex: 1;
@@ -216,11 +223,12 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .storage-fact dt { min-width: 104px; color: #625d58; }
 .storage-fact dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 
-/* 新版本提示条：贴在底部导航上方，不遮挡导航，也不抢走编辑区的注意力。 */
+/* 新版本提示条：贴在底部导航上方，不遮挡导航，也不抢走编辑区的注意力。
+   64px 是导航本身的高度，安全区另算——否则 iPhone 上提示条会压在 Home 指示条上。 */
 .update-notice {
   position: fixed;
   left: 50%;
-  bottom: 64px;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 40;
   display: flex;
@@ -252,12 +260,16 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 .sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; background: rgb(36 33 31 / 38%); }
 .bottom-sheet { width: min(100%, 760px); max-height: 90vh; overflow: auto; margin: 0 auto; border-radius: 14px 14px 0 0; padding: 18px 24px 28px; background: #fff; box-shadow: 0 -8px 30px rgb(36 33 31 / 20%); }
+/* 底部面板贴着屏幕底边弹出，最后一行的输入框同样要让开 Home 指示条。 */
+.bottom-sheet { padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
 .bottom-sheet .field { margin-bottom: 12px; }
 .sheet-handle { width: 42px; height: 4px; margin: 0 auto 14px; border-radius: 2px; background: #c7bdb7; }
 
 /* ---------- 10 移动端 ---------- */
 @media (max-width: 480px) {
   .page { width: min(100% - 24px, 620px); padding: 20px 0 80px; }
+  /* 窄屏下的安全区覆盖值必须跟着一起改，否则会盖回上面的 36/96 基准。 */
+  .page { padding-top: calc(20px + env(safe-area-inset-top, 0px)); padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
   .panel { padding: 18px; }
   h1 { font-size: 24px; }
   .actions > button { flex: 1 1 132px; }

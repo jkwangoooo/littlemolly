@@ -899,6 +899,33 @@ async function main() {
     await sleep(500)
     await shot('06-storage-card-mobile')
 
+    // iOS 安全区：装上主屏幕后没有浏览器工具栏兜底，底部导航会压在 Home 指示条上。
+    // CDP 能模拟安全区（Chrome 152 实测支持 Emulation.setSafeAreaInsetsOverride），
+    // 所以这一条不需要真机就能验：给一个 34px 的底部安全区，看有没有人把它让出来。
+    const insetsApplied = await cdp
+      .send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 34, left: 0, right: 0 } })
+      .then(() => true)
+      .catch(() => false)
+    await sleep(400)
+    const safeArea = JSON.parse(
+      await evaluate(`
+        JSON.stringify({
+          viewport: (document.querySelector('meta[name=viewport]') || {}).content || '',
+          navPaddingBottom: parseFloat(getComputedStyle(document.querySelector('.bottom-nav')).paddingBottom) || 0,
+          pagePaddingBottom: parseFloat(getComputedStyle(document.querySelector('.page')).paddingBottom) || 0,
+        })
+      `),
+    )
+    record(
+      'iOS 安全区：底部导航与页面为 Home 指示条让出空间',
+      insetsApplied &&
+        safeArea.viewport.includes('viewport-fit=cover') &&
+        safeArea.navPaddingBottom === 34 &&
+        safeArea.pagePaddingBottom === 80 + 34,
+      `viewport-fit=cover=${safeArea.viewport.includes('viewport-fit=cover')}, 导航 padding-bottom=${safeArea.navPaddingBottom}px, 页面 padding-bottom=${safeArea.pagePaddingBottom}px（期望 34 / 114）`,
+    )
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }).catch(() => {})
+
     const noisy = cdp.events.filter((event) => {
       if (event.method === 'Runtime.exceptionThrown') return true
       if (event.method === 'Log.entryAdded') return ['error', 'warning'].includes(event.params.entry.level)

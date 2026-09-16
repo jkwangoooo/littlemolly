@@ -50,7 +50,7 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
 | `npm run check:backup` | 55/55 | 备份格式 |
 | `npm run check:cloud-parity` | 50/50 | 后端一致性 |
 | `npm run verify:local` | **94/94** | 真实浏览器闭环，约 2.5 分钟 |
-| `npm run verify:pwa` | **34/34** | PWA 层，跑生产产物 + 自建静态服务器，约 1.5 分钟 |
+| `npm run verify:pwa` | **35/35** | PWA 层，跑生产产物 + 自建静态服务器，约 1.5 分钟 |
 | 本地构建体积 | 91 modules / 275.63 kB（gzip 85.71 kB） | PWA 外壳带来 +6.63 kB |
 | 云端构建体积 | 135 modules / 489.90 kB（gzip 141.83 kB） | `npx vite build --mode cloud --outDir dist-cloud` |
 
@@ -215,6 +215,7 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
 13. **CDP 的 `Emulation.setEmulatedMedia` 不支持 `display-mode`**（实测 `matchMedia` 仍为 false）。要验「已安装 / 独立窗口」这一支，用 `--app=<url>` 真的开一个应用窗口——headless Chrome 下 `display-mode: standalone` 为真。
 14. **service worker 的 fetch 处理器里，导航请求不能无脑写进首页缓存键**：那样访问一次不存在的路径就会把 404 页面写进应用壳，下次断网打开应用看到的就是那个 404。只认 `/` 与 `/index.html`。
 15. **验收脚本截图要用目标窗口自己的 CDP 连接**：拿主窗口的连接去拍另一个窗口，两张图会长得一模一样（字节数相同），人工核对时会被骗过去。
+16. **iOS 安全区不用真机也能验**：Chrome 152 支持 `Emulation.setSafeAreaInsetsOverride`，给一个底部 inset 再断言底部导航的 computed `padding-bottom` 是否跟着变大。前提是 viewport 里有 `viewport-fit=cover`，否则 `env(safe-area-inset-*)` 恒为 0——CSS 看着对、实际什么都没做。
 
 ## 7. 本次交接的产出
 
