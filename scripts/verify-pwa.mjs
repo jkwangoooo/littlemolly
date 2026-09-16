@@ -317,6 +317,16 @@ window.__p = {
   byText: (text) => [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === text),
   clickText: (text) => { const el = window.__p.byText(text); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
   clickContains: (text) => { const el = [...document.querySelectorAll('button')].find((node) => node.textContent.includes(text)); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
+  // 选项页现在是「概览 + 子屏」：存储状态卡片在「存储与安装」子屏里，先进入再读。
+  openStorageScreen: async () => {
+    const back = document.querySelector('.topbar-back button');
+    if (back) { back.click(); await window.__p.wait(400); }
+    const entry = document.querySelector('[data-option-entry="storage"]');
+    if (!entry) return 'NO_ENTRY:storage';
+    entry.click();
+    await window.__p.wait(700);
+    return 'OK';
+  },
   fill: (labelText, value) => {
     const label = [...document.querySelectorAll('label')].find((item) => item.textContent.includes(labelText));
     if (!label) return 'NO_LABEL:' + labelText;
@@ -467,7 +477,8 @@ async function inspectStandaloneWindow(browserPath, appUrl, stamp) {
       await evaluate(`
         (async () => {
           window.__p.clickText('选项');
-          await window.__p.wait(1800);
+          await window.__p.wait(1200);
+          await window.__p.openStorageScreen();
           return window.__p.storageCard();
         })()
       `),
@@ -743,17 +754,30 @@ async function main() {
     `)
     record('断网时仍能注册并进入日计划页（IndexedDB 离线可写）', registeredOffline.includes('执行今天'), firstLine(registeredOffline, 70))
 
-    const optionsOffline = await evaluate(`
-      (async () => {
-        window.__p.clickText('选项');
-        await window.__p.wait(1600);
-        return window.__p.text();
-      })()
-    `)
+    // 概览只显示入口与数量，清单在各自的子屏里：进「常用食物」读一次，再进「固定补剂」读一次。
+    const optionsOffline = JSON.parse(
+      await evaluate(`
+        (async () => {
+          const out = {};
+          window.__p.clickText('选项');
+          await window.__p.wait(1400);
+          out.overview = window.__p.text();
+          const foodEntry = document.querySelector('[data-option-entry="food"]');
+          if (foodEntry) { foodEntry.click(); await window.__p.wait(900); }
+          out.food = window.__p.text();
+          const back = document.querySelector('.topbar-back button');
+          if (back) { back.click(); await window.__p.wait(500); }
+          const supEntry = document.querySelector('[data-option-entry="supplement"]');
+          if (supEntry) { supEntry.click(); await window.__p.wait(900); }
+          out.supplement = window.__p.text();
+          return JSON.stringify(out);
+        })()
+      `),
+    )
     record(
-      '断网时读得到已写入的本地数据（注册时播种的示例食物来自 IndexedDB）',
-      optionsOffline.includes('燕麦牛奶') && optionsOffline.includes('维生素 D'),
-      optionsOffline.includes('燕麦牛奶') ? '示例食物与补剂都在' : firstLine(optionsOffline, 90),
+      '断网时读得到已写入的本地数据（示例食物与补剂来自 IndexedDB）',
+      optionsOffline.food.includes('燕麦牛奶') && optionsOffline.supplement.includes('维生素 D'),
+      optionsOffline.food.includes('燕麦牛奶') ? '示例食物与补剂都在' : firstLine(optionsOffline.overview, 90),
     )
 
     // ---------------------------------------------------------------- 9 恢复网络
@@ -814,7 +838,8 @@ async function main() {
       await evaluate(`
         (async () => {
           window.__p.clickText('选项');
-          await window.__p.wait(1600);
+          await window.__p.wait(1200);
+          await window.__p.openStorageScreen();
           return window.__p.storageCard();
         })()
       `),
@@ -895,7 +920,9 @@ async function main() {
       `scrollWidth=${mobile.documentScrollWidth}, innerWidth=${mobile.innerWidth}`,
     )
 
-    // 存储卡片在选项页靠下的位置，单独滚到视野里拍一张，人工核对排版与文案。
+    // 存储卡片在「存储与安装」子屏里，先进入再滚到视野拍一张，人工核对排版与文案。
+    await evaluate(`window.__p.openStorageScreen()`)
+    await sleep(700)
     await evaluate(`document.querySelector('[data-storage-card]').scrollIntoView({ block: 'center' })`)
     await sleep(500)
     await shot('06-storage-card-mobile')

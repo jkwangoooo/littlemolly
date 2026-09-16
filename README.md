@@ -50,7 +50,7 @@ npm run check:dates         # 日期引擎规则回归（48 项，无需浏览�
 npm run check:local-data    # 本地数据结构回归（27 项，无需浏览器）
 npm run check:backup        # 备份格式回归（55 项，无需浏览器）
 npm run check:cloud-parity  # 后端一致性回归（50 项，无需浏览器）
-npm run verify:local        # 真实浏览器闭环验收（95 项，自带临时开发服务器，无需先跑 dev）
+npm run verify:local        # 真实浏览器闭环验收（104 项，自带临时开发服务器，无需先跑 dev）
 npm run verify:pwa          # PWA 层验收（42 项，跑生产构建产物 + 自建静态服务器）
 npm run icons               # 由 public/favicon.svg 重新生成 public/ 下的 PNG 图标
 ```

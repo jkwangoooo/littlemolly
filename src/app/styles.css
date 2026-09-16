@@ -453,6 +453,10 @@ button:disabled { cursor: not-allowed; opacity: .58; }
      旧版在窄屏把 5 个按钮折成两行，行高被撑到 102px；现在只有两个元素，一行放得下。 */
   .option-row { gap: 6px; }
   .drag-handle { width: 30px; min-width: 30px; }
+  /* 概览页的密度：入口行与分组标题一起收紧，让「概览一屏放下」在真机字体下也成立
+     （实测余量从 17px 提到 50px 以上，见 verify-local 的断言）。 */
+  .nav-row { padding: 10px 12px; }
+  .option-group-label { margin: 6px 0 0; }
   /* 补剂行有名称 / 输入框 + 勾选 + 移除按钮，窄屏挤在一行会溢出：让名称独占一行。 */
   .panel-row { flex-wrap: wrap; }
   .panel-row-name, .panel-row input:not([type="checkbox"]) { flex: 1 1 100%; }

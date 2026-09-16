@@ -15,6 +15,7 @@ import {
   setOptionActive,
 } from '../../services/api/optionService'
 import { BackupCard } from './components/BackupCard'
+import { AccountCard } from './components/AccountCard'
 import { OptionEditor } from './components/OptionEditor'
 import { OptionListScreen, type OptionListGroup } from './components/OptionListScreen'
 import { OptionsOverview, type OptionsSection } from './components/OptionsOverview'
@@ -22,13 +23,13 @@ import { StorageCard } from './components/StorageCard'
 import { BottomNav } from '../../shared/components/BottomNav'
 import type { View } from '../../shared/types/view'
 import {
+  ACCOUNT_TITLE,
   BACKUP_TITLE,
   DELETE_CONFIRM,
   DISABLE_CONFIRM,
   OPTIONS_BACK_LABEL,
   OPTIONS_OVERVIEW_HINT,
   OPTION_KIND_TITLE,
-  OPTION_PAGE_HINT,
   STORAGE_TITLE,
   SUPPLEMENT_PERIOD_LABEL,
 } from './preferencesLabels'
@@ -43,7 +44,7 @@ type EditorState = { kind: OptionKind; mode: 'create' | 'rename'; option: AnyOpt
  * 用组件内状态而不是路由：项目没有路由库（docs/01），底部三个一级入口保持不变，
  * 子屏是「选项」这个二级入口内部的层级。
  */
-type OptionsView = 'overview' | OptionKind | 'backup' | 'storage'
+type OptionsView = 'overview' | OptionKind | 'backup' | 'storage' | 'account'
 
 /**
  * 选项管理页（L1）。
@@ -156,7 +157,9 @@ export function PreferencesScreen({
       ? BACKUP_TITLE
       : view === 'storage'
         ? STORAGE_TITLE
-        : ''
+        : view === 'account'
+          ? ACCOUNT_TITLE
+          : ''
 
   function openSection(section: OptionsSection) {
     setView(section)
@@ -223,7 +226,6 @@ export function PreferencesScreen({
             {view === 'overview' ? (
               <>
                 <p className="muted">{OPTIONS_OVERVIEW_HINT}</p>
-                <p className="muted">{OPTION_PAGE_HINT}</p>
                 <OptionsOverview
                   counts={counts}
                   selectable={selectable}
@@ -232,7 +234,6 @@ export function PreferencesScreen({
                   email={email}
                   onOpen={openSection}
                   onSeed={() => void mutate(() => seedExampleOptionsForCurrentUser())}
-                  onSignOut={() => void signOut()}
                 />
               </>
             ) : null}
@@ -257,6 +258,8 @@ export function PreferencesScreen({
             ) : null}
 
             {view === 'storage' ? <StorageCard /> : null}
+
+            {view === 'account' ? <AccountCard email={email} onSignOut={() => void signOut()} /> : null}
           </>
         )}
       </section>

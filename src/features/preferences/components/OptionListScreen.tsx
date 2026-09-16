@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import type { AnyOption, OptionKind } from '../../../shared/types/options'
-import { OPTION_ADD_LABEL, OPTION_EMPTY_TEXT } from '../preferencesLabels'
+import { OPTION_ADD_LABEL, OPTION_EMPTY_TEXT, OPTION_PAGE_HINT } from '../preferencesLabels'
 import { useDragOrder } from '../useDragOrder'
 import { OptionRow } from './OptionRow'
 
@@ -65,6 +65,9 @@ export function OptionListScreen({
       </div>
 
       {isEmpty ? <p className="muted option-empty">{OPTION_EMPTY_TEXT[kind]}</p> : null}
+
+      {/* 停用语义说明放在清单屏：用户要停用某项时正好看到，概览页不必背这段文字。 */}
+      {isEmpty ? null : <p className="muted option-hint">{OPTION_PAGE_HINT}</p>}
 
       {groups.map((group) => {
         // 拖拽期间用乐观顺序渲染，松手并保存成功后由父组件重新读取、自然回到服务层顺序。

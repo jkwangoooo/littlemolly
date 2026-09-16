@@ -332,6 +332,37 @@ window.__m = {
   prepChecked: () => [...document.querySelectorAll('.prep-row input[type=checkbox]')].map((box) => box.checked),
   progress: () => (document.querySelector('.progress-head strong') || {}).textContent || '',
   optionSection: (kind) => document.querySelector('.option-section[data-option-kind="' + kind + '"]'),
+  // 选项页现在是「概览 + 子屏」：概览只放入口行，清单在自己的子屏里（docs/17 §4）。
+  optionEntry: (kind) => document.querySelector('[data-option-entry="' + kind + '"]'),
+  optionEntrySummary: (kind) => {
+    const entry = window.__m.optionEntry(kind);
+    return entry ? ((entry.querySelector('small') || {}).textContent || '').trim() : 'NO_ENTRY';
+  },
+  openOptionsOverview: async () => {
+    const back = document.querySelector('.topbar-back button');
+    if (back) {
+      back.click();
+      await window.__m.wait(400);
+    }
+    return 'OK';
+  },
+  openOptionList: async (kind) => {
+    await window.__m.openOptionsOverview();
+    const entry = window.__m.optionEntry(kind);
+    if (!entry) return 'NO_ENTRY:' + kind;
+    entry.click();
+    await window.__m.wait(700);
+    return 'OK';
+  },
+  openOptionMenu: (name) => {
+    const row = window.__m.optionRow(name);
+    if (!row) return 'NO_ROW:' + name;
+    const trigger = row.querySelector('.row-menu-trigger');
+    if (!trigger) return 'NO_TRIGGER';
+    trigger.click();
+    return 'OK';
+  },
+  optionMenuItems: () => [...document.querySelectorAll('.row-menu-item')].map((item) => item.textContent.trim()),
   optionNames: (kind) => {
     const section = window.__m.optionSection(kind);
     if (!section) return [];
@@ -360,12 +391,14 @@ window.__m = {
     button.click();
     return 'OK';
   },
-  clickOptionButton: (name, label) => {
-    const row = window.__m.optionRow(name);
-    if (!row) return 'NO_ROW:' + name;
-    const button = [...row.querySelectorAll('button')].find((item) => item.textContent.trim() === label);
-    if (!button) return 'NO_BUTTON:' + label;
-    button.click();
+  // 行内动作现在收在「…」溢出菜单里：先开菜单再点条目。
+  clickOptionButton: async (name, label) => {
+    const opened = window.__m.openOptionMenu(name);
+    if (opened !== 'OK') return opened;
+    await window.__m.wait(150);
+    const item = [...document.querySelectorAll('.row-menu-item')].find((node) => node.textContent.trim() === label);
+    if (!item) return 'NO_BUTTON:' + label;
+    item.click();
     return 'OK';
   },
   accountText: () => { const card = document.querySelector('.account-card'); return card ? card.innerText : 'NO_ACCOUNT_CARD'; },
@@ -1239,32 +1272,99 @@ async function main() {
       persisted.includes('燕麦牛奶') && persisted.includes('维生素 D'),
       firstLine(persisted, 120))
 
-    // 14. 选项页（L1）：三个分区、示例选项、可用数量口径与本地模式说明
+    // 14. 选项页（L1）：概览入口与状态摘要、三份清单各自的子屏、可用数量口径与本地模式说明
     await evaluate(`window.__m.clickText('选项')`)
     await sleep(1200)
     const optionPage = JSON.parse(await evaluate(`
-      JSON.stringify({
-        sections: ['food', 'supplement', 'exercise'].filter((kind) => !!window.__m.optionSection(kind)),
-        hint: window.__m.text().includes('停用只影响以后的新计划'),
-        food: window.__m.optionNames('food'),
-        supplement: window.__m.optionNames('supplement'),
-        supplementGroups: window.__m.optionGroupLabels('supplement'),
-        exercise: window.__m.optionNames('exercise'),
-        summaries: {
-          food: window.__m.optionSummary('food'),
-          supplement: window.__m.optionSummary('supplement'),
-          exercise: window.__m.optionSummary('exercise'),
-        },
-        account: window.__m.accountText(),
-      })
+      (async () => {
+        const out = {};
+        // 概览：三类清单入口（带状态摘要）+ 系统项入口，以及概览自身的体量
+        out.entries = ['food', 'supplement', 'exercise'].filter((kind) => !!window.__m.optionEntry(kind));
+        out.entrySummaries = {
+          food: window.__m.optionEntrySummary('food'),
+          supplement: window.__m.optionEntrySummary('supplement'),
+          exercise: window.__m.optionEntrySummary('exercise'),
+        };
+        out.systemEntries = ['backup', 'storage'].filter((key) => !!window.__m.optionEntry(key));
+        const region = document.querySelector('.page-scroll');
+        out.overviewButtons = region.querySelectorAll('button').length;
+
+        // 三份清单各自的子屏：标题与入口标签一致，清单、摘要、分组都在自己的屏里
+        out.lists = {};
+        out.summaries = {};
+        out.titles = {};
+        for (const kind of ['food', 'supplement', 'exercise']) {
+          await window.__m.openOptionList(kind);
+          out.titles[kind] = (document.querySelector('.topbar h1') || {}).textContent || '';
+          out.lists[kind] = window.__m.optionNames(kind);
+          out.summaries[kind] = window.__m.optionSummary(kind);
+          if (kind === 'supplement') out.supplementGroups = window.__m.optionGroupLabels(kind);
+          if (kind === 'food') {
+            const rows = [...document.querySelectorAll('.option-row')];
+            out.rowHeight = rows.length ? Math.round(rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0) / rows.length) : 0;
+            out.rowButtons = rows.length ? rows[0].querySelectorAll('button').length : 0;
+            // 停用语义说明在清单屏（停用发生的地方），不在概览页。
+            out.hint = window.__m.text().includes('停用只影响以后的新计划');
+          }
+        }
+        await window.__m.openOptionList('account');
+        out.account = window.__m.accountText();
+        await window.__m.openOptionsOverview();
+        return JSON.stringify(out);
+      })()
     `))
-    record('选项页渲染食物 / 补剂 / 健身三个分区', optionPage.sections.length === 3, optionPage.sections.join(','))
+    record('选项概览渲染三类清单入口与状态摘要',
+      optionPage.entries.length === 3 && optionPage.entrySummaries.food === '启用 5 项',
+      `入口=${optionPage.entries.join(',')}；食物摘要「${optionPage.entrySummaries.food}」`)
+    record('概览把系统项与清单分开',
+      optionPage.systemEntries.length === 2,
+      `系统入口=${optionPage.systemEntries.join(',')}`)
+    record('清单子屏说明了停用只影响以后的新计划', optionPage.hint === true)
+    record('概览按钮数从 71 降到个位数',
+      optionPage.overviewButtons <= 15,
+      `${optionPage.overviewButtons} 个按钮`)
+
+    // 概览是否真的一屏内：必须在手机视口下量才有意义（脚本默认窗口高度只有几百像素）。
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+    await sleep(600)
+    const overviewFit = JSON.parse(await evaluate(`      (async () => {
+        await window.__m.openOptionsOverview();
+        const region = document.querySelector('.page-scroll');
+        const children = [...region.children];
+        const last = children[children.length - 1];
+        // 余量必须单独量：内容比可视区矮时 scrollHeight 会被 clientHeight 顶住，
+        // 只看它分不出「刚好塞满」和「还有富余」（见 docs/17 §4.1 的实测口径）。
+        // 再减去面板自身的下内边距，才是真正能吸收字体差异的余量。
+        const paddingBottom = parseFloat(getComputedStyle(region).paddingBottom) || 0;
+        return JSON.stringify({
+          content: region.scrollHeight,
+          visible: region.clientHeight,
+          viewport: window.innerHeight,
+          free: last ? Math.round(region.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom - paddingBottom) : null,
+          breakdown: children.map((el) => Math.round(el.getBoundingClientRect().height) + ':' + String(el.className).split(' ')[0]).join(' '),
+        });
+      })()
+    `))
+    // 概览截图在手机视口下拍：这才是目标形态（脚本默认窗口只有几百像素高，拍出来不代表真机）。
+    await shot('04-选项页')
+    await cdp.send('Emulation.clearDeviceMetricsOverride')
+    await sleep(400)
+    record('概览在 390x844 手机视口下一屏放下（改前 4.1 屏）',
+      overviewFit.content <= overviewFit.visible && (overviewFit.free ?? -1) >= 24,
+      `内容区可视 ${overviewFit.content}px，真实余量 ${overviewFit.free}px（≥24 才够 iOS 字体差异）；各块 ${overviewFit.breakdown}`)
+    record('每个清单进自己的子屏，标题与入口标签一致',
+      optionPage.titles.food === '常用食物' &&
+        optionPage.titles.supplement === '固定补剂' &&
+        optionPage.titles.exercise === '健身项目与动作',
+      Object.values(optionPage.titles).join(' / '))
+    record('选项行内只剩拖拽手柄与溢出菜单（改前每行 5 个按钮）',
+      optionPage.rowButtons === 2 && optionPage.rowHeight <= 70,
+      `每行 ${optionPage.rowButtons} 个按钮，行高 ${optionPage.rowHeight}px`)
     record('新账号自动带出可编辑的示例选项',
-      optionPage.food.length === 5 && optionPage.supplement.length === 3 && optionPage.exercise.length === 4,
-      `食物 ${optionPage.food.length} / 补剂 ${optionPage.supplement.length} / 健身 ${optionPage.exercise.length}`)
+      optionPage.lists.food.length === 5 && optionPage.lists.supplement.length === 3 && optionPage.lists.exercise.length === 4,
+      `食物 ${optionPage.lists.food.length} / 补剂 ${optionPage.lists.supplement.length} / 健身 ${optionPage.lists.exercise.length}`)
     record('补剂示例按早 / 中 / 晚分组', JSON.stringify(optionPage.supplementGroups) === JSON.stringify(['早', '中', '晚']),
       optionPage.supplementGroups.join(','))
-    record('选项页说明了停用只影响以后的新计划', optionPage.hint === true)
     record('初始全部启用，可用数量与清单一致',
       optionPage.summaries.food === '启用 5 项 · 停用 0 项' &&
         optionPage.summaries.supplement === '启用 3 项 · 停用 0 项' &&
@@ -1273,12 +1373,13 @@ async function main() {
     record('本地模式说明不伪装云端同步成功',
       optionPage.account.includes('本地模式') && !/已同步|同步成功|上次同步/.test(optionPage.account),
       firstLine(optionPage.account, 80))
-    await shot('04-选项页')
 
-    // 15. 选项页（L1）：新增 / 重名校验 / 排序 / 改名 / 停用 / 删除
+    // 15. 选项页（L1）：新增 / 重名校验 / 排序 / 改名 / 停用 / 删除（都在清单子屏里，动作走行内溢出菜单）
     const mutations = JSON.parse(await evaluate(`
       (async () => {
         const out = {};
+        // 清单现在在自己的子屏里：先进入「常用食物」。
+        out.opened = await window.__m.openOptionList('food');
         window.__m.clickSectionContains('food', '添加食物');
         await window.__m.wait(700);
         out.addTitle = (document.querySelector('.bottom-sheet h2') || {}).textContent || '';
@@ -1302,11 +1403,11 @@ async function main() {
         await window.__m.wait(600);
 
         // 上移：与「清炒时蔬」交换位置
-        window.__m.clickOptionButton(${JSON.stringify(FOOD_NAME)}, '上移');
+        await window.__m.clickOptionButton(${JSON.stringify(FOOD_NAME)}, '上移');
         await window.__m.wait(1300);
         out.afterMove = window.__m.optionNames('food');
 
-        window.__m.clickOptionButton(${JSON.stringify(FOOD_NAME)}, '改名');
+        await window.__m.clickOptionButton(${JSON.stringify(FOOD_NAME)}, '改名');
         await window.__m.wait(700);
         window.__m.fill('名称', ${JSON.stringify(FOOD_RENAMED)});
         await window.__m.wait(150);
@@ -1315,7 +1416,7 @@ async function main() {
         out.afterRename = window.__m.optionNames('food');
 
         // 停用：需二次确认，且「可用数量」随之下降（该数量与 L2 选择器同源）
-        window.__m.clickOptionButton(${JSON.stringify(FOOD_RENAMED)}, '停用');
+        await window.__m.clickOptionButton(${JSON.stringify(FOOD_RENAMED)}, '停用');
         await window.__m.wait(700);
         out.disableAsked = (document.querySelector('.confirm-modal') || {}).innerText || '';
         window.__m.clickText('确认停用');
@@ -1333,7 +1434,7 @@ async function main() {
         await window.__m.wait(150);
         window.__m.clickText('添加');
         await window.__m.wait(1300);
-        window.__m.clickOptionButton(${JSON.stringify(TEMP_NAME)}, '删除');
+        await window.__m.clickOptionButton(${JSON.stringify(TEMP_NAME)}, '删除');
         await window.__m.wait(700);
         out.deleteAsked = (document.querySelector('.confirm-modal') || {}).innerText || '';
         window.__m.clickText('确认删除');
@@ -1373,10 +1474,62 @@ async function main() {
       `确认框含删除说明=${mutations.deleteAsked.includes('不再出现在候选清单里')}, 剩余=${mutations.afterDelete.length}`)
     record('删除临时项后停用计数不受影响', mutations.finalSummary === '启用 5 项 · 停用 1 项', mutations.finalSummary)
 
-    // 16. 选项页（L1）：补剂按时段落位，健身项目保持独立
+    // 15b. 拖拽排序（本次新增的交互）：按住手柄往下拖一位，顺序交换；再拖回来，顺序复原。
+    //      用 CDP 派发真实鼠标事件（Chrome 会据此合成 pointer 事件），因此走的是和生产一致的那条路径。
+    const dragStart = JSON.parse(await evaluate(`
+      (async () => {
+        await window.__m.openOptionList('food');
+        const rows = [...document.querySelectorAll('.option-row')];
+        const handle = rows[0].querySelector('.drag-handle');
+        handle.scrollIntoView({ block: 'center' });
+        await window.__m.wait(300);
+        const box = handle.getBoundingClientRect();
+        return JSON.stringify({
+          before: window.__m.optionNames('food'),
+          x: Math.round(box.left + box.width / 2),
+          y: Math.round(box.top + box.height / 2),
+          step: Math.round(rows[0].getBoundingClientRect().height),
+        });
+      })()
+    `))
+    async function dragBy(fromY, delta) {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: dragStart.x, y: fromY, button: 'left', clickCount: 1 })
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: dragStart.x, y: fromY + delta, button: 'left' })
+      await sleep(250)
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: dragStart.x, y: fromY + delta, button: 'left', clickCount: 1 })
+      await sleep(1600)
+    }
+    await dragBy(dragStart.y, dragStart.step)
+    const draggedDown = JSON.parse(await evaluate(`JSON.stringify({ names: window.__m.optionNames('food') })`))
+    record('拖拽手柄可以把一项往下拖一位（顺序交换）',
+      draggedDown.names[0] === dragStart.before[1] && draggedDown.names[1] === dragStart.before[0],
+      `拖前=${dragStart.before.slice(0, 2).join(',')} → 拖后=${draggedDown.names.slice(0, 2).join(',')}`)
+
+    // 反向拖回去，顺便把数据还原成后续断言期望的顺序
+    const dragBack = JSON.parse(await evaluate(`
+      (async () => {
+        const rows = [...document.querySelectorAll('.option-row')];
+        const handle = rows[1].querySelector('.drag-handle');
+        handle.scrollIntoView({ block: 'center' });
+        await window.__m.wait(300);
+        const box = handle.getBoundingClientRect();
+        return JSON.stringify({
+          y: Math.round(box.top + box.height / 2),
+          step: Math.round(rows[1].getBoundingClientRect().height),
+        });
+      })()
+    `))
+    await dragBy(dragBack.y, -dragBack.step)
+    const draggedUp = JSON.parse(await evaluate(`JSON.stringify({ names: window.__m.optionNames('food') })`))
+    record('拖拽可以往回拖（顺序复原）',
+      JSON.stringify(draggedUp.names) === JSON.stringify(dragStart.before),
+      `复原后=${draggedUp.names.slice(0, 2).join(',')}`)
+
+    // 16. 选项页（L1）：补剂按时段落位，健身项目保持独立（各自在自己的子屏里）
     const supplement = JSON.parse(await evaluate(`
       (async () => {
         const out = {};
+        await window.__m.openOptionList('supplement');
         window.__m.clickSectionContains('supplement', '添加补剂');
         await window.__m.wait(700);
         out.periodField = (document.querySelector('.bottom-sheet') || {}).innerText.includes('时段');
@@ -1390,8 +1543,11 @@ async function main() {
         out.groups = window.__m.optionGroupLabels('supplement');
         out.midGroup = window.__m.optionGroupNames('supplement', '中');
         out.summary = window.__m.optionSummary('supplement');
+        // 健身是另一屏：进去取一次，再回到补剂屏留给下面的截图
+        await window.__m.openOptionList('exercise');
         out.exercise = window.__m.optionNames('exercise');
         out.exerciseSummary = window.__m.optionSummary('exercise');
+        await window.__m.openOptionList('supplement');
         return JSON.stringify(out);
       })()
     `))
@@ -1411,12 +1567,15 @@ async function main() {
     const backupRoundTrip = JSON.parse(await evaluate(`
       (async () => {
         const out = {};
+        await window.__m.openOptionList('backup');
         window.__m.backupClick('生成备份');
         await window.__m.wait(900);
         out.text = window.__m.backupText();
         out.note = window.__m.backupNote();
 
-        // 改一下现有数据（新增一条食物），让备份与当前状态出现可见差异
+        // 改一下现有数据（新增一条食物），让备份与当前状态出现可见差异。
+        // 清单在自己的子屏里，所以要先离开备份屏。
+        await window.__m.openOptionList('food');
         window.__m.clickSectionContains('food', '添加食物');
         await window.__m.wait(700);
         window.__m.fill('名称', ${JSON.stringify(BACKUP_EXTRA_FOOD)});
@@ -1425,7 +1584,8 @@ async function main() {
         await window.__m.wait(1300);
         out.afterEdit = window.__m.optionNames('food');
 
-        // 重新粘回备份文本（改数据不会清空卡片里的文本，但显式重贴更贴近用户操作）
+        // 回备份屏：重新粘回备份文本（改数据不会清空卡片里的文本，但显式重贴更贴近用户操作）
+        await window.__m.openOptionList('backup');
         window.__m.backupPaste(out.text);
         await window.__m.wait(300);
         out.inspectResult = window.__m.backupClick('检查这份备份');
@@ -1434,10 +1594,13 @@ async function main() {
         out.modalOpen = window.__m.backupModalOpen();
         window.__m.clickText('确认导入并替换');
         await window.__m.wait(2600);
-        out.restored = window.__m.optionNames('food');
-        out.restoredStatus = window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)});
         out.imported = window.__m.backupImported();
         out.status = window.__m.text().split('\\n').find((line) => line.includes('本地保存状态')) || '';
+
+        // 回食物屏确认还原结果
+        await window.__m.openOptionList('food');
+        out.restored = window.__m.optionNames('food');
+        out.restoredStatus = window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)});
         return JSON.stringify(out);
       })()
     `))
@@ -1466,13 +1629,18 @@ async function main() {
     await evaluate(`window.__m.clickText('选项')`)
     await sleep(1200)
     const optionReload = JSON.parse(await evaluate(`
-      JSON.stringify({
-        food: window.__m.optionNames('food'),
-        foodStatus: window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)}),
-        foodSummary: window.__m.optionSummary('food'),
-        supplement: window.__m.optionNames('supplement'),
-        groups: window.__m.optionGroupLabels('supplement'),
-      })
+      (async () => {
+        const out = {};
+        await window.__m.openOptionList('food');
+        out.food = window.__m.optionNames('food');
+        out.foodStatus = window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)});
+        out.foodSummary = window.__m.optionSummary('food');
+        await window.__m.openOptionList('supplement');
+        out.supplement = window.__m.optionNames('supplement');
+        out.groups = window.__m.optionGroupLabels('supplement');
+        await window.__m.openOptionsOverview();
+        return JSON.stringify(out);
+      })()
     `))
     record('刷新后选项清单与顺序保持不变',
       JSON.stringify(optionReload.food) === JSON.stringify(mutations.afterDelete) &&
@@ -1491,27 +1659,34 @@ async function main() {
     const backupFirst = JSON.parse(await evaluate(`
       (async () => {
         const out = {};
+        await window.__m.openOptionList('backup');
         window.__m.backupClick('生成备份');
         await window.__m.wait(900);
         out.text = window.__m.backupText();
         out.note = window.__m.backupNote();
         out.hasCard = !!window.__m.backupSection();
-        // 记下导入前的选项清单，稍后用来证明坏文本没写进任何东西
+        // 记下导入前的选项清单（要切到食物屏读），稍后用来证明坏文本没写进任何东西
+        await window.__m.openOptionList('food');
         out.before = window.__m.optionNames('food');
 
         // 粘贴一段「看起来像 JSON、但格式标记不对」的文本
+        await window.__m.openOptionList('backup');
         window.__m.backupPaste('{"app": "happy-little-molly", "format": "csv"}');
         await window.__m.wait(300);
         out.inspectDisabled = window.__m.backupClick('检查这份备份');
         await window.__m.wait(700);
         out.modalAfterBad = window.__m.backupModalOpen();
         out.errorText = window.__m.backupError();
-        out.after = window.__m.optionNames('food');
 
         // 空输入时按钮本身就该禁用
         window.__m.backupClear();
         await window.__m.wait(500);
         out.inspectWhenEmpty = window.__m.backupClick('检查这份备份');
+
+        // 回食物屏确认这一串操作没有写入任何东西
+        await window.__m.openOptionList('food');
+        out.after = window.__m.optionNames('food');
+        await window.__m.openOptionList('backup');
 
         // 运行时契约守卫：坏记录必须被 assertRecord 拦下（不只靠静态检查）
         try {
@@ -1651,12 +1826,18 @@ async function main() {
     await evaluate(`window.__m.clickText('选项')`)
     await sleep(1200)
     const secondAccount = JSON.parse(await evaluate(`
-      JSON.stringify({
-        food: window.__m.optionNames('food'),
-        supplement: window.__m.optionNames('supplement'),
-        exercise: window.__m.optionNames('exercise'),
-        account: window.__m.accountText(),
-      })
+      (async () => {
+        const out = {};
+        await window.__m.openOptionList('food');
+        out.food = window.__m.optionNames('food');
+        await window.__m.openOptionList('supplement');
+        out.supplement = window.__m.optionNames('supplement');
+        await window.__m.openOptionList('exercise');
+        out.exercise = window.__m.optionNames('exercise');
+        await window.__m.openOptionList('account');
+        out.account = window.__m.accountText();
+        return JSON.stringify(out);
+      })()
     `))
     const allSecondAccountNames = [...secondAccount.food, ...secondAccount.supplement, ...secondAccount.exercise]
     record('第二个账号只看到自己的示例选项',
@@ -1698,7 +1879,14 @@ async function main() {
     await evaluate(`window.__m.clickText('选项')`)
     await sleep(1200)
     const freshAccount = JSON.parse(await evaluate(`
-      JSON.stringify({ food: window.__m.optionNames('food'), account: window.__m.accountText() })
+      (async () => {
+        const out = {};
+        await window.__m.openOptionList('food');
+        out.food = window.__m.optionNames('food');
+        await window.__m.openOptionList('account');
+        out.account = window.__m.accountText();
+        return JSON.stringify(out);
+      })()
     `))
     record('新账号拿到的是全新示例选项而不是旧数据',
       JSON.stringify(freshAccount.food) === JSON.stringify(SEED_FOODS) && freshAccount.account.includes(EMAIL_C),
@@ -1707,6 +1895,7 @@ async function main() {
     const restoredByImport = JSON.parse(await evaluate(`
       (async () => {
         const out = {};
+        await window.__m.openOptionList('backup');
         window.__m.backupPaste(${JSON.stringify(BACKUP_TEXT)});
         await window.__m.wait(400);
         window.__m.backupClick('检查这份备份');
@@ -1714,10 +1903,12 @@ async function main() {
         out.modal = window.__m.backupModalOpen();
         window.__m.clickText('确认导入并替换');
         await window.__m.wait(2800);
+        out.imported = window.__m.backupImported();
+        await window.__m.openOptionList('food');
         out.food = window.__m.optionNames('food');
         out.foodStatus = window.__m.optionStatus(${JSON.stringify(FOOD_RENAMED)});
+        await window.__m.openOptionList('supplement');
         out.supplement = window.__m.optionNames('supplement');
-        out.imported = window.__m.backupImported();
         return JSON.stringify(out);
       })()
     `))

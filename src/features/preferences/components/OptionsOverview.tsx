@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { OptionKind } from '../../../shared/types/options'
 import { getStorageSnapshot, subscribeStorage } from '../../../shared/storage/storageStatus'
 import {
+  ACCOUNT_TITLE,
   OPTIONS_GROUP_ACCOUNT,
   OPTIONS_GROUP_LISTS,
   OPTIONS_GROUP_SYSTEM,
@@ -11,7 +12,7 @@ import {
   STORAGE_USAGE_UNKNOWN,
 } from '../preferencesLabels'
 
-export type OptionsSection = 'food' | 'supplement' | 'exercise' | 'backup' | 'storage'
+export type OptionsSection = 'food' | 'supplement' | 'exercise' | 'backup' | 'storage' | 'account'
 
 /**
  * 选项页的概览（docs/17 §4.1）。
@@ -32,7 +33,6 @@ export function OptionsOverview({
   email,
   onOpen,
   onSeed,
-  onSignOut,
 }: {
   counts: Record<OptionKind, number>
   selectable: Record<OptionKind, number>
@@ -41,7 +41,6 @@ export function OptionsOverview({
   email: string
   onOpen: (section: OptionsSection) => void
   onSeed: () => void
-  onSignOut: () => void
 }) {
   const storage = useSyncExternalStore(subscribeStorage, getStorageSnapshot, getStorageSnapshot)
 
@@ -116,16 +115,14 @@ export function OptionsOverview({
 
       <p className="option-group-label">{OPTIONS_GROUP_ACCOUNT}</p>
       <div className="nav-list">
-        <div className="nav-row static">
+        <button className="nav-row" type="button" data-option-entry="account" onClick={() => onOpen('account')}>
           <span>
-            <strong>当前登录</strong>
+            <strong>{ACCOUNT_TITLE}</strong>
             <small>{email || '未登录'}</small>
           </span>
-        </div>
-      </div>
-      <div className="actions">
-        <button className="secondary" type="button" onClick={onSignOut}>
-          退出登录
+          <span className="arrow" aria-hidden="true">
+            ›
+          </span>
         </button>
       </div>
     </>
