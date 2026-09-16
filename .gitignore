@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# 云端构建产物（npx vite build --mode cloud --outDir dist-cloud）。
+# 与 dist/ 分开是为了能同时存在、便于核对两种产物的互斥检索。
+dist-cloud/
 .workbuddy/
 .env
 .env.local
