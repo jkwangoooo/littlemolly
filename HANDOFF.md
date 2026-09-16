@@ -19,15 +19,22 @@
 
 ## 当前待办
 
-1. 继续 **L6 阶段二：真实项目验收 + 上行迁移实现**。阶段一（服务门面 / 云端适配器 / 云端表结构对齐 / 迁移与冲突方案）已完成，见 `docs/14-L6-completion-report.md`。
+> **新窗口接手先读 `docs/15-next-session-handoff-and-prompt.md`**：里面有现状核对、验收基线、两条待办的完整可复制提示词与验收清单、以及复用清单（已踩过的坑）。下面两条待办互相独立。
+
+1. **移动端持久化（PWA 层）**——无外部依赖，可立即开工，提示词见 `docs/15` §4。
+   - 当前程序**不是 PWA**：无 `manifest`、无 service worker、未调用 `navigator.storage.persist()`，`public/` 里只有一个 296 字节的 `favicon.svg`。在手机上既不能安装、断网也打不开。
+   - 为什么值得做：iOS Safari 对**未安装**站点有「7 天无交互即清空可写存储（IndexedDB / localStorage / Cache / SW 注册）」的规则；添加到主屏幕的 Web App 使用独立存储分区、不计入该计时。安装是 iOS 上本地数据能持久的关键一环。
+   - 一条硬约束：**service worker 只在生产构建注册，dev 不注册**。否则 `verify-local.mjs` 的「冷升级造 v1 老库」用例（用 CDP 把 `/src/main.tsx` 换成空模块）会失效。不要为了迁就 SW 去改既有验收用例，而要新增一个跑构建产物的 `verify:pwa`。
+   - 即使安装成功，本地仍不是「数据保管者」：删主屏幕图标、设置里清数据、长期不用都会丢。所以这一条与下面第 2 条不互相替代。
+2. 继续 **L6 阶段二：真实项目验收 + 上行迁移实现**，提示词见 `docs/15` §5。阶段一（服务门面 / 云端适配器 / 云端表结构对齐 / 迁移与冲突方案）已完成，见 `docs/14-L6-completion-report.md`。
    - **需要凭据的前置**：本机没有真实 Supabase 项目（无 `.env.local`），且没有 PostgreSQL 可执行文件，因此 `stage4_local_parity.sql` 只做过静态检查、四个迁移也从未真实执行。这一步必须先有项目。
    - 阶段二顺序建议：① 在真实项目按文件名顺序执行四个迁移并核对表 / 策略 / 触发器；② 关闭邮箱验证（或配好 SMTP），否则 `signUp` 拿不到会话（适配器会明确报错，不会假装登录成功）；③ 跑真实链路（注册 / 登录 / 刷新恢复 / 跨设备同步 / 断网失败 / RLS 双账号）；④ 实现上行迁移 RPC `import_local_backup`，关键点是历史日期触发器的受控豁免，方案见 `docs/13-L6-cloud-migration-and-conflict-plan.md` §5。
    - 阶段一留口：云端模式下「本地数据备份」卡片显示不可用说明（`supportsLocalBackup`），上行迁移落地后替换为真正的导入实现；`cloud/backupService.ts` 的导出名与签名届时保持不变。
    - L4/L5 遗留：真机软键盘顶起与 iOS 安全区（`env(safe-area-inset-bottom)`）待真机验收时人工确认/补齐。
-2. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`、`npm run check:backup`、`npm run check:cloud-parity`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。改动服务层或云端 SQL 后另跑 `npm run build:cloud` 并核对两种产物的互斥检索。
-3. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。**同时必须在 `recordSchemas.ts` 的 `RECORD_SCHEMAS` 补该仓库字段契约**，否则 `put` 会在运行时抛「未定义字段」；`check:backup` 会比对仓库清单与契约同源。
-4. 改动 `localDb` 写入口径（`put` / `remove` / `runTransaction`）时注意：请求级错误必须经 `guardRequest` 上抛，只挂 `transaction.onerror` 会让「写失败」被当成成功。
-5. R9 已在 L1 修复并纳入验收断言，不再挂账。
+3. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`、`npm run check:backup`、`npm run check:cloud-parity`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。改动服务层或云端 SQL 后另跑 `npm run build:cloud` 并核对两种产物的互斥检索。
+4. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。**同时必须在 `recordSchemas.ts` 的 `RECORD_SCHEMAS` 补该仓库字段契约**，否则 `put` 会在运行时抛「未定义字段」；`check:backup` 会比对仓库清单与契约同源。
+5. 改动 `localDb` 写入口径（`put` / `remove` / `runTransaction`）时注意：请求级错误必须经 `guardRequest` 上抛，只挂 `transaction.onerror` 会让「写失败」被当成成功。
+6. R9 已在 L1 修复并纳入验收断言，不再挂账。
 
 ## 已有文档
 
@@ -46,6 +53,7 @@
 - `docs/12-L5-completion-report.md`：L5 完成报告（本地可靠性、备份与回归：写入契约、原子事务、异常恢复加固、导出导入；任务达成、证据、决策、缺陷、延后项与未验证项）。
 - `docs/13-L6-cloud-migration-and-conflict-plan.md`：L6 云端迁移与冲突处理方案（两种后端共存方式、11 个仓库 → 云端表映射、七条不变量的云端落点、本地 → 云端上行迁移步骤与历史日期受控豁免、冲突与断网策略、回滚、验收清单与未验证项）。
 - `docs/14-L6-completion-report.md`：L6 阶段一完成报告（服务门面与后端切换、云端适配器补全、云端 SQL 对齐、契约与编译器级等价保证；任务达成、证据、决策、缺陷、延后项与未验证项）。
+- `docs/15-next-session-handoff-and-prompt.md`：**新对话接手文档与实施提示词**（现状核对、验收基线、两条待办的完整可复制提示词与验收清单、已踩过的坑、本次交接产出）。
 
 ## 阶段 1 已完成内容
 
