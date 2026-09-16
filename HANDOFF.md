@@ -818,9 +818,14 @@ L2 已完成三餐 / 补剂 / 健身的内容实例化。但休息日（周六 /
 
 ### 真机验证用的线上部署（2026-09-16）
 
-- 链接：`https://f033473469da4daf849ebd353b47443f.sg2.agentos-app.run`（当前构建的**静态快照**，随时可下线；只用于真机安装验收，不是正式发布）。
+- 链接：`https://f033473469da4daf849ebd353b47443f.sg2.agentos-app.run`（当前构建的**静态快照**，随时可下线；只用于真机验收，不是正式发布）。
+- **2026-09-16 20:36 已重新发布**：线上现为 `7ab8b59` 的产物，含第二轮（缩放锁 / 抽屉让开软键盘）、
+  第三轮（固定外壳 + 内容区内部滚动）与第四轮（添加事项改居中卡片）的全部改动。
+  重新发布后已核对：`index.html` 带 `user-scalable=no` / `viewport-fit=cover`，引用的资源哈希与本地构建一致；
+  CSS 含 `.center-card` / `.editor-body`，JS 含 `vv-keyboard-inset` / `data-editor-card`；
+  线上冒烟 8/9（唯一失败项是断网段控制台的 `ERR_INTERNET_DISCONNECTED`，即 `docs/16` §6.1 第 4 条记录的
+  network-first 正常代价）。
 - 发布的是 `dist/`（生产产物）而不是源码：dev server 刻意不注册 SW，发布源码让沙箱跑 dev 就装不上、也验不了离线。
-- 发布后已核对服务端 MIME（manifest → `application/manifest+json`、sw.js → `text/javascript`），并对**线上链接**跑了一次性冒烟：8/9 通过，唯一失败项是断网段控制台的 `ERR_INTERNET_DISCONNECTED`（network-first 的正常代价，非缺陷，见 `docs/16` §6.1 第 4 条）。
 - 待办：真机核对清单见 `README.md` 验收步骤 13–14；核对结果（尤其 iOS 是否进入独立存储分区、`persist()` 返回值）回来后补进 `docs/16` §6.3。
 
 ### 阶段结论
