@@ -179,7 +179,6 @@ PASS  更新流程与存储卡片段控制台无 error / warning
 服务器随后在**同一个端口**恢复，换端口就换了源，缓存与 IndexedDB 就不是同一份数据了，验证会变成假的。
 
 ### 5.4 截图人工核对（`SHOT_DIR`）
-
 `01-app-login`、`02-app-standalone-first-screen`、`02b-app-standalone-storage-card`、
 `03-icons-preview`、`04-options-desktop`、`05-options-mobile`、`06-storage-card-mobile`。
 已逐张核对：四张图标形状与安全区正常、maskable 的 M 明显小于 any 版；
@@ -189,8 +188,24 @@ PASS  更新流程与存储卡片段控制台无 error / warning
 CDP 的 `Emulation.setEmulatedMedia` **不支持** `display-mode`（实测 `matchMedia` 仍为 false），
 而 `--app=` 下 `matchMedia('(display-mode: standalone)')` 为真，这是目前唯一能自动化的真实路径。
 
-## 6. 缺陷、延后项与未验证项
+### 5.5 真机验证用的线上部署（2026-09-16）
 
+真机安装必须走 HTTPS，所以把**生产构建产物**（`dist/`，不是源码）作为静态站点发布了一次：
+
+- 链接：`https://f033473469da4daf849ebd353b47443f.sg2.agentos-app.run`
+- **为什么发布 `dist/` 而不是项目源码**：dev server 刻意不注册 service worker，
+  发布源码让沙箱跑 dev 的话，手机上既装不上也验不了离线，这个真机环节就白做了。
+- 发布后先量了响应头，确认服务端给出的 MIME 正确：
+  `manifest.webmanifest` → `application/manifest+json`、`sw.js` → `text/javascript`、
+  `assets/*.js` → `text/javascript`、图标 → `image/png`。MIME 不对的话 manifest 解析不了、
+  worker 也注册不上，这两项都是「看起来发布了、其实装不上」的典型原因。
+- 又对着**线上链接**跑了一次一次性冒烟（脚本跑完即弃，未进仓库）：**8/9 通过**。
+  首屏、manifest、图标、SW activated、刷新后受控、应用壳缓存完整且全同源、断网刷新仍能打开——
+  全部通过；唯一一条 FAIL 是断网段控制台的 `ERR_INTERNET_DISCONNECTED`，即上面 6.1 第 4 条记录的
+  network-first 正常代价，不是缺陷。
+- 这条链接是当前构建的静态快照，随时可以下线；它只用于真机安装验收，不是正式发布。
+
+## 6. 缺陷、延后项与未验证项
 ### 6.1 本次发现并修掉的问题
 
 1. **应用壳缓存会被非壳导航污染（设计缺陷，在写成断言之前先修掉）**：初版 `networkFirst`
@@ -204,9 +219,14 @@ CDP 的 `Emulation.setEmulatedMedia` **不支持** `display-mode`（实测 `matc
      已给预览页补 favicon，并让控制台断言输出报错来源 URL（原来只说「404」，无法定位）。
 3. **截图拍错了窗口**：独立窗口的两张截图最初用的是主窗口的 CDP 连接，两张图字节数完全相同。
    已改为用该窗口自己的连接截图，并把「卡片滚进视野」单独拍一张——截首屏是看不到卡片的。
+4. **断网时控制台会出现一条 `net::ERR_INTERNET_DISCONNECTED`（观察，不是缺陷）**：
+   这是「HTML 网络优先」的正常代价——断网时 worker 仍然会先试网络，失败才回退缓存，
+   浏览器会把这次失败记进控制台。应用行为完全正确（页面正常渲染），所以**不要**为了让控制台干净
+   把 HTML 改成缓存优先：那会让每次上线都拿不到新版本。
+   因此 `verify:pwa` 里的「控制台无 error / warning」断言**刻意只覆盖非断网段**，
+   断网段单独断言「页面仍然渲染得出来」。这个覆盖范围是有意的，不是漏测。
 
 ### 6.2 延后项
-
 1. **`npm run build:cloud` 会写进 `dist/`**（而不是 `dist-cloud/`）：它等价于
    `tsc -b && vite build --mode cloud`，跑完之后 `dist/` 里就是云端产物，接着跑 `verify:pwa`
    会验错对象。本次按 docs/15 的写法用 `npx vite build --mode cloud --outDir dist-cloud`，

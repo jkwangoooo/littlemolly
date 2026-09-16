@@ -816,6 +816,13 @@ L2 已完成三餐 / 补剂 / 健身的内容实例化。但休息日（周六 /
 - Android 安装按钮的**渲染**已由 `verify:pwa` 断言覆盖（无头 Chrome 确实会派发 `beforeinstallprompt`）；点击后进入的系统安装流程**未验证**（无头环境弹不出安装对话框）。
 - iOS 安全区已在本次修掉并由 `Emulation.setSafeAreaInsetsOverride` 自动验收（导航 34px / 页面 114px）；**真机软键盘顶起输入框**仍未核对（需要真机与真实输入法）。
 
+### 真机验证用的线上部署（2026-09-16）
+
+- 链接：`https://f033473469da4daf849ebd353b47443f.sg2.agentos-app.run`（当前构建的**静态快照**，随时可下线；只用于真机安装验收，不是正式发布）。
+- 发布的是 `dist/`（生产产物）而不是源码：dev server 刻意不注册 SW，发布源码让沙箱跑 dev 就装不上、也验不了离线。
+- 发布后已核对服务端 MIME（manifest → `application/manifest+json`、sw.js → `text/javascript`），并对**线上链接**跑了一次性冒烟：8/9 通过，唯一失败项是断网段控制台的 `ERR_INTERNET_DISCONNECTED`（network-first 的正常代价，非缺陷，见 `docs/16` §6.1 第 4 条）。
+- 待办：真机核对清单见 `README.md` 验收步骤 13–14；核对结果（尤其 iOS 是否进入独立存储分区、`persist()` 返回值）回来后补进 `docs/16` §6.3。
+
 ### 阶段结论
 
 - **待办 A（PWA 层）完成**，行为基线未回退，验收基线为「三件套 + 四个 check 脚本 + `verify:local` 94 项 + `verify:pwa` 35 项」。
