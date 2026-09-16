@@ -6,8 +6,15 @@
       viewport-fit=cover 是 iOS 安全区的前提：没有它，env(safe-area-inset-*) 恒为 0，
       底部固定导航在装了主屏幕的 iPhone 上会压在 Home 指示条上。
       装上主屏幕（display-mode: standalone）之后没有浏览器工具栏兜底，这个问题会更明显。
+
+      maximum-scale / user-scalable 用来锁掉双指缩放，让页面像一个应用而不是可缩放的网页。
+      iOS Safari 会忽略这两个字段（拦手势事件，见 src/shared/appShell/viewportGuards.ts），
+      但 Android 与部分 iOS 版本会认，因此两边都要做。
     -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!--

@@ -316,6 +316,7 @@ const PAGE_HELPERS = `
 window.__p = {
   byText: (text) => [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === text),
   clickText: (text) => { const el = window.__p.byText(text); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
+  clickContains: (text) => { const el = [...document.querySelectorAll('button')].find((node) => node.textContent.includes(text)); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
   fill: (labelText, value) => {
     const label = [...document.querySelectorAll('label')].find((item) => item.textContent.includes(labelText));
     if (!label) return 'NO_LABEL:' + labelText;
@@ -925,6 +926,78 @@ async function main() {
       `viewport-fit=cover=${safeArea.viewport.includes('viewport-fit=cover')}, 导航 padding-bottom=${safeArea.navPaddingBottom}px, 页面 padding-bottom=${safeArea.pagePaddingBottom}px（期望 34 / 114）`,
     )
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }).catch(() => {})
+
+    // 缩放锁：真机上「双指放大后整页能四处平移」正是网页相最明显的地方。
+    const zoomLock = JSON.parse(
+      await evaluate(`
+        JSON.stringify({
+          viewport: (document.querySelector('meta[name=viewport]') || {}).content || '',
+          bodyTouchAction: getComputedStyle(document.body).touchAction,
+          buttonTouchAction: getComputedStyle(document.querySelector('button')).touchAction,
+        })
+      `),
+    )
+    record(
+      '缩放锁：viewport 禁用缩放 + 触摸交互按应用处理',
+      zoomLock.viewport.includes('user-scalable=no') &&
+        zoomLock.viewport.includes('maximum-scale=1') &&
+        zoomLock.buttonTouchAction === 'manipulation',
+      `viewport 含 user-scalable=no=${zoomLock.viewport.includes('user-scalable=no')}, 按钮 touch-action=${zoomLock.buttonTouchAction}`,
+    )
+
+    // 软键盘：iOS 弹键盘只缩小可视视口（布局视口不动），抽屉若贴着布局视口底边，
+    // 它下面那截（含「保存」）就落在键盘底下，而面板打开时 body 滚动是锁住的——真机上就是
+    // 「抽屉显示不全、点不到保存」。这里用替身 visualViewport 驱动同一段逻辑做断言。
+    await evaluate(`window.__p.clickText('今日')`)
+    await sleep(1400)
+    await evaluate(`window.__p.clickContains('添加事项')`)
+    await sleep(1400)
+    const keyboard = JSON.parse(
+      await evaluate(`
+        (() => {
+          const real = window.visualViewport;
+          window.__realVisualViewport = real;
+          const fake = new EventTarget();
+          fake.height = 508; fake.width = 390; fake.offsetTop = 0; fake.offsetLeft = 0; fake.scale = 1;
+          Object.defineProperty(window, 'visualViewport', { value: fake, configurable: true });
+          real.dispatchEvent(new Event('resize'));
+          const sheet = document.querySelector('.bottom-sheet');
+          const actions = sheet ? sheet.querySelector('.actions') : null;
+          const body = sheet ? sheet.querySelector('.sheet-body') : null;
+          return JSON.stringify({
+            insetVar: document.documentElement.style.getPropertyValue('--vv-keyboard-inset'),
+            heightVar: document.documentElement.style.getPropertyValue('--vv-height'),
+            sheetTop: sheet ? Math.round(sheet.getBoundingClientRect().top) : null,
+            sheetBottom: sheet ? Math.round(sheet.getBoundingClientRect().bottom) : null,
+            actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom) : null,
+            hasScrollableBody: Boolean(body) && getComputedStyle(body).overflowY === 'auto',
+          });
+        })()
+      `),
+    )
+    record(
+      '软键盘弹出（可视视口缩到 508）时抽屉整体让开键盘',
+      keyboard.insetVar === '336px' && keyboard.sheetBottom !== null && keyboard.sheetBottom <= 508,
+      `--vv-keyboard-inset=${keyboard.insetVar}, --vv-height=${keyboard.heightVar}, 抽屉 ${keyboard.sheetTop}→${keyboard.sheetBottom}（可视区 0→508）`,
+    )
+    record(
+      '抽屉的「保存 / 取消」始终在可见区域内，且中间内容可独立滚动',
+      keyboard.actionsBottom !== null && keyboard.actionsBottom <= 508 && keyboard.hasScrollableBody === true,
+      `操作区底部=${keyboard.actionsBottom}（≤508 即可见）, 内容区可滚动=${keyboard.hasScrollableBody}`,
+    )
+    // 收尾：把替身换回真实可视视口并重新同步，别把状态留给后面的检查。
+    // 注意不能靠 `delete window.visualViewport` 恢复——实测删掉之后就是 undefined，
+    // 说明它在这个内核上是 window 自己的属性而不是原型上的 getter。
+    await evaluate(`
+      (() => {
+        const real = window.__realVisualViewport;
+        Object.defineProperty(window, 'visualViewport', { value: real, configurable: true });
+        real.dispatchEvent(new Event('resize'));
+        return 'restored';
+      })()
+    `)
+    await evaluate(`window.__p.clickText('取消')`)
+    await sleep(800)
 
     const noisy = cdp.events.filter((event) => {
       if (event.method === 'Runtime.exceptionThrown') return true

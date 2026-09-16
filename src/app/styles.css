@@ -14,7 +14,15 @@
 /* ---------- 2 基础元素 ---------- */
 * { box-sizing: border-box; }
 
+html, body { overscroll-behavior: none; }
+
 body { margin: 0; min-width: 320px; min-height: 100vh; }
+
+/* 触摸交互按「应用」而不是「网页」处理：
+   - manipulation 关掉双击缩放（双指缩放由 viewportGuards 拦手势事件）；
+   - text-size-adjust 防止横屏时 iOS 自作主张放大正文。 */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, input, textarea, select, a, label { touch-action: manipulation; }
 
 h1, h2, p { margin-top: 0; }
 h1 { margin-bottom: 8px; font-size: 28px; font-weight: 650; }
@@ -258,10 +266,27 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgb(36 33 31 / 38%); }
 .confirm-modal { width: min(100%, 440px); border-radius: 8px; padding: 24px; background: #fff; box-shadow: 0 12px 40px rgb(36 33 31 / 22%); }
 
-.sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; background: rgb(36 33 31 / 38%); }
-.bottom-sheet { width: min(100%, 760px); max-height: 90vh; overflow: auto; margin: 0 auto; border-radius: 14px 14px 0 0; padding: 18px 24px 28px; background: #fff; box-shadow: 0 -8px 30px rgb(36 33 31 / 20%); }
+/* 遮罩让出软键盘：iOS 弹键盘时只缩小可视视口，遮罩若仍铺满布局视口，
+   抽屉底部（含保存按钮）就会落在键盘底下。--vv-keyboard-inset 由
+   src/shared/appShell/visualViewport.ts 写入，取不到时为 0，行为与之前一致。 */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; background: rgb(36 33 31 / 38%); padding-bottom: var(--vv-keyboard-inset, 0px); }
+.bottom-sheet {
+  width: min(100%, 760px);
+  /* 高度上限同时受「可视视口」约束：键盘弹起后 90vh 会超过真正能看到的区域。 */
+  max-height: min(90vh, calc(var(--vv-height, 100vh) - 16px));
+  margin: 0 auto;
+  border-radius: 14px 14px 0 0;
+  padding: 18px 24px 28px;
+  background: #fff;
+  box-shadow: 0 -8px 30px rgb(36 33 31 / 20%);
+  display: flex;
+  flex-direction: column;
+}
 /* 底部面板贴着屏幕底边弹出，最后一行的输入框同样要让开 Home 指示条。 */
 .bottom-sheet { padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
+/* 中间内容独立滚动，操作区因此永远钉在面板底部可见（见 BottomSheet.tsx 的注释）。 */
+.sheet-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.bottom-sheet > .actions { flex: none; margin-top: 4px; border-top: 1px solid #eee7e3; padding-top: 12px; }
 .bottom-sheet .field { margin-bottom: 12px; }
 .sheet-handle { width: 42px; height: 4px; margin: 0 auto 14px; border-radius: 2px; background: #c7bdb7; }
 

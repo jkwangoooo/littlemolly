@@ -8,7 +8,7 @@
 
 **待办 A 完成。** 应用现在有完整的 PWA 外壳（manifest、四张 PNG 图标、手写 service worker），
 dev 模式仍然**不注册** service worker，`verify:local` 保持 **94/94** 不变；新增的 `verify:pwa`
-跑生产构建产物，**35/35 通过**。本地与云端两种构建产物互不污染的性质未被破坏。
+跑生产构建产物，**38/38 通过**。本地与云端两种构建产物互不污染的性质未被破坏。
 
 本地数据是否留得住，现在多了一层真实的保障（安装到主屏幕 → 独立存储分区 + 缓存的应用壳），
 但**没有变成「数据安全了」**：`persist()` 只是请求，备份仍是唯一的兜底路径，这一点在界面文案与
@@ -24,7 +24,7 @@ dev 模式仍然**不注册** service worker，`verify:local` 保持 **94/94** �
 | 4 | 只在生产构建注册 | `src/shared/pwa/serviceWorker.ts` 用 `import.meta.env.PROD` 早退；dev 下 `getRegistrations()` 为空（`verify:pwa` 第 2 项断言） |
 | 5 | `navigator.storage.persist()` | `src/shared/storage/storageStatus.ts`：先 feature-detect，启动时请求一次（幂等），与 `estimate()` 的用量一起记入模块快照 |
 | 6 | 安装引导与存储状态卡片 | `src/features/preferences/components/StorageCard.tsx`：用量 / 是否持久化 / 是否独立窗口三行事实；iOS 给「分享 → 添加到主屏幕」步骤；Android 用 `beforeinstallprompt` 出安装按钮 |
-| 7 | `scripts/verify-pwa.mjs` + `npm run verify:pwa` | 35 项，跑 `dist/`，自建零依赖静态服务器（空闲端口），`Storage.clearDataForOrigin` 显式列出 `indexeddb,local_storage,cache_storage,service_workers` |
+| 7 | `scripts/verify-pwa.mjs` + `npm run verify:pwa` | 38 项，跑 `dist/`，自建零依赖静态服务器（空闲端口），`Storage.clearDataForOrigin` 显式列出 `indexeddb,local_storage,cache_storage,service_workers` |
 
 「明确不做」的六项（SPA 路由、后台同步/推送、改业务服务层、改数据库结构、懒加载重构、动 docs/01 不变量）均未触碰。
 
@@ -132,7 +132,7 @@ npx vite build --mode cloud --outDir dist-cloud → 135 modules / 489.90 kB（gz
 
 两种产物都带上了 PWA 外壳（`sw.js` / `manifest.webmanifest` / `icons/`）。
 
-### 5.3 `npm run verify:pwa`：35/35 通过
+### 5.3 `npm run verify:pwa`：38/38 通过
 
 ```
 PASS  生产构建产出完整应用壳（sw.js / manifest / 图标）
@@ -171,7 +171,7 @@ PASS  手机 390x844 无横向溢出  → scrollWidth=390, innerWidth=390
 PASS  iOS 安全区：底部导航与页面为 Home 指示条让出空间  → viewport-fit=cover=true, 导航 padding-bottom=34px, 页面 padding-bottom=114px
 PASS  更新流程与存储卡片段控制台无 error / warning
 
-结果：35/35 通过
+结果：38/38 通过
 ```
 
 断网做了两层：先按提示词用 `Network.emulateNetworkConditions` 模拟，再把静态服务器**真的关掉**
@@ -253,10 +253,70 @@ CDP 的 `Emulation.setEmulatedMedia` **不支持** `display-mode`（实测 `matc
 
 ## 7. 结论
 
-待办 A 的七项要求全部落地，行为基线未回退（`verify:local` 94/94），新增 `verify:pwa` 35/35。
+待办 A 的七项要求全部落地，行为基线未回退（`verify:local` 94/94），新增 `verify:pwa` 38/38。
 本地数据在移动端的留存路径从「只能导出备份」变成「安装到主屏幕 + 备份」两条，
 但**备份仍然是唯一的兜底**：卸载浏览器、手动清理数据、iOS 上始终不安装都会丢，
 这条事实在界面文案与本报告里保持同一个说法。
 
 下一步仍是 `docs/15` §5 的待办 B（L6 阶段二：真实项目验收 + 上行迁移），它需要真实 Supabase 凭据；
 本机当前没有 `.env.local`，因此本任务只做待办 A，未触碰云端任何代码与迁移。
+
+## 8. 追加：真机反馈修复（2026-09-16 第二轮）
+
+用户在手机上实测后反馈三条。这里记录已修的两条；第三条（首页固定单页面）牵涉产品取舍，单列在 §8.3。
+
+### 8.1 「页面不像 APP，双指放大后整体页面可以任意滑动」
+
+**原因**：viewport 没有禁止缩放，iOS 又会忽略 `user-scalable=no`，于是捏合放大后整页可四处平移——
+这是「网页相」最明显的地方。
+
+**修法**（三处齐下，缺一处都会漏）：
+
+- `index.html` 的 viewport 补 `maximum-scale=1.0, user-scalable=no`（Android 与部分 iOS 版本认）；
+- `src/shared/appShell/viewportGuards.ts`：拦 iOS 的非标准 `gesturestart / gesturechange / gestureend`
+  事件，并兜底两指以上的 `touchstart`——**iOS Safari 从 iOS 10 起就是靠这一步才拦得住**；
+- `styles.css`：`touch-action: manipulation`（关双击缩放）、`overscroll-behavior: none`（去橡皮筋）、
+  `-webkit-text-size-adjust: 100%`（防横屏被 iOS 自行放大正文）。
+
+**代价要写明**：禁用缩放牺牲了「放大看小字」这条无障碍能力。这是刻意的取舍——本应用的目标形态是
+装到主屏幕的应用外壳，不是可自由缩放的文档页。
+
+### 8.2 「添加事项的上拉抽屉显示不全面、功能用不了」
+
+**先量后修**。用移动端视口（390×844）打开抽屉并注入替身 `visualViewport`（高度 508，模拟 iPhone 键盘），
+量到的事实是：
+
+```
+抽屉:             {top: 467, bottom: 844, height: 377, maxHeight: 759.6px, scrollable: false}
+抽屉(模拟键盘后):  {top: 467, bottom: 844, height: 377, maxHeight: 759.6px}   ← 完全没变
+```
+
+**原因**：iOS 弹键盘时**只缩小可视视口，不改布局视口**（`innerHeight` 仍是 844）。
+抽屉按 `90vh` 算高度、又贴在布局视口底边，于是它下面那截（输入框 + 「保存」）正好落在键盘底下；
+而面板打开时 `body` 滚动是锁住的，用户连滚都滚不出来——真机上就是「显示不全、点不到保存」。
+
+**修法**：
+
+- 新增 `src/shared/appShell/visualViewport.ts`，把可视视口同步成两个 CSS 变量：
+  `--vv-height`（可视高度）与 `--vv-keyboard-inset`（键盘盖住的高度 = 布局视口 − 可视视口 − offsetTop）；
+- `.sheet-backdrop` 加 `padding-bottom: var(--vv-keyboard-inset, 0px)`，抽屉整体上移让开键盘；
+  `.bottom-sheet` 的 `max-height` 改成 `min(90vh, calc(var(--vv-height, 100vh) - 16px))`；
+- `BottomSheet.tsx` 由「整块可滚」改成三层：标题固定 / 中间 `.sheet-body` 独立滚动 / 操作区钉底。
+  这样**无论键盘多高，「保存 / 取消」永远可见**，而不是靠用户自己滚。
+
+**验收**：`verify:pwa` 新增两条断言，用替身 `visualViewport` 驱动同一段逻辑——
+`--vv-keyboard-inset=336px`、抽屉 `114→508`、操作区底部 `484 ≤ 508`、内容区可滚动。
+（替身是测试手段，验的是「可视视口一缩，抽屉就跟着让位」这条接线；真机行为仍需用户确认。）
+
+### 8.3 待定：「首页做成固定单页面不可滑动」
+
+这条牵涉产品取舍，先给量化事实，再等决定：
+
+| 页面 | 当前总高 | 视口 | 一屏可用内容区 |
+| --- | --- | --- | --- |
+| 执行今天 | 892px | 844px | ≈ 602px（扣掉头部 95 + 页签 60 + 导航 53 + 安全区 34） |
+| 准备明天 | 1354px | 844px | 同上 |
+
+也就是说：执行页只差约 135px 就能一屏放下；**准备页要砍掉约 600px（近一半）**才能一屏，
+必须把内容降级（例如把五项准备、三餐/补剂/晨间/健身摘要收进抽屉或二级页）。
+「固定外壳 + 内容区内部滚动」是两条路线的共同底座，先不单独实现，等决定后再一起做。
