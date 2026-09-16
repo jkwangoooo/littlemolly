@@ -227,9 +227,10 @@ function daysToSaturday() {
 const results = []
 
 // 注入到页面的交互辅助函数。重写界面时请保留 .prep-row / .execution-row / .task-row /
-// .bottom-sheet / .confirm-modal / .mode-card / .progress-head / .option-row /
+// .bottom-sheet / .center-card / .confirm-modal / .mode-card / .progress-head / .option-row /
 // .panel-group / .panel-row / .picker-row 这些类名，以及 data-meal / data-period 这两个属性，
 // 脚本依赖它们定位 L2 的多选与补剂分组。
+// 编辑弹层（抽屉或居中卡片）统一用 data-editor-card 定位，形态换了脚本不必跟着改。
 const HELPERS = `
 window.__m = {
   byText: (text, tag) => [...document.querySelectorAll(tag || 'button')].find((el) => el.textContent.trim() === text),
@@ -997,18 +998,23 @@ async function main() {
       (async () => {
         window.__m.clickContains('添加事项');
         await window.__m.wait(800);
-        const title = (document.querySelector('.bottom-sheet h2') || {}).textContent;
+        // 自定义事项是居中卡片，不是底部抽屉：用形态无关的 data-editor-card 定位。
+        const title = (document.querySelector('[data-editor-card] h2') || {}).textContent;
+        const centerCard = !!document.querySelector('.center-card[data-editor-card]');
+        const bottomSheet = !!document.querySelector('.bottom-sheet[data-editor-card]');
         window.__m.fill('事项名称', ${JSON.stringify(TASK_NAME)});
         await window.__m.wait(200);
         window.__m.clickText('保存');
         await window.__m.wait(1300);
         const rows = [...document.querySelectorAll('.task-row')];
-        return JSON.stringify({ title, count: rows.length, found: rows.some((row) => row.textContent.includes(${JSON.stringify(TASK_NAME)})) });
+        return JSON.stringify({ title, count: rows.length, centerCard, bottomSheet, found: rows.some((row) => row.textContent.includes(${JSON.stringify(TASK_NAME)})) });
       })()
     `)
     const taskData = JSON.parse(taskAdded)
     record('自定义事项可新增', taskData.title === '添加事项' && taskData.found === true && taskData.count === 1,
       `面板标题=${taskData.title}, 事项数=${taskData.count}`)
+    record('自定义事项编辑用居中卡片（不是底部抽屉）', taskData.centerCard === true && taskData.bottomSheet === false,
+      `center-card=${taskData.centerCard}, bottom-sheet=${taskData.bottomSheet}`)
 
     // 10. 自定义事项：编辑
     const taskEdited = await evaluate(`

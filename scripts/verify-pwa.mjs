@@ -945,59 +945,86 @@ async function main() {
       `viewport 含 user-scalable=no=${zoomLock.viewport.includes('user-scalable=no')}, 按钮 touch-action=${zoomLock.buttonTouchAction}`,
     )
 
-    // 软键盘：iOS 弹键盘只缩小可视视口（布局视口不动），抽屉若贴着布局视口底边，
-    // 它下面那截（含「保存」）就落在键盘底下，而面板打开时 body 滚动是锁住的——真机上就是
-    // 「抽屉显示不全、点不到保存」。这里用替身 visualViewport 驱动同一段逻辑做断言。
-    await evaluate(`window.__p.clickText('今日')`)
-    await sleep(1400)
-    await evaluate(`window.__p.clickContains('添加事项')`)
-    await sleep(1400)
-    const keyboard = JSON.parse(
-      await evaluate(`
-        (() => {
-          const real = window.visualViewport;
-          window.__realVisualViewport = real;
-          const fake = new EventTarget();
-          fake.height = 508; fake.width = 390; fake.offsetTop = 0; fake.offsetLeft = 0; fake.scale = 1;
-          Object.defineProperty(window, 'visualViewport', { value: fake, configurable: true });
-          real.dispatchEvent(new Event('resize'));
-          const sheet = document.querySelector('.bottom-sheet');
-          const actions = sheet ? sheet.querySelector('.actions') : null;
-          const body = sheet ? sheet.querySelector('.sheet-body') : null;
-          return JSON.stringify({
-            insetVar: document.documentElement.style.getPropertyValue('--vv-keyboard-inset'),
-            heightVar: document.documentElement.style.getPropertyValue('--vv-height'),
-            sheetTop: sheet ? Math.round(sheet.getBoundingClientRect().top) : null,
-            sheetBottom: sheet ? Math.round(sheet.getBoundingClientRect().bottom) : null,
-            actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom) : null,
-            hasScrollableBody: Boolean(body) && getComputedStyle(body).overflowY === 'auto',
-          });
-        })()
-      `),
-    )
-    record(
-      '软键盘弹出（可视视口缩到 508）时抽屉整体让开键盘',
-      keyboard.insetVar === '336px' && keyboard.sheetBottom !== null && keyboard.sheetBottom <= 508,
-      `--vv-keyboard-inset=${keyboard.insetVar}, --vv-height=${keyboard.heightVar}, 抽屉 ${keyboard.sheetTop}→${keyboard.sheetBottom}（可视区 0→508）`,
-    )
-    record(
-      '抽屉的「保存 / 取消」始终在可见区域内，且中间内容可独立滚动',
-      keyboard.actionsBottom !== null && keyboard.actionsBottom <= 508 && keyboard.hasScrollableBody === true,
-      `操作区底部=${keyboard.actionsBottom}（≤508 即可见）, 内容区可滚动=${keyboard.hasScrollableBody}`,
-    )
-    // 收尾：把替身换回真实可视视口并重新同步，别把状态留给后面的检查。
-    // 注意不能靠 `delete window.visualViewport` 恢复——实测删掉之后就是 undefined，
-    // 说明它在这个内核上是 window 自己的属性而不是原型上的 getter。
-    await evaluate(`
+    // 软键盘：iOS 弹键盘只缩小可视视口（布局视口不动）。弹层若贴着布局视口底边，
+    // 它下面那截（含「保存」）就落在键盘底下，而弹层打开时 body 滚动是锁住的——
+    // 真机上就是「显示不全、点不到保存」。两种形态（底部抽屉 / 居中卡片）都必须让开，
+    // 这里用替身 visualViewport 驱动同一段逻辑，分别断言。
+    const fakeKeyboardGeometry = (selector) => `
+      (() => {
+        const real = window.visualViewport;
+        window.__realVisualViewport = real;
+        const fake = new EventTarget();
+        fake.height = 508; fake.width = 390; fake.offsetTop = 0; fake.offsetLeft = 0; fake.scale = 1;
+        Object.defineProperty(window, 'visualViewport', { value: fake, configurable: true });
+        real.dispatchEvent(new Event('resize'));
+        const dialog = document.querySelector(${JSON.stringify(selector)});
+        const actions = dialog ? dialog.querySelector('.actions') : null;
+        const body = dialog ? dialog.querySelector('.editor-body') : null;
+        return JSON.stringify({
+          found: Boolean(dialog),
+          insetVar: document.documentElement.style.getPropertyValue('--vv-keyboard-inset'),
+          heightVar: document.documentElement.style.getPropertyValue('--vv-height'),
+          top: dialog ? Math.round(dialog.getBoundingClientRect().top) : null,
+          bottom: dialog ? Math.round(dialog.getBoundingClientRect().bottom) : null,
+          actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom) : null,
+          hasScrollableBody: Boolean(body) && getComputedStyle(body).overflowY === 'auto',
+        });
+      })()
+    `
+    // 恢复真实可视视口。注意不能靠 `delete window.visualViewport`——实测删掉之后就是 undefined，
+    // 说明它在这个内核上是 window 自己的属性而不是原型上的 getter，必须把真实对象放回去。
+    const restoreVisualViewport = `
       (() => {
         const real = window.__realVisualViewport;
         Object.defineProperty(window, 'visualViewport', { value: real, configurable: true });
         real.dispatchEvent(new Event('resize'));
         return 'restored';
       })()
-    `)
+    `
+
+    // ① 底部抽屉：用「准备明天 → 三餐」打开（三餐面板内容多，仍然走抽屉）。
+    // 注意此刻还在「选项」页，而「执行今天 / 准备明天」页签只存在于日计划页，必须先回今日。
+    await evaluate(`window.__p.clickText('今日')`)
+    await sleep(1400)
+    await evaluate(`window.__p.clickText('准备明天')`)
+    await sleep(1800)
+    const mealsOpened = await evaluate(`window.__p.clickContains('三餐已安排')`)
+    await sleep(1500)
+    const sheetKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('.bottom-sheet[data-editor-card]')))
+    record(
+      '软键盘弹出（可视视口缩到 508）时底部抽屉整体让开键盘',
+      sheetKeyboard.found && sheetKeyboard.insetVar === '336px' && sheetKeyboard.bottom !== null && sheetKeyboard.bottom <= 508,
+      `打开三餐=${mealsOpened}, --vv-keyboard-inset=${sheetKeyboard.insetVar}, --vv-height=${sheetKeyboard.heightVar}, 抽屉 ${sheetKeyboard.top}→${sheetKeyboard.bottom}（可视区 0→508）`,
+    )
+    record(
+      '底部抽屉的「保存 / 取消」仍在可见区域内，内容可独立滚动',
+      sheetKeyboard.actionsBottom !== null && sheetKeyboard.actionsBottom <= 508 && sheetKeyboard.hasScrollableBody === true,
+      `操作区底部=${sheetKeyboard.actionsBottom}（≤508 即可见）, 内容区可滚动=${sheetKeyboard.hasScrollableBody}`,
+    )
+    await evaluate(restoreVisualViewport)
     await evaluate(`window.__p.clickText('取消')`)
-    await sleep(800)
+    await sleep(900)
+
+    // ② 居中卡片：自定义事项改用的形态，同样要躲开键盘（否则卡片下半截被键盘盖住）。
+    await evaluate(`window.__p.clickText('今日')`)
+    await sleep(1400)
+    await evaluate(`window.__p.clickContains('添加事项')`)
+    await sleep(1400)
+    const cardKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('.center-card[data-editor-card]')))
+    record(
+      '软键盘弹出时居中卡片整体让开键盘（没有被顶到键盘下面）',
+      cardKeyboard.found && cardKeyboard.insetVar === '336px' && cardKeyboard.top >= 0 && cardKeyboard.bottom <= 508,
+      `--vv-keyboard-inset=${cardKeyboard.insetVar}, 卡片 ${cardKeyboard.top}→${cardKeyboard.bottom}（可视区 0→508）`,
+    )
+    record(
+      '居中卡片的「保存 / 取消」仍在可见区域内，内容可独立滚动',
+      cardKeyboard.actionsBottom !== null && cardKeyboard.actionsBottom <= 508 && cardKeyboard.hasScrollableBody === true,
+      `操作区底部=${cardKeyboard.actionsBottom}（≤508 即可见）, 内容区可滚动=${cardKeyboard.hasScrollableBody}`,
+    )
+    await shot('08-task-card-mobile')
+    await evaluate(restoreVisualViewport)
+    await evaluate(`window.__p.clickText('取消')`)
+    await sleep(900)
 
     // 固定外壳：页面本身不滚动、不平移（整页滑动正是用户说的「廉价感」来源），
     // 头部与底部导航固定，只有内容区可滚。这条断言防止以后有人把它改回整页滚动。

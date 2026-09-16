@@ -49,9 +49,9 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
 | `npm run check:local-data` | 27/27 | 本地结构与契约 |
 | `npm run check:backup` | 55/55 | 备份格式 |
 | `npm run check:cloud-parity` | 50/50 | 后端一致性 |
-| `npm run verify:local` | **94/94** | 真实浏览器闭环，约 2.5 分钟 |
-| `npm run verify:pwa` | **40/40** | PWA 层，跑生产产物 + 自建静态服务器，约 1.5 分钟 |
-| 本地构建体积 | 91 modules / 275.63 kB（gzip 85.71 kB） | PWA 外壳带来 +6.63 kB |
+| `npm run verify:local` | **95/95** | 真实浏览器闭环，约 2.5 分钟 |
+| `npm run verify:pwa` | **42/42** | PWA 层，跑生产产物 + 自建静态服务器，约 2 分钟 |
+| 本地构建体积 | 91 modules / 276.86 kB（gzip 86.12 kB） | 含 PWA 外壳与移动端交互修复 |
 | 云端构建体积 | 135 modules / 489.90 kB（gzip 141.83 kB） | `npx vite build --mode cloud --outDir dist-cloud` |
 
 **双向产物体检**（改服务层后必做）：
@@ -111,7 +111,7 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
 明确不做：不做 SPA 路由、不做后台同步/推送、不改任何业务服务层函数、不改数据库结构、不引入懒加载重构、不动 docs/01 的不变量。
 
 验证要求：
-- 三件套 + 五个 check 脚本 + verify:local 94/94（必须复现，不能只跑新的那个）。
+- 三件套 + 五个 check 脚本 + verify:local 95/95（必须复现，不能只跑新的那个）。
 - verify:pwa 全绿，并在最终回复里给出它实际检查了多少项。
 - 桌面 1440x900 与手机 390x844 视口无横向溢出、控制台无 error/warning（沿用 verify-local.mjs 的口径）。
 - 用本机 Chrome 无头模式核对安装后的独立窗口观感（至少截图核对图标与首屏）。
@@ -180,7 +180,7 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
 明确不做：不改页面业务接口（签名不变），不改契约绕开 parity，不改本地后端行为，不动 docs/01 的不变量，不引入第三方 ORM / 状态库。
 
 验证要求：
-- typecheck / lint / build 通过；check:dates 48/48、check:local-data 27/27、check:backup 55/55、check:cloud-parity 50/50、verify:local 94/94 全部复现（不能因为改的是云端就跳过本地基线）。
+- typecheck / lint / build 通过；check:dates 48/48、check:local-data 27/27、check:backup 55/55、check:cloud-parity 50/50、verify:local 95/95 全部复现（不能因为改的是云端就跳过本地基线）。
 - 本地构建产物 0 命中 supabase；云端构建产物（npx vite build --mode cloud --outDir dist-cloud）0 命中 indexedDB / happy-little-molly-local。
 - 所有云端结论必须来自真实请求的真实返回。拿不到凭据或某步失败时，明确写成阻塞项，不得伪称通过。
 

@@ -50,8 +50,8 @@ npm run check:dates         # 日期引擎规则回归（48 项，无需浏览�
 npm run check:local-data    # 本地数据结构回归（27 项，无需浏览器）
 npm run check:backup        # 备份格式回归（55 项，无需浏览器）
 npm run check:cloud-parity  # 后端一致性回归（50 项，无需浏览器）
-npm run verify:local        # 真实浏览器闭环验收（94 项，自带临时开发服务器，无需先跑 dev）
-npm run verify:pwa          # PWA 层验收（40 项，跑生产构建产物 + 自建静态服务器）
+npm run verify:local        # 真实浏览器闭环验收（95 项，自带临时开发服务器，无需先跑 dev）
+npm run verify:pwa          # PWA 层验收（42 项，跑生产构建产物 + 自建静态服务器）
 npm run icons               # 由 public/favicon.svg 重新生成 public/ 下的 PNG 图标
 ```
 
@@ -68,7 +68,7 @@ npm run icons               # 由 public/favicon.svg 重新生成 public/ 下的
 若浏览器不在默认位置，用 `CHROME_PATH` 指定可执行文件；若想指向一个已在运行的服务，用 `APP_URL` 覆盖（此时脚本不再自建服务器）。
 设置 `SHOT_DIR` 可把关键界面截图落盘，用于人工核对观感，例如 `SHOT_DIR=D:/tmp/shots npm run verify:local`；不设置则完全不写文件。
 
-`npm run verify:pwa` 跑的是**生产构建产物**（先 `npm run build`，再用一个零依赖的静态服务器托管 `dist/`，端口同样自动申请），因此它和 `verify:local` 互补而不是重复：`verify:local` 走 dev server，而 service worker 刻意只在生产构建注册（dev 注册会让 dev server 上的两个既有用例失效）。它覆盖 40 项：dev 模式确实没有 SW 注册、manifest 字段齐全、图标全部 200、SW 处于 activated、Cache Storage 里有带构建戳的应用壳且不含任何跨域条目、CDP 模拟断网与**真的关掉服务器**两种断网下刷新仍能渲染应用、断网时仍能注册并读回已写入的本地数据、重新构建后新版本停在 waiting（不静默替换当前页面）且用户点「刷新」后旧缓存被清理、存储状态卡片如实显示用量 / 是否持久化 / 是否独立窗口、桌面与手机视口无横向溢出、控制台无 error / warning。同样支持 `SHOT_DIR`。
+`npm run verify:pwa` 跑的是**生产构建产物**（先 `npm run build`，再用一个零依赖的静态服务器托管 `dist/`，端口同样自动申请），因此它和 `verify:local` 互补而不是重复：`verify:local` 走 dev server，而 service worker 刻意只在生产构建注册（dev 注册会让 dev server 上的两个既有用例失效）。它覆盖 42 项：dev 模式确实没有 SW 注册、manifest 字段齐全、图标全部 200、SW 处于 activated、Cache Storage 里有带构建戳的应用壳且不含任何跨域条目、CDP 模拟断网与**真的关掉服务器**两种断网下刷新仍能渲染应用、断网时仍能注册并读回已写入的本地数据、重新构建后新版本停在 waiting（不静默替换当前页面）且用户点「刷新」后旧缓存被清理、存储状态卡片如实显示用量 / 是否持久化 / 是否独立窗口、桌面与手机视口无横向溢出、控制台无 error / warning。同样支持 `SHOT_DIR`。
 
 `npm run icons` 用本机 Chrome 无头模式把 `public/favicon.svg` 渲染成 192 / 512 / maskable 512 / apple-touch-icon 180 四张 PNG（不引入任何图像处理依赖），产物提交在 `public/` 下，脚本可重复执行。
 
