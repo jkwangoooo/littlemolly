@@ -14,17 +14,22 @@ import {
   seedExampleOptionsForCurrentUser,
   setOptionActive,
 } from '../../services/api/optionService'
-import { AccountCard } from './components/AccountCard'
 import { BackupCard } from './components/BackupCard'
 import { OptionEditor } from './components/OptionEditor'
-import { OptionSection, type OptionGroup } from './components/OptionSection'
+import { OptionListScreen, type OptionListGroup } from './components/OptionListScreen'
+import { OptionsOverview, type OptionsSection } from './components/OptionsOverview'
 import { StorageCard } from './components/StorageCard'
 import { BottomNav } from '../../shared/components/BottomNav'
 import type { View } from '../../shared/types/view'
 import {
+  BACKUP_TITLE,
   DELETE_CONFIRM,
   DISABLE_CONFIRM,
+  OPTIONS_BACK_LABEL,
+  OPTIONS_OVERVIEW_HINT,
+  OPTION_KIND_TITLE,
   OPTION_PAGE_HINT,
+  STORAGE_TITLE,
   SUPPLEMENT_PERIOD_LABEL,
 } from './preferencesLabels'
 import { useOptionLists } from './useOptionLists'
@@ -34,8 +39,15 @@ type OptionTarget = { kind: OptionKind; option: AnyOption }
 type EditorState = { kind: OptionKind; mode: 'create' | 'rename'; option: AnyOption | null }
 
 /**
+ * 选项页当前的层级。概览只放入口，三类清单与备份 / 存储各有自己的子屏（docs/17 §4）。
+ * 用组件内状态而不是路由：项目没有路由库（docs/01），底部三个一级入口保持不变，
+ * 子屏是「选项」这个二级入口内部的层级。
+ */
+type OptionsView = 'overview' | OptionKind | 'backup' | 'storage'
+
+/**
  * 选项管理页（L1）。
- * 只负责编排：读取清单、串起写入与确认弹层、组装分区。
+ * 只负责编排：读取清单、串起写入与确认弹层、组装概览与子屏。
  * 校验与落库都在服务层，失败时保留弹层内容并显示具体原因。
  */
 export function PreferencesScreen({
@@ -46,6 +58,7 @@ export function PreferencesScreen({
   const { lists, selectable, loading, loadError, reload } = useOptionLists()
   const { status, saveError, canRetry, runSave, retryLastSave } = useSaveRunner()
   const [email] = useState(() => currentUser()?.email ?? '')
+  const [view, setView] = useState<OptionsView>('overview')
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [pendingDisable, setPendingDisable] = useState<OptionTarget | null>(null)
   const [pendingDelete, setPendingDelete] = useState<OptionTarget | null>(null)
@@ -62,6 +75,26 @@ export function PreferencesScreen({
       return ok
     },
     [runSave, reload],
+  )
+
+  /**
+   * 拖拽提交。服务层只有「同组内交换一位」的 `moveOption`（跨组本来就不允许），
+   * 因此这里按位移逐步移动：拖了 3 位就调 3 次。
+   * 这样不必为了拖拽新增一个批量重排接口，本地与云端两侧也不会出现新的行为差异
+   * （门面每加一个函数，两侧都要实现且要被 check:cloud-parity 检查）。
+   * 整个序列包在**一次** mutate 里，保存状态只闪一次。
+   */
+  const commitReorder = useCallback(
+    async (kind: OptionKind, id: string, delta: number) => {
+      await mutate(async () => {
+        const step = delta > 0 ? 1 : -1
+        for (let index = 0; index < Math.abs(delta); index += 1) {
+          const moved = await moveOption(kind, id, step)
+          if (!moved) break
+        }
+      })
+    },
+    [mutate],
   )
 
   async function submitEditor(name: string, period: SupplementPeriod) {
@@ -97,39 +130,65 @@ export function PreferencesScreen({
     await mutate(() => setOptionActive(target.kind, target.option.id, true))
   }
 
-  const foodGroups: OptionGroup[] = [{ key: 'food', options: lists.food }]
-  const exerciseGroups: OptionGroup[] = [{ key: 'exercise', options: lists.exercise }]
-  const supplementGroups: OptionGroup[] = SUPPLEMENT_PERIODS.map((period) => ({
-    key: period,
-    label: SUPPLEMENT_PERIOD_LABEL[period],
-    options: lists.supplement.filter((item) => item.period === period),
-    detail: () => `时段：${SUPPLEMENT_PERIOD_LABEL[period]}`,
-  }))
+  const groupsByKind: Record<OptionKind, OptionListGroup[]> = {
+    food: [{ key: 'food', options: lists.food }],
+    exercise: [{ key: 'exercise', options: lists.exercise }],
+    supplement: SUPPLEMENT_PERIODS.map((period) => ({
+      key: period,
+      label: SUPPLEMENT_PERIOD_LABEL[period],
+      options: lists.supplement.filter((item) => item.period === period),
+      detail: () => `时段：${SUPPLEMENT_PERIOD_LABEL[period]}`,
+    })),
+  }
 
-  const totalOptions = lists.food.length + lists.supplement.length + lists.exercise.length
+  const counts: Record<OptionKind, number> = {
+    food: lists.food.length,
+    supplement: lists.supplement.length,
+    exercise: lists.exercise.length,
+  }
+  const totalOptions = counts.food + counts.supplement + counts.exercise
   const busy = status === 'saving'
 
-  const sectionProps = {
-    busy,
-    onMove: (kind: OptionKind) => (option: AnyOption, delta: -1 | 1) =>
-      void mutate(() => moveOption(kind, option.id, delta)),
-    onToggleActive: (kind: OptionKind) => (option: AnyOption) => void handleToggleActive({ kind, option }),
-    onRename: (kind: OptionKind) => (option: AnyOption) => setEditor({ kind, mode: 'rename', option }),
-    onDelete: (kind: OptionKind) => (option: AnyOption) => setPendingDelete({ kind, option }),
+  const listKind = view === 'food' || view === 'supplement' || view === 'exercise' ? view : null
+  const subTitle = listKind
+    ? OPTION_KIND_TITLE[listKind]
+    : view === 'backup'
+      ? BACKUP_TITLE
+      : view === 'storage'
+        ? STORAGE_TITLE
+        : ''
+
+  function openSection(section: OptionsSection) {
+    setView(section)
   }
 
   return (
     <main className="page">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">幸福小Molly</p>
-          <h1>选项</h1>
-        </div>
+        {view === 'overview' ? (
+          <div>
+            <p className="eyebrow">幸福小Molly</p>
+            <h1>选项</h1>
+          </div>
+        ) : (
+          <div className="topbar-back">
+            <button
+              className="icon-button"
+              type="button"
+              aria-label={OPTIONS_BACK_LABEL}
+              onClick={() => setView('overview')}
+            >
+              ‹
+            </button>
+            <div>
+              <p className="eyebrow">选项</p>
+              <h1>{subTitle}</h1>
+            </div>
+          </div>
+        )}
       </header>
 
       <section className="panel stack page-scroll">
-        <p className="muted">{OPTION_PAGE_HINT}</p>
-
         <p className={`status ${status}`} aria-live="polite">
           {SAVE_STATUS_PREFIX}
           {SAVE_STATUS_TEXT[status]}
@@ -161,64 +220,43 @@ export function PreferencesScreen({
           </p>
         ) : (
           <>
-            {totalOptions === 0 ? (
-              <div className="empty-day">
-                <strong>还没有任何选项</strong>
-                <p className="muted">可以先载入一组示例食物、补剂和健身项目，再按自己的习惯改。</p>
-                <div className="actions">
-                  <button
-                    className="secondary"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void mutate(() => seedExampleOptionsForCurrentUser())}
-                  >
-                    载入示例选项
-                  </button>
-                </div>
-              </div>
+            {view === 'overview' ? (
+              <>
+                <p className="muted">{OPTIONS_OVERVIEW_HINT}</p>
+                <p className="muted">{OPTION_PAGE_HINT}</p>
+                <OptionsOverview
+                  counts={counts}
+                  selectable={selectable}
+                  total={totalOptions}
+                  busy={busy}
+                  email={email}
+                  onOpen={openSection}
+                  onSeed={() => void mutate(() => seedExampleOptionsForCurrentUser())}
+                  onSignOut={() => void signOut()}
+                />
+              </>
             ) : null}
 
-            <OptionSection
-              kind="food"
-              groups={foodGroups}
-              selectableCount={selectable.food}
-              onAdd={() => setEditor({ kind: 'food', mode: 'create', option: null })}
-              onMove={sectionProps.onMove('food')}
-              onToggleActive={sectionProps.onToggleActive('food')}
-              onRename={sectionProps.onRename('food')}
-              onDelete={sectionProps.onDelete('food')}
-              busy={busy}
-            />
+            {listKind ? (
+              <OptionListScreen
+                kind={listKind}
+                groups={groupsByKind[listKind]}
+                selectableCount={selectable[listKind]}
+                busy={busy}
+                onAdd={() => setEditor({ kind: listKind, mode: 'create', option: null })}
+                onReorder={(id, delta) => commitReorder(listKind, id, delta)}
+                onMove={(option, delta) => void mutate(() => moveOption(listKind, option.id, delta))}
+                onToggleActive={(option) => void handleToggleActive({ kind: listKind, option })}
+                onRename={(option) => setEditor({ kind: listKind, mode: 'rename', option })}
+                onDelete={(option) => setPendingDelete({ kind: listKind, option })}
+              />
+            ) : null}
 
-            <OptionSection
-              kind="supplement"
-              groups={supplementGroups}
-              selectableCount={selectable.supplement}
-              onAdd={() => setEditor({ kind: 'supplement', mode: 'create', option: null })}
-              onMove={sectionProps.onMove('supplement')}
-              onToggleActive={sectionProps.onToggleActive('supplement')}
-              onRename={sectionProps.onRename('supplement')}
-              onDelete={sectionProps.onDelete('supplement')}
-              busy={busy}
-            />
+            {view === 'backup' ? (
+              <BackupCard available={supportsLocalBackup} busy={busy} runSave={runSave} onImported={reload} />
+            ) : null}
 
-            <OptionSection
-              kind="exercise"
-              groups={exerciseGroups}
-              selectableCount={selectable.exercise}
-              onAdd={() => setEditor({ kind: 'exercise', mode: 'create', option: null })}
-              onMove={sectionProps.onMove('exercise')}
-              onToggleActive={sectionProps.onToggleActive('exercise')}
-              onRename={sectionProps.onRename('exercise')}
-              onDelete={sectionProps.onDelete('exercise')}
-              busy={busy}
-            />
-
-            <BackupCard available={supportsLocalBackup} busy={busy} runSave={runSave} onImported={reload} />
-
-            <StorageCard />
-
-            <AccountCard email={email} onSignOut={() => void signOut()} />
+            {view === 'storage' ? <StorageCard /> : null}
           </>
         )}
       </section>

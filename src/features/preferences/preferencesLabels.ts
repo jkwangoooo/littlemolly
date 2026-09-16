@@ -32,9 +32,40 @@ export const OPTION_EMPTY_TEXT: Record<OptionKind, string> = {
   exercise: '还没有健身项目。添加常做的项目或动作，之后安排健身时可以直接勾选。',
 }
 
-/** 停用语义说明，放在页面顶部一次讲清，避免每行都重复。 */
+/** 停用语义说明，放在清单子屏顶部一次讲清，避免每行都重复。 */
 export const OPTION_PAGE_HINT =
   '这里维护的是候选项清单。停用只影响以后的新计划，已经保存过的历史计划不会被改写。'
+
+// ---------------------------------------------------------------- 概览与子屏（选项页信息架构）
+
+/** 概览页顶部一句话，说明这一页是干什么的。 */
+export const OPTIONS_OVERVIEW_HINT = '管理候选项清单，以及这台设备上的数据与账号。'
+
+/** 概览页的分组标题。清单类与系统类用途不同，用标题分开而不是平铺（docs/17 §2.2）。 */
+export const OPTIONS_GROUP_LISTS = '候选项清单'
+export const OPTIONS_GROUP_SYSTEM = '数据与设备'
+export const OPTIONS_GROUP_ACCOUNT = '账号与同步'
+
+/** 返回上一级（概览）的无障碍文案。 */
+export const OPTIONS_BACK_LABEL = '返回选项'
+
+/** 清单里「已停用」的标记文案，与行内状态共用。 */
+export const OPTION_INACTIVE_BADGE = '已停用'
+
+// 行内溢出菜单。行内只留拖拽手柄与这一个入口，动作按「可逆 → 破坏性」排序（docs/17 §4.2）。
+export const OPTION_MENU_LABEL = '更多操作'
+export const OPTION_MENU_RENAME = '改名'
+export const OPTION_MENU_MOVE_UP = '上移'
+export const OPTION_MENU_MOVE_DOWN = '下移'
+export const OPTION_MENU_ACTIVATE = '启用'
+export const OPTION_MENU_DEACTIVATE = '停用'
+export const OPTION_MENU_DELETE = '删除'
+
+/**
+ * 拖拽手柄的无障碍文案。拖拽是「补充性」交互，菜单里的上移 / 下移才是必须保留的替代路径
+ * （Cloudscape：拖拽必须提供不用拖拽也能完成同一动作的方式）。
+ */
+export const OPTION_DRAG_HANDLE_LABEL = '拖动排序'
 
 export const DISABLE_CONFIRM = {
   title: '停用这个选项？',

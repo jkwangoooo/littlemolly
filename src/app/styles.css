@@ -217,7 +217,8 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 /* ---------- 7 选项页 ---------- */
 .option-section { display: grid; gap: 4px; }
-.option-section + .option-section { border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.option-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.option-summary { margin: 0; color: #625d58; font-size: 13px; }
 .option-empty { margin: 0; padding: 4px 0 8px; font-size: 13px; }
 
 .option-group { display: grid; }
@@ -225,7 +226,79 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 .option-row.inactive strong { color: #817a74; }
 .option-row.inactive small { color: #a09892; }
-.option-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+/* 行内只剩手柄 + 「…」：动作从 5 个平铺收成一个入口（docs/17 §2.5）。 */
+.option-row { gap: 8px; }
+.option-row.dragging { background: #fff8fb; box-shadow: inset 3px 0 0 #a11b4a; }
+
+/* 拖拽手柄：touch-action: none 是关键——不写的话手指一拖就被浏览器当成滚动，永远拖不动。 */
+.drag-handle {
+  flex: none;
+  width: 34px;
+  min-width: 34px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  color: #a09892;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+.drag-handle:active { cursor: grabbing; color: #a11b4a; }
+.drag-handle:disabled { opacity: .4; }
+
+.row-menu-trigger { flex: none; min-width: 40px; padding: 4px 8px; font-size: 18px; line-height: 1; }
+/* 固定定位：行内绝对定位会被可滚动内容区裁掉，最后几行的菜单就看不见了。 */
+.row-menu-list {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  width: 150px;
+  padding: 6px;
+  border: 1px solid #e4dfdb;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgb(36 33 31 / 18%);
+}
+.row-menu-item {
+  justify-content: flex-start;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 6px;
+  color: #24211f;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+}
+.row-menu-item:hover { background: #f4f1ef; }
+.row-menu-item.danger { color: #a32d2d; }
+.row-menu-item:disabled { color: #a09892; }
+
+/* 概览页的入口行：名称 + 状态摘要 + 箭头，点击进子屏。 */
+.nav-list { display: grid; border: 1px solid #e4dfdb; border-radius: 8px; overflow: hidden; background: #fff; }
+.nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 0;
+  color: #24211f;
+  background: transparent;
+  text-align: left;
+}
+.nav-row + .nav-row { border-top: 1px solid #f0ece9; }
+.nav-row span:first-child { display: grid; gap: 2px; }
+.nav-row strong { font-size: 15px; }
+.nav-row small { color: #625d58; font-size: 13px; font-weight: 400; }
+.nav-row .arrow { flex: none; color: #a09892; font-size: 18px; }
+.nav-row.static { background: #faf8f6; }
+
+/* 子屏顶栏：返回按钮 + 当前层级标题。 */
+.topbar-back { display: flex; align-items: center; gap: 10px; }
 
 .account-card { border-top: 1px solid #e4dfdb; padding-top: 16px; }
 .account-line { margin: 0; font-size: 14px; }
@@ -376,9 +449,10 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .timeline-head { flex-wrap: wrap; }
   .task-row { flex-wrap: wrap; }
   /* 选项行有五个操作按钮，窄屏挤在一行会折得很难读：改成名称一行、操作一行平分宽度。 */
-  .option-row { align-items: stretch; flex-direction: column; gap: 8px; }
-  .option-actions { gap: 6px; }
-  .option-actions button { flex: 1 1 0; }
+  /* 选项行在窄屏也保持一行：手柄 + 名称/状态 + 「…」。
+     旧版在窄屏把 5 个按钮折成两行，行高被撑到 102px；现在只有两个元素，一行放得下。 */
+  .option-row { gap: 6px; }
+  .drag-handle { width: 30px; min-width: 30px; }
   /* 补剂行有名称 / 输入框 + 勾选 + 移除按钮，窄屏挤在一行会溢出：让名称独占一行。 */
   .panel-row { flex-wrap: wrap; }
   .panel-row-name, .panel-row input:not([type="checkbox"]) { flex: 1 1 100%; }
