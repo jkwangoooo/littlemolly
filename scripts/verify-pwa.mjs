@@ -922,8 +922,8 @@ async function main() {
       insetsApplied &&
         safeArea.viewport.includes('viewport-fit=cover') &&
         safeArea.navPaddingBottom === 34 &&
-        safeArea.pagePaddingBottom === 80 + 34,
-      `viewport-fit=cover=${safeArea.viewport.includes('viewport-fit=cover')}, 导航 padding-bottom=${safeArea.navPaddingBottom}px, 页面 padding-bottom=${safeArea.pagePaddingBottom}px（期望 34 / 114）`,
+        safeArea.pagePaddingBottom === 60 + 34,
+      `viewport-fit=cover=${safeArea.viewport.includes('viewport-fit=cover')}, 导航 padding-bottom=${safeArea.navPaddingBottom}px, 页面 padding-bottom=${safeArea.pagePaddingBottom}px（期望 34 / 94）`,
     )
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }).catch(() => {})
 
@@ -998,6 +998,57 @@ async function main() {
     `)
     await evaluate(`window.__p.clickText('取消')`)
     await sleep(800)
+
+    // 固定外壳：页面本身不滚动、不平移（整页滑动正是用户说的「廉价感」来源），
+    // 头部与底部导航固定，只有内容区可滚。这条断言防止以后有人把它改回整页滚动。
+    const shell = JSON.parse(
+      await evaluate(`
+        JSON.stringify({
+          innerHeight: window.innerHeight,
+          documentScrollHeight: document.documentElement.scrollHeight,
+          bodyScrollHeight: document.body.scrollHeight,
+          pageOverflow: getComputedStyle(document.querySelector('.page')).overflow,
+          scrollRegionOverflowY: getComputedStyle(document.querySelector('.page-scroll')).overflowY,
+        })
+      `),
+    )
+    record(
+      '固定外壳：页面整体不滚动，只有内容区可滚',
+      shell.documentScrollHeight <= shell.innerHeight &&
+        shell.bodyScrollHeight <= shell.innerHeight &&
+        shell.pageOverflow === 'hidden' &&
+        shell.scrollRegionOverflowY === 'auto',
+      `页面 scrollHeight=${shell.documentScrollHeight} ≤ 视口 ${shell.innerHeight}；.page overflow=${shell.pageOverflow}；内容区 overflow-y=${shell.scrollRegionOverflowY}`,
+    )
+
+    // 「执行今天」在空计划状态下应当一屏看完，不需要任何滚动。
+    // 注意这条只对空计划成立：真实数据下内容区会滚（这是设计，不是缺陷）。
+    // 余量（freeSpace）必须单独量：内容比可视区矮时 scrollHeight 会被 clientHeight 顶住，
+    // 只看 scrollHeight 分不出「刚好塞满」和「还有富余」，而余量才是 iOS 字体度量差异的缓冲。
+    const firstScreen = JSON.parse(
+      await evaluate(`
+        (() => {
+          const region = document.querySelector('.page-scroll');
+          const children = [...region.children];
+          const last = children[children.length - 1];
+          const regionBox = region.getBoundingClientRect();
+          return JSON.stringify({
+            clientHeight: region.clientHeight,
+            scrollHeight: region.scrollHeight,
+            freeSpace: last ? Math.round(regionBox.bottom - last.getBoundingClientRect().bottom) : null,
+            regionBottom: Math.round(regionBox.bottom),
+            navTop: Math.round(document.querySelector('.bottom-nav').getBoundingClientRect().top),
+            breakdown: children.map((el) => Math.round(el.getBoundingClientRect().height) + ':' + String(el.className).split(' ')[0]).join(' '),
+          });
+        })()
+      `),
+    )
+    record(
+      '「执行今天」空计划状态一屏放下（内容区无需滚动，且留有富余）',
+      firstScreen.scrollHeight <= firstScreen.clientHeight + 1 && (firstScreen.freeSpace ?? -1) >= 24,
+      `内容区可视 ${firstScreen.clientHeight}px / 内容 ${firstScreen.scrollHeight}px，余量 ${firstScreen.freeSpace}px（≥24 才够 iOS 字体差异）；各块 ${firstScreen.breakdown}`,
+    )
+    await shot('07-today-mobile')
 
     const noisy = cdp.events.filter((event) => {
       if (event.method === 'Runtime.exceptionThrown') return true

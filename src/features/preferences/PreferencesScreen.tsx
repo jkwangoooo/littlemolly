@@ -127,7 +127,7 @@ export function PreferencesScreen({
         </div>
       </header>
 
-      <section className="panel stack">
+      <section className="panel stack page-scroll">
         <p className="muted">{OPTION_PAGE_HINT}</p>
 
         <p className={`status ${status}`} aria-live="polite">

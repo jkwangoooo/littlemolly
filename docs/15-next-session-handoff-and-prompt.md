@@ -50,7 +50,7 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
 | `npm run check:backup` | 55/55 | 备份格式 |
 | `npm run check:cloud-parity` | 50/50 | 后端一致性 |
 | `npm run verify:local` | **94/94** | 真实浏览器闭环，约 2.5 分钟 |
-| `npm run verify:pwa` | **38/38** | PWA 层，跑生产产物 + 自建静态服务器，约 1.5 分钟 |
+| `npm run verify:pwa` | **40/40** | PWA 层，跑生产产物 + 自建静态服务器，约 1.5 分钟 |
 | 本地构建体积 | 91 modules / 275.63 kB（gzip 85.71 kB） | PWA 外壳带来 +6.63 kB |
 | 云端构建体积 | 135 modules / 489.90 kB（gzip 141.83 kB） | `npx vite build --mode cloud --outDir dist-cloud` |
 

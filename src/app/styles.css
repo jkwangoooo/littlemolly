@@ -14,9 +14,13 @@
 /* ---------- 2 基础元素 ---------- */
 * { box-sizing: border-box; }
 
-html, body { overscroll-behavior: none; }
+html, body { height: 100%; overscroll-behavior: none; }
 
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+/* overflow: hidden 是「固定外壳」的前提：页面本身不再滚动，也不再有橡皮筋。
+   内容交给 .page-scroll 自己滚（见布局段）。 */
+body { margin: 0; min-width: 320px; overflow: hidden; }
+
+#root { height: 100%; }
 
 /* 触摸交互按「应用」而不是「网页」处理：
    - manipulation 关掉双击缩放（双指缩放由 viewportGuards 拦手势事件）；
@@ -45,16 +49,28 @@ input:focus, textarea:focus { outline: 2px solid #b93762; outline-offset: 1px; }
 select { width: 100%; border: 1px solid #aaa29b; border-radius: 5px; padding: 10px 12px; background: #fff; }
 
 /* ---------- 3 布局 ---------- */
+/*
+ * 应用外壳：页面本身**不滚动、不平移**，只有内容区（`.page-scroll`）内部滚动。
+ * 头部、日期与底部导航因此始终固定，观感是应用而不是可上下拖动的网页
+ * （用户反馈的「上下滑动显得廉价」就是整页滚动造成的）。
+ *
+ * 内容超出一屏时由内容区自己滚——不藏内容，也不把页面变成可拖动的一整块。
+ * 高度用 100%（配合 html/body/#root 的 height:100%），不用 100vh：
+ * 移动端地址栏收放时 vh 不会跟着变，会露出半屏空白。
+ */
 .page {
   width: min(100% - 32px, 760px);
   margin: 0 auto;
-  padding: 36px 0 96px;
-  /* iOS 安全区：配合 index.html 的 viewport-fit=cover，内容会延伸到刘海与 Home 指示条下面，
-     必须自己让出空间。env() 不被支持时这两行是无效声明、会被整行丢弃，
-     于是回落到上面的 padding 简写值——行为与加安全区之前完全一致。 */
-  padding-top: calc(36px + env(safe-area-inset-top, 0px));
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 上下内边距负责让出刘海 / Home 指示条与底部导航（导航是 fixed，会盖住内容）。 */
+  padding: calc(28px + env(safe-area-inset-top, 0px)) 0 calc(76px + env(safe-area-inset-bottom, 0px));
 }
+
+/* 唯一可滚动的区域。min-height: 0 不可省：flex 子项默认不肯收缩到内容高度以下。 */
+.page-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 
 .panel {
   border: 1px solid #ddd7d2;
@@ -64,7 +80,10 @@ select { width: 100%; border: 1px solid #aaa29b; border-radius: 5px; padding: 10
   box-shadow: 0 4px 20px rgb(36 33 31 / 5%);
 }
 
-.stack { display: grid; gap: 16px; }
+/* align-content: start 不可省：grid 默认 align-content: stretch，
+   在「容器高度被外壳固定住」的页面上会把每一行都拉伸填满剩余空间——
+   卡片内部因此出现莫名其妙的大空白，量高度时也分不清真实内容有多高。 */
+.stack { display: grid; gap: 16px; align-content: start; }
 
 .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
 
@@ -292,19 +311,28 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 /* ---------- 10 移动端 ---------- */
 @media (max-width: 480px) {
-  .page { width: min(100% - 24px, 620px); padding: 20px 0 80px; }
-  /* 窄屏下的安全区覆盖值必须跟着一起改，否则会盖回上面的 36/96 基准。 */
-  .page { padding-top: calc(20px + env(safe-area-inset-top, 0px)); padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
-  .panel { padding: 18px; }
+  /* 固定外壳在窄屏上把「省下来的高度」全部让给内容：内边距与卡片间距一起收紧，
+     目的是让「执行今天」这一屏不必滚动就能看完（见 verify:pwa 的断言）。 */
+  .page { width: min(100% - 24px, 620px); padding: calc(16px + env(safe-area-inset-top, 0px)) 0 calc(60px + env(safe-area-inset-bottom, 0px)); }
+  .panel { padding: 16px; }
+  .stack { gap: 10px; }
+  .topbar { margin-bottom: 12px; }
   h1 { font-size: 24px; }
   .actions > button { flex: 1 1 132px; }
-  .mode-card { align-items: stretch; flex-direction: column; }
+  .mode-card { gap: 12px; padding: 14px; }
+  .mode-card strong { font-size: 20px; }
+  /* 日期块改成「流式一行」：今天 · 9月16日 · 周三 · 2026-09-16 依次排布、需要时才折行。
+     三行竖排在固定外壳里要多吃约 25px，而信息一条都没少。 */
+  .date-heading > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+  .date-heading h2, .date-kicker { margin-bottom: 0; }
   .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .week-day { min-height: 116px; }
   .bottom-sheet { padding: 16px 18px 24px; }
   .bottom-nav { width: 100%; }
   .progress-head { display: grid; gap: 4px; }
-  .timeline-head { align-items: flex-start; flex-direction: column; }
+  /* 标题与「＋ 添加」按钮在窄屏也保持一行（只在实在放不下时才换行）。
+     竖排会让每个分区多占约 50px，而固定外壳下这些高度直接决定首页要不要滚动。 */
+  .timeline-head { flex-wrap: wrap; }
   .task-row { flex-wrap: wrap; }
   /* 选项行有五个操作按钮，窄屏挤在一行会折得很难读：改成名称一行、操作一行平分宽度。 */
   .option-row { align-items: stretch; flex-direction: column; gap: 8px; }

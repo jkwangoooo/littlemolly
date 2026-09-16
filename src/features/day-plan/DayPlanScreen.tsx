@@ -301,7 +301,8 @@ export function DayPlanScreen() {
         }}
       />
 
-      <section className="panel stack">
+      {/* page-scroll：固定外壳里唯一可滚动的区域（页面本身不滚动，见 styles.css 布局段）。 */}
+      <section className="panel stack page-scroll">
         <DateHeading
           relation={relation}
           selectedDate={selectedDate}

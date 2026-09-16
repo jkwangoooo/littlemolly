@@ -8,7 +8,7 @@
 
 **待办 A 完成。** 应用现在有完整的 PWA 外壳（manifest、四张 PNG 图标、手写 service worker），
 dev 模式仍然**不注册** service worker，`verify:local` 保持 **94/94** 不变；新增的 `verify:pwa`
-跑生产构建产物，**38/38 通过**。本地与云端两种构建产物互不污染的性质未被破坏。
+跑生产构建产物，**40/40 通过**。本地与云端两种构建产物互不污染的性质未被破坏。
 
 本地数据是否留得住，现在多了一层真实的保障（安装到主屏幕 → 独立存储分区 + 缓存的应用壳），
 但**没有变成「数据安全了」**：`persist()` 只是请求，备份仍是唯一的兜底路径，这一点在界面文案与
@@ -24,7 +24,7 @@ dev 模式仍然**不注册** service worker，`verify:local` 保持 **94/94** �
 | 4 | 只在生产构建注册 | `src/shared/pwa/serviceWorker.ts` 用 `import.meta.env.PROD` 早退；dev 下 `getRegistrations()` 为空（`verify:pwa` 第 2 项断言） |
 | 5 | `navigator.storage.persist()` | `src/shared/storage/storageStatus.ts`：先 feature-detect，启动时请求一次（幂等），与 `estimate()` 的用量一起记入模块快照 |
 | 6 | 安装引导与存储状态卡片 | `src/features/preferences/components/StorageCard.tsx`：用量 / 是否持久化 / 是否独立窗口三行事实；iOS 给「分享 → 添加到主屏幕」步骤；Android 用 `beforeinstallprompt` 出安装按钮 |
-| 7 | `scripts/verify-pwa.mjs` + `npm run verify:pwa` | 38 项，跑 `dist/`，自建零依赖静态服务器（空闲端口），`Storage.clearDataForOrigin` 显式列出 `indexeddb,local_storage,cache_storage,service_workers` |
+| 7 | `scripts/verify-pwa.mjs` + `npm run verify:pwa` | 40 项，跑 `dist/`，自建零依赖静态服务器（空闲端口），`Storage.clearDataForOrigin` 显式列出 `indexeddb,local_storage,cache_storage,service_workers` |
 
 「明确不做」的六项（SPA 路由、后台同步/推送、改业务服务层、改数据库结构、懒加载重构、动 docs/01 不变量）均未触碰。
 
@@ -132,7 +132,7 @@ npx vite build --mode cloud --outDir dist-cloud → 135 modules / 489.90 kB（gz
 
 两种产物都带上了 PWA 外壳（`sw.js` / `manifest.webmanifest` / `icons/`）。
 
-### 5.3 `npm run verify:pwa`：38/38 通过
+### 5.3 `npm run verify:pwa`：40/40 通过
 
 ```
 PASS  生产构建产出完整应用壳（sw.js / manifest / 图标）
@@ -171,7 +171,7 @@ PASS  手机 390x844 无横向溢出  → scrollWidth=390, innerWidth=390
 PASS  iOS 安全区：底部导航与页面为 Home 指示条让出空间  → viewport-fit=cover=true, 导航 padding-bottom=34px, 页面 padding-bottom=114px
 PASS  更新流程与存储卡片段控制台无 error / warning
 
-结果：38/38 通过
+结果：40/40 通过
 ```
 
 断网做了两层：先按提示词用 `Network.emulateNetworkConditions` 模拟，再把静态服务器**真的关掉**
@@ -253,7 +253,7 @@ CDP 的 `Emulation.setEmulatedMedia` **不支持** `display-mode`（实测 `matc
 
 ## 7. 结论
 
-待办 A 的七项要求全部落地，行为基线未回退（`verify:local` 94/94），新增 `verify:pwa` 38/38。
+待办 A 的七项要求全部落地，行为基线未回退（`verify:local` 94/94），新增 `verify:pwa` 40/40。
 本地数据在移动端的留存路径从「只能导出备份」变成「安装到主屏幕 + 备份」两条，
 但**备份仍然是唯一的兜底**：卸载浏览器、手动清理数据、iOS 上始终不安装都会丢，
 这条事实在界面文案与本报告里保持同一个说法。
@@ -308,15 +308,42 @@ CDP 的 `Emulation.setEmulatedMedia` **不支持** `display-mode`（实测 `matc
 `--vv-keyboard-inset=336px`、抽屉 `114→508`、操作区底部 `484 ≤ 508`、内容区可滚动。
 （替身是测试手段，验的是「可视视口一缩，抽屉就跟着让位」这条接线；真机行为仍需用户确认。）
 
-### 8.3 待定：「首页做成固定单页面不可滑动」
+### 8.3 「首页做成固定单页面不可滑动」——已实施
 
-这条牵涉产品取舍，先给量化事实，再等决定：
+**决策**：固定外壳 + 内容区内部滚动（用户选定）。先把量化事实摆出来（当时量的）：
 
-| 页面 | 当前总高 | 视口 | 一屏可用内容区 |
+| 页面 | 当时总高 | 视口 | 一屏可用内容区 |
 | --- | --- | --- | --- |
-| 执行今天 | 892px | 844px | ≈ 602px（扣掉头部 95 + 页签 60 + 导航 53 + 安全区 34） |
+| 执行今天 | 892px | 844px | ≈ 602px |
 | 准备明天 | 1354px | 844px | 同上 |
 
-也就是说：执行页只差约 135px 就能一屏放下；**准备页要砍掉约 600px（近一半）**才能一屏，
-必须把内容降级（例如把五项准备、三餐/补剂/晨间/健身摘要收进抽屉或二级页）。
-「固定外壳 + 内容区内部滚动」是两条路线的共同底座，先不单独实现，等决定后再一起做。
+执行页只差约 135px，压得下来；准备页要砍掉约 600px（近一半），只能靠把内容收进抽屉——
+首屏信息会明显变少。因此选择：**外壳固定（消除整页滑动的廉价感）+ 执行页压到一屏 + 准备页内容超出一屏时内部滚动**，
+不藏内容。
+
+**实现**：
+
+- `html / body / #root` 高度拉满，`body { overflow: hidden }`——页面本身不再滚动、也没有橡皮筋；
+- `.page` 变成固定高度的纵向 flex 容器，上下内边距负责让出刘海 / Home 指示条与底部导航；
+- 新增 `.page-scroll`：唯一可滚动区域（`flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain`），
+  挂在日计划 / 周视图 / 选项三个页面的内容块上。**登录页刻意不加**，否则登录卡会被拉成一整屏高。
+- 窄屏压缩（固定外壳下高度是稀缺资源）：卡片内边距 18→16、区块间距 16→10、顶部间距 18→12、
+  模式卡改回一行（左信息右按钮，省约 70px）、日期块改成「今天 · 9月16日 · 周三 · 2026-09-16」流式一行（省约 30px，
+  信息一条没少）、分区标题与「＋ 添加」按钮保持一行（省约 30px）。
+
+**量化结果**（`verify:pwa` 实测）：
+
+```
+页面 scrollHeight=844 ≤ 视口 844；.page overflow=hidden；内容区 overflow-y=auto
+「执行今天」内容 494px / 可视 640px，余量 164px（≥24 才够 iOS 字体差异）
+各块：64:date-heading 24:status 116:mode-card 65:execute-list 57:timeline-head 36:muted 40:secondary
+```
+
+余量刻意留足：headless Chrome 用的是本机字体，iOS 的 PingFang SC 行高不同，
+余量太小会变成「在你手机上刚好差几像素要滚一下」。
+
+**一个值得记住的坑**：`.stack` 是 grid，而 grid 默认 `align-content: stretch`。
+容器高度一旦被外壳固定住，**每一行都会被拉伸填满剩余空间**——卡片内部出现莫名其妙的大空白，
+而且量出来的「各块高度」全部失真（怎么改都是同一个总数，看不出真实内容多高）。
+加 `align-content: start` 之后才量到真实的 494px。最初就是被这个骗了一轮：
+模式卡明明矮了 52px，其它块却各涨 15px，总数一动不动。

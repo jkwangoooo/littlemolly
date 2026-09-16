@@ -90,7 +90,7 @@ export function WeekView({
         </button>
       </header>
 
-      <section className="panel stack">
+      <section className="panel stack page-scroll">
         <div>
           <p className="date-kicker">固定周视图</p>
           <h2>
