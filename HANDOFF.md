@@ -910,4 +910,21 @@ L2 已完成三餐 / 补剂 / 健身的内容实例化。但休息日（周六 /
 - 真机上的观感（抽屉是否贴底、按钮与 Home 指示条的间距）仍建议在手机上确认一次——
   自动化只能证明几何与命中，证不了手感。
 
+### 提交与发布状态
+
+- 已提交 `be9ef4c`（`fix(mobile): 抽屉的「保存 / 取消」被底部导航盖住`）并 `git push` 成功：
+  `git ls-remote origin main` 返回 `be9ef4c`，远端 `main` 与本地 `HEAD` 一致。
+- **线上分享链接已更新（2026-09-16 22:2x）**：`https://f033473469da4daf849ebd353b47443f.sg2.agentos-app.run`
+  （仍是同一个链接，内容替换为修复版）。核对方式沿用「比对资源哈希 + 检索新特性标记」：
+  线上 `index.html` 引用的 `index-CvlGd0rp.js` / `index-D92bAM6H.css` 与本地 `dist/` 完全一致；
+  线上 CSS 含 `z-index:60`（抽屉遮罩）与 `z-index:50`（居中遮罩），且**已无** `z-index:20`（旧抽屉遮罩）。
+- 真机复核提示：手机上的 PWA 缓存了旧壳，刷新时可能先提示「新版本已下载，刷新后生效」，
+  点一次刷新才接管——看到提示不等于没更新成功。
+- **本机 Git 环境异常（非项目问题，供后续会话别踩）**：`.git/refs/remotes/` 写入不落盘。
+  `git fetch` 会打印 `* [new branch] main -> origin/main`、`git update-ref refs/remotes/origin/main <sha>` 也返回成功，
+  但 `.git/refs/remotes/` 目录始终为空、`git rev-parse origin/main` 报 `unknown revision`，
+  于是 `git status` 一直显示 `## main...origin/main [gone]`。**推送本身是成功的**（以 `git ls-remote origin main` 为准），
+  这个 `[gone]` 只是本地跟踪引用没写下去，不要据此判断「分支被删」或重做提交。
+  与之前记录的「`src/` 被本机某进程删除」同属这台机器的环境异常。
+
 
