@@ -282,15 +282,25 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .week-status { margin-top: auto; color: #625d58; font-size: 12px; }
 
 /* ---------- 9 弹层 ---------- */
-/* 居中遮罩同时服务于确认框与居中编辑卡片。padding-bottom 让出软键盘：
-   iOS 弹键盘只缩小可视视口，遮罩若仍铺满布局视口，卡片下半部分会落在键盘底下。 */
+/*
+ * 层级表（改数字前先读完这段）：内容 < 居中遮罩 50 < 底部抽屉遮罩 60；
+ * 底部导航 30 与新版本提示条 40 都排在这两个遮罩**之下**。
+ *
+ * 弹层必须压过底部导航，这条不是审美问题：导航是 fixed 且 z-index 30，
+ * 抽屉也是 fixed 且贴着视口底边，两者在屏幕上抢同一条带子。导航若在上面，
+ * 抽屉钉底的操作区（「保存 / 取消」）会被整条盖住——真机上就是「看不到确认和取消、
+ * 也点不到」（2026-09-16 真机反馈，几何量出来是操作区 767→820、导航顶边 791）。
+ * 抽屉盖住导航是刻意的：弹层打开时导航本来就不该能点，否则用户会在编辑途中被切走。
+ */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 10;
+  z-index: 50;
   display: grid;
   place-items: center;
   padding: 20px;
+  /* padding-bottom 让出软键盘：iOS 弹键盘只缩小可视视口，遮罩若仍铺满布局视口，
+     卡片下半部分会落在键盘底下。--vv-keyboard-inset 见 visualViewport.ts。 */
   padding-bottom: calc(20px + var(--vv-keyboard-inset, 0px));
   background: rgb(36 33 31 / 38%);
 }
@@ -313,8 +323,9 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 /* 遮罩让出软键盘：iOS 弹键盘时只缩小可视视口，遮罩若仍铺满布局视口，
    抽屉底部（含保存按钮）就会落在键盘底下。--vv-keyboard-inset 由
-   src/shared/appShell/visualViewport.ts 写入，取不到时为 0，行为与之前一致。 */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; background: rgb(36 33 31 / 38%); padding-bottom: var(--vv-keyboard-inset, 0px); }
+   src/shared/appShell/visualViewport.ts 写入，取不到时为 0，行为与之前一致。
+   z-index 见本段开头的层级表：抽屉排在底部导航（30）之上，否则操作区被导航盖住。 */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; background: rgb(36 33 31 / 38%); padding-bottom: var(--vv-keyboard-inset, 0px); }
 .bottom-sheet {
   width: min(100%, 760px);
   /* 高度上限同时受「可视视口」约束：键盘弹起后 90vh 会超过真正能看到的区域。 */
@@ -354,7 +365,10 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .date-heading h2, .date-kicker { margin-bottom: 0; }
   .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .week-day { min-height: 116px; }
-  .bottom-sheet { padding: 16px 18px 24px; }
+  /* 窄屏收紧内边距，但底部那一份必须继续带 safe-area：写成简写的 24px 会把
+     上面 `.bottom-sheet` 的 `env(safe-area-inset-bottom)` 一起覆盖掉，
+     装上主屏幕后「保存 / 取消」就压在 Home 指示条上。 */
+  .bottom-sheet { padding: 16px 18px calc(24px + env(safe-area-inset-bottom, 0px)); }
   .bottom-nav { width: 100%; }
   .progress-head { display: grid; gap: 4px; }
   /* 标题与「＋ 添加」按钮在窄屏也保持一行（只在实在放不下时才换行）。

@@ -13,7 +13,8 @@
 - **L4 已完成（2026-09-15），可进入 L5。** 完成报告见 `docs/11-L4-completion-report.md`：底部固定导航「今日/本周/选项」上线（`BottomNav` 共享组件，三页统一接线，移除各页顶部重复主入口）；「执行今天/准备明天」保留为日页顶部页签；BottomSheet/ConfirmDialog 打开时锁定 body 滚动、关闭恢复（滚动位置不漂移）；三餐/补剂/健身已是带勾选选项行（L2 达标）；桌面宽屏布局保留（导航与内容区同宽居中）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 24/24、`verify:local` **77/77** 通过（两次连续），截图人工核对手机/桌面观感。
 - **L5 已完成（2026-09-15），可进入 L6。** 完成报告见 `docs/12-L5-completion-report.md`：写入前字段契约校验（`recordSchemas.ts`，`put` / `runTransaction` 入库前 `assertRecord`，坏数据落不了库）；跨仓库原子事务 `runTransaction`（导入备份与复制昨天「要么全生效要么全不生效」）；异常恢复四处加固（`onblocked` 明确报错 / 打开失败清缓存可重试 / `onversionchange` 让出连接 / 请求级错误 `guardRequest` 上抛，修掉「写失败被当成成功」）；本地数据导出与导入（选项页「本地数据备份」卡片，检查 → 二次确认 → 单事务替换当前账号数据，`user_id` 重映射支持换设备搬家，格式错误一条不写，空备份拒绝）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 27/27、`check:backup` **55/55**（新建）、`verify:local` **95/95** 通过（含备份往返、非法备份不覆盖、运行时契约守卫生效、清空站点数据后换设备搬家）。
 - **L6 阶段一已完成（2026-09-16），行为基线与 L5 完全一致（`verify:local` 95/95），阶段二待启动。** 完成报告见 `docs/14-L6-completion-report.md`：① **服务门面与后端切换**——新增 `services/contracts.ts`、`services/backend.ts`、`services/api/*`（authService / dayPlanService / optionService / backupService / backupFormat），页面导入从 `services/local/*` 换成 `services/api/*`，函数名与签名一字未改；后端由构建模式决定（`npm run build:cloud` / `dev:cloud`），两种后端产物互不污染（本地构建 0 命中 `supabase|PostgREST|GoTrueClient`，云端构建 0 命中 `indexedDB|happy-little-molly-local`）。② **云端适配器补全**——`cloud/authService`（Supabase Auth + profiles + 注册后播种示例）、`cloud/sessionStore` 语义并入后端无关的 `services/session.ts`、`cloud/optionService`、`cloud/dayPlanService`（从「只覆盖主记录」补到与本地逐条等价，含 meals/items/supplements/exercise items/custom tasks/routine tasks）、`cloud/backupService`（云端模式明确拒绝并说明，不假装成功）、`cloud/parity.ts`（编译期断言：云端少一个函数或签名不一致 `typecheck` 直接失败）。③ **云端 SQL 对齐**——新增只追加迁移 `database/migrations/202609160001_stage4_local_parity.sql`：补齐 7 张缺失表（三餐内容项 / 补剂实例 / 健身项 / 家务 / 三类选项）并全部启用 RLS、接上历史日期触发器与 `updated_at` 触发器，新增 `copy_yesterday_stage4` RPC 覆盖新增表，引用选项的外键一律 `on delete set null`（否则「删选项」会被历史计划挡住）。④ **迁移与冲突方案**——`docs/13-L6-cloud-migration-and-conflict-plan.md`（仓库→表映射、不变量落点、上行迁移需受控豁免历史日期触发器、冲突与断网策略、回滚）。验收：三件套通过、`check:dates` 48/48、`check:local-data` 27/27、`check:backup` 55/55、`check:cloud-parity` **50/50**（新建）、`verify:local` **95/95**。
-- **PWA 外壳已完成（2026-09-16），`verify:local` 95/95，`verify:pwa` 42/42。** 完成报告见 `docs/16-pwa-shell-completion-report.md`：① **安装要素**——`public/manifest.webmanifest`（standalone / 192+512 any+maskable 图标），index.html 补 `rel=manifest`、`apple-touch-icon` 180、`mobile-web-app-capable`、`apple-mobile-web-app-capable`、`apple-mobile-web-app-status-bar-style`；四张 PNG 图标由 `npm run icons` 用本机 Chrome 无头渲染 `favicon.svg` 生成（满幅不透明：iOS 会把透明像素渲染成黑底）。② **手写 service worker**（`public/sw.js`，无第三方依赖）——应用壳预缓存（构建产物文件名带内容哈希，装的时候从 index.html 解析）、HTML/manifest 网络优先 + 3 秒超时回退、静态资源缓存优先、**只处理同源 GET（跨域一律不缓存）**、缓存名带构建戳、activate 清旧缓存。③ **dev 不注册**——`src/shared/pwa/serviceWorker.ts` 用 `import.meta.env.PROD` 早退，原因见该文件注释（`verify-local.mjs` 的冷升级与清空数据两个用例依赖请求真的发到服务器），因此新增 `scripts/verify-pwa.mjs` 跑生产产物，而不是改既有用例。④ **更新策略保守**——不 `skipWaiting`、不 `clients.claim`，新版本停在 waiting，页面提示「新版本已下载，刷新后生效」，用户点刷新才接管。⑤ **存储与安装**——启动时请求一次 `navigator.storage.persist()`（先 feature-detect、幂等），「选项」页新增「存储与安装」卡片显示用量 / 是否持久化 / 是否独立窗口，iOS 给「分享 → 添加到主屏幕」步骤，Android 用 `beforeinstallprompt` 出按钮；文案只说事实，不写「已同步」「已保护」。
+- **PWA 外壳已完成（2026-09-16），`verify:local` 97/97，`verify:pwa` 42/42。** 完成报告见 `docs/16-pwa-shell-completion-report.md`：① **安装要素**——`public/manifest.webmanifest`（standalone / 192+512 any+maskable 图标），index.html 补 `rel=manifest`、`apple-touch-icon` 180、`mobile-web-app-capable`、`apple-mobile-web-app-capable`、`apple-mobile-web-app-status-bar-style`；四张 PNG 图标由 `npm run icons` 用本机 Chrome 无头渲染 `favicon.svg` 生成（满幅不透明：iOS 会把透明像素渲染成黑底）。② **手写 service worker**（`public/sw.js`，无第三方依赖）——应用壳预缓存（构建产物文件名带内容哈希，装的时候从 index.html 解析）、HTML/manifest 网络优先 + 3 秒超时回退、静态资源缓存优先、**只处理同源 GET（跨域一律不缓存）**、缓存名带构建戳、activate 清旧缓存。③ **dev 不注册**——`src/shared/pwa/serviceWorker.ts` 用 `import.meta.env.PROD` 早退，原因见该文件注释（`verify-local.mjs` 的冷升级与清空数据两个用例依赖请求真的发到服务器），因此新增 `scripts/verify-pwa.mjs` 跑生产产物，而不是改既有用例。④ **更新策略保守**——不 `skipWaiting`、不 `clients.claim`，新版本停在 waiting，页面提示「新版本已下载，刷新后生效」，用户点刷新才接管。⑤ **存储与安装**——启动时请求一次 `navigator.storage.persist()`（先 feature-detect、幂等），「选项」页新增「存储与安装」卡片显示用量 / 是否持久化 / 是否独立窗口，iOS 给「分享 → 添加到主屏幕」步骤，Android 用 `beforeinstallprompt` 出按钮；文案只说事实，不写「已同步」「已保护」。
+- **真机反馈修复（2026-09-16 第四轮）：抽屉的「保存 / 取消」被底部导航盖住 → 已修。** 根因是层级——底部导航 `z-index: 30`，而抽屉遮罩只有 `20`、居中遮罩只有 `10`；两者都钉在视口底边，操作区（767→820）正好落在导航（顶边 791）那一条里。已改为遮罩压在导航之上（居中 50 / 抽屉 60，层级表写在 `styles.css` 弹层段开头），并修掉窄屏 `.bottom-sheet` 简写 `padding` 吃掉 `env(safe-area-inset-bottom)` 的隐患。`verify:local` 新增两条断言（95 → **97**，含按钮中心的命中测试），`verify:pwa` **42/42** 未回退。详见本节末「真机反馈修复（2026-09-16 第四轮）」。
 - 代码仓库：`git@github.com:jkwangoooo/littlemolly.git`（公开仓库）。本机已重建 `.git` 并接到远端历史，L0 期间的提交依次为 `1802fe8`（接手文档）→ `e8b4ec2`（目录职责整理）→ `b3dcd15`（文档同步）→ `1192cdb`（验收命令）→ `b81bf71`（补入未受版本控制的共享组件）→ `baf78db`（组件拆分与存储层重构）→ `716ee35`（L0 第 2 批记录）→ `4c936e0`（验收脚本自带服务器）→ `cd61dfc`（L0 完成报告）；L1 的提交为 `6408eb0`（选项管理与本地数据结构）。`.env.local`、构建产物、本地依赖和 `.workbuddy/` 均被忽略。
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
@@ -866,5 +867,47 @@ L2 已完成三餐 / 补剂 / 健身的内容实例化。但休息日（周六 /
    `.sheet-body` 更名 `.editor-body`，新增 `.center-card`，`.modal-backdrop` 补键盘让位。
    验收：`verify:local` 95/95（新增「自定义事项编辑用居中卡片」一条）、`verify:pwa` 42/42
    （软键盘断言拆成抽屉 16→508 / 卡片 67→441 两组）。
+
+## 真机反馈修复（2026-09-16 第四轮）：抽屉的「保存 / 取消」被底部导航盖住
+
+### 现象与根因
+
+用户反馈「准备明天」的单项编辑抽屉里确定按钮显示不全，移动端根本看不到确认 / 取消。
+
+先量后修（在手机 390x844 下注入几何探针）：抽屉操作区 **767→820**，而底部导航顶边在 **791**——
+按钮下半截（29px）正好落在导航那一条里；在按钮中心做命中测试，两个按钮都返回 `false`（指针被导航接住）。
+根因是**层级**：`.bottom-nav` 是 `z-index: 30`，而 `.sheet-backdrop` 只有 `20`、`.modal-backdrop` 只有 `10`。
+抽屉钉在视口底边（`align-items: flex-end`），导航也钉在视口底边，两者抢同一条带子——导航在上面，
+操作区就被整条盖住。顺带暴露出第二个缺陷：弹层打开时导航**仍可点**，用户会在编辑途中被切走。
+
+另有一处窄屏隐患：`@media (max-width: 480px)` 里 `.bottom-sheet { padding: 16px 18px 24px }`
+用简写覆盖了上面那条 `padding-bottom: calc(28px + env(safe-area-inset-bottom))`，
+装上主屏幕后按钮会压在 Home 指示条上（34px 安全区被吃掉）。
+
+### 本次修改文件
+
+- `src/app/styles.css`
+  - 弹层段开头新增**层级表**注释：内容 < 居中遮罩 50 < 抽屉遮罩 60，底部导航 30 与更新提示条 40 都在遮罩之下；
+    `.modal-backdrop` `z-index: 10 → 50`，`.sheet-backdrop` `20 → 60`。
+  - 窄屏 `.bottom-sheet` 的 `padding-bottom` 改为 `calc(24px + env(safe-area-inset-bottom, 0px))`。
+- `scripts/verify-local.mjs`：新增 **19b** 段两条断言（95 → 97 项），在 390x844 下打开三餐抽屉，
+  除量矩形外还在按钮中心做 `document.elementFromPoint` **命中测试**——几何位置对但被别的东西盖住同样算失败。
+- `HANDOFF.md`（本节）。
+
+### 实际运行的命令与结果
+
+- `npm run typecheck` / `npm run lint` / `npm run build`：通过（93 modules，css 10.94 kB / js 276.86 kB）。
+- 修复前 `npm run verify:local`：**95/97**，两条新断言如实报红
+  （`命中测试=[false,false]，操作区 767→820，导航顶边 791` / `导航按钮命中自身=true`）。
+- 修复后 `npm run verify:local`：**97/97**（命中测试 `[true,true]`、导航按钮命中自身 `false`）；
+  带 `SHOT_DIR` 复跑一次仍 **97/97**（连续两次，截图人工核对抽屉底部）。
+- `npm run verify:pwa`：**42/42** 未回退（软键盘让位、iOS 安全区两条断言不受影响）。
+
+### 结论
+
+- **已修复。** 抽屉（以及居中卡片的遮罩）现在压过底部导航，操作区完整可见可点；
+  弹层打开期间导航被遮罩盖住，不会误切页。
+- 真机上的观感（抽屉是否贴底、按钮与 Home 指示条的间距）仍建议在手机上确认一次——
+  自动化只能证明几何与命中，证不了手感。
 
 

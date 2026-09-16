@@ -1580,6 +1580,57 @@ async function main() {
     }
     await cdp.send('Emulation.clearDeviceMetricsOverride')
 
+    // 19b. 弹层与底部导航的层级（真机反馈：抽屉里看不到「保存 / 取消」）
+    // 底部导航是 fixed 且 z-index 30，抽屉也是 fixed 且贴着视口底边——两者在屏幕上抢同一条带子。
+    // 导航若排在抽屉之上，抽屉钉底的操作区会被整条盖住，真机表现就是「确认和取消按钮看不到、点不到」。
+    // 所以这里不只量矩形，还要在按钮中心做一次命中测试：位置算对但被别的东西盖住，同样算失败。
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
+    await sleep(700)
+    await evaluate(`window.__m.clickText('准备明天')`)
+    await sleep(1200)
+    await evaluate(`window.__m.clickContains('三餐已安排', '.row-main')`)
+    await sleep(1200)
+    const sheetLayering = JSON.parse(await evaluate(`
+      (() => {
+        const sheet = document.querySelector('.bottom-sheet[data-editor-card]');
+        const actions = sheet ? sheet.querySelector('.actions') : null;
+        const buttons = actions ? [...actions.querySelectorAll('button')] : [];
+        const nav = document.querySelector('.bottom-nav');
+        const navButton = nav ? nav.querySelector('button') : null;
+        // 命中测试：中心点上真正接住指针的元素是否属于自己。返回 null（点在视口外）也算失败。
+        const hit = (el) => {
+          if (!el) return null;
+          const box = el.getBoundingClientRect();
+          const found = document.elementFromPoint(Math.round(box.left + box.width / 2), Math.round(box.top + box.height / 2));
+          return Boolean(found) && (el === found || el.contains(found) || found.contains(el));
+        };
+        return JSON.stringify({
+          found: Boolean(sheet) && buttons.length > 0,
+          labels: buttons.map((button) => button.textContent.trim()),
+          buttonsHit: buttons.map(hit),
+          actionsTop: actions ? Math.round(actions.getBoundingClientRect().top) : null,
+          actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom) : null,
+          innerHeight: window.innerHeight,
+          navTop: nav ? Math.round(nav.getBoundingClientRect().top) : null,
+          navHit: hit(navButton),
+        });
+      })()
+    `))
+    record('底部抽屉的「保存 / 取消」完整可见且可点（不被底部导航压住）',
+      sheetLayering.found &&
+        sheetLayering.buttonsHit.length > 0 &&
+        sheetLayering.buttonsHit.every((value) => value === true) &&
+        sheetLayering.actionsBottom !== null &&
+        sheetLayering.actionsBottom <= sheetLayering.innerHeight,
+      `按钮=${sheetLayering.labels.join('/')}，命中测试=${JSON.stringify(sheetLayering.buttonsHit)}，操作区 ${sheetLayering.actionsTop}→${sheetLayering.actionsBottom}（视口 ${sheetLayering.innerHeight}），导航顶边 ${sheetLayering.navTop}`)
+    record('弹层打开时底部导航被遮罩盖住（不会在编辑途中误切页）',
+      sheetLayering.navHit === false,
+      `导航按钮命中自身=${sheetLayering.navHit}（期望 false：应被遮罩 / 抽屉盖住）`)
+    await shot('07b-抽屉操作区-手机')
+    await evaluate(`window.__m.clickText('取消')`)
+    await sleep(900)
+    await cdp.send('Emulation.clearDeviceMetricsOverride')
+
     // 20. 退出登录
     await sleep(400)
     await evaluate(`window.__m.clickText('退出登录')`)
