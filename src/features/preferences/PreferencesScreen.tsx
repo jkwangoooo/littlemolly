@@ -18,6 +18,7 @@ import { AccountCard } from './components/AccountCard'
 import { BackupCard } from './components/BackupCard'
 import { OptionEditor } from './components/OptionEditor'
 import { OptionSection, type OptionGroup } from './components/OptionSection'
+import { StorageCard } from './components/StorageCard'
 import { BottomNav } from '../../shared/components/BottomNav'
 import type { View } from '../../shared/types/view'
 import {
@@ -214,6 +215,8 @@ export function PreferencesScreen({
             />
 
             <BackupCard available={supportsLocalBackup} busy={busy} runSave={runSave} onImported={reload} />
+
+            <StorageCard />
 
             <AccountCard email={email} onSignOut={() => void signOut()} />
           </>

@@ -5,11 +5,11 @@
 
 ## 0. 一句话现状
 
-L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端表结构对齐 / 迁移与冲突方案）已完成并推送**；当前生效后端仍是本地，行为基线与 L5 一字未变。剩下的工作有两条，互相独立：
+L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端表结构对齐 / 迁移与冲突方案）已完成并推送**；当前生效后端仍是本地，行为基线与 L5 一字未变。**待办 A（移动端持久化 / PWA 层）也已完成（2026-09-16）**，报告见 `docs/16-pwa-shell-completion-report.md`。剩下的工作只有一条：
 
 | 待办 | 能不能现在做 | 提示词 |
 | --- | --- | --- |
-| **A. 移动端持久化（PWA 层 + 存储状态）** | 能，无需外部凭据 | §4 |
+| ~~**A. 移动端持久化（PWA 层 + 存储状态）**~~ | **已完成**（见 `docs/16`） | §4（保留作历史记录） |
 | **B. L6 阶段二（真实项目验收 + 上行迁移）** | 需要真实 Supabase 项目凭据 | §5 |
 
 ## 1. 开工前必读（按顺序）
@@ -36,7 +36,8 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
   ```
 - **后端由构建模式决定**：`npm run build` / `dev` 走本地；`npm run build:cloud` / `dev:cloud` 走云端。`vite.config.ts` 把 `@backend/*` 指到 `../local/` 或 `../cloud/`（**相对替换**，所以 `@backend/` 只允许出现在 `src/services/api/` 下）。`tsconfig.app.json` 的 `paths` 恒指向 `src/services/local/*`。
 - **等价性由编译器保证**：`cloud/parity.ts` 用契约类型断言四个云端模块，云端少一个函数或签名不一致 → `typecheck` 失败。**不要去改契约绕开它。**
-- **Git**：`main` 分支，HEAD `7162b50`，远端一致。前一个提交是 `68f5f33`（L6 阶段一）。
+- **PWA 外壳（2026-09-16 完成，见 `docs/16`）**：`public/manifest.webmanifest` + 四张 PNG 图标（`npm run icons` 生成）+ 手写 `public/sw.js`（应用壳预缓存、HTML/manifest 网络优先 3 秒超时回退、静态资源缓存优先、只处理同源 GET、缓存名带构建戳）；注册与更新状态在 `src/shared/pwa/serviceWorker.ts`，**只在生产构建注册**（`import.meta.env.PROD`）；存储持久化与安装提示在 `src/shared/storage/`；「选项」页的「存储与安装」卡片在 `src/features/preferences/components/StorageCard.tsx`。构建戳由 `vite.config.ts` 的 `define` 注入为 `__BUILD_STAMP__`。
+- **Git**：`main` 分支，远端一致。PWA 外壳的提交见 HANDOFF 顶部摘要。
 - **本机环境**：Windows + Git Bash（每次调用 Bash 前先 `export PATH="/usr/bin:/bin:/c/Windows/System32:/c/Program Files/nodejs:$PATH"`）。没有 `psql`、没有 Docker、没有 agent-browser。项目目录 `D:/WJKHome/小人项目包/littlemolly-main`。
 
 ## 3. 验收基线（改动后必须复现这组数字）
@@ -49,8 +50,9 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
 | `npm run check:backup` | 55/55 | 备份格式 |
 | `npm run check:cloud-parity` | 50/50 | 后端一致性 |
 | `npm run verify:local` | **94/94** | 真实浏览器闭环，约 2.5 分钟 |
-| 本地构建体积 | 85 modules / 269.00 kB（gzip 83.35 kB） | |
-| 云端构建体积 | 129 modules / 483.39 kB（gzip 139.48 kB） | `npx vite build --mode cloud --outDir dist-cloud` |
+| `npm run verify:pwa` | **34/34** | PWA 层，跑生产产物 + 自建静态服务器，约 1.5 分钟 |
+| 本地构建体积 | 91 modules / 275.63 kB（gzip 85.71 kB） | PWA 外壳带来 +6.63 kB |
+| 云端构建体积 | 135 modules / 489.90 kB（gzip 141.83 kB） | `npx vite build --mode cloud --outDir dist-cloud` |
 
 **双向产物体检**（改服务层后必做）：
 - 本地：`npm run build` 后在 `dist/assets/*.js` 检索 `supabase|PostgREST|GoTrueClient|copy_yesterday` → 应 0 命中。
@@ -208,6 +210,11 @@ L0–L5 全部完成，**L6 阶段一（服务门面 / 云端适配器 / 云端�
 8. **隐式 `upsert(onConflict:'id')` 会造出与本地不同的主键**（本地对「带 id 但库里没有」的情况会另造新 id）。改成有 id 走 update、无 id 走 insert。
 9. **`vite.config.ts` 不要引入 `node:path`**：本机没有 `@types/node`，装它会把 Node 全局泄漏进浏览器端类型环境。用 Vite 提供的 `mode` + 相对别名替换即可。
 10. **`rm -rf` 会被本机的安全删除策略拦下**；清理构建产物前先确认它已在 `.gitignore` 里，别在这上面浪费轮次。
+11. **Git Bash 里 `ProgramFiles` / `ProgramFiles(x86)` 可能根本不存在**（Windows 原生环境变量没被导出到 MSYS 环境），而 Chrome 的默认安装路径就挂在它们下面——只按环境变量拼路径会把「本机装了 Chrome」误判成「本机没有浏览器」。浏览器定位已抽到 `scripts/lib/find-browser.mjs` 并补了绝对路径兜底，新脚本直接用它，别再各写一份。
+12. **`npm run build:cloud` 会写进 `dist/`**（它等价于 `tsc -b && vite build --mode cloud`），跑完 `dist/` 里就是云端产物，接着跑 `verify:pwa` 会验错对象。要么改用 `npx vite build --mode cloud --outDir dist-cloud`，要么跑完补一次 `npm run build`。
+13. **CDP 的 `Emulation.setEmulatedMedia` 不支持 `display-mode`**（实测 `matchMedia` 仍为 false）。要验「已安装 / 独立窗口」这一支，用 `--app=<url>` 真的开一个应用窗口——headless Chrome 下 `display-mode: standalone` 为真。
+14. **service worker 的 fetch 处理器里，导航请求不能无脑写进首页缓存键**：那样访问一次不存在的路径就会把 404 页面写进应用壳，下次断网打开应用看到的就是那个 404。只认 `/` 与 `/index.html`。
+15. **验收脚本截图要用目标窗口自己的 CDP 连接**：拿主窗口的连接去拍另一个窗口，两张图会长得一模一样（字节数相同），人工核对时会被骗过去。
 
 ## 7. 本次交接的产出
 

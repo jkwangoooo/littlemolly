@@ -15,6 +15,8 @@
     "check:backup": "node scripts/check-backup.mjs",
     "check:cloud-parity": "node scripts/check-cloud-parity.mjs",
     "verify:local": "node scripts/verify-local.mjs",
+    "verify:pwa": "node scripts/verify-pwa.mjs",
+    "icons": "node scripts/generate-icons.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

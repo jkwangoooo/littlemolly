@@ -4,6 +4,8 @@ dist/
 # 与 dist/ 分开是为了能同时存在、便于核对两种产物的互斥检索。
 dist-cloud/
 .workbuddy/
+# 本机智能体工作目录（验收截图、工作记忆）。与 .workbuddy/ 同类，不进公开仓库。
+.workbuddy-ai/
 .env
 .env.local
 .env.*.local

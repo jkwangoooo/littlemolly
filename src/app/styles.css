@@ -209,6 +209,33 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .backup-file { flex: 1 1 220px; }
 .backup-file input[type="file"] { padding: 7px 10px; font-weight: 400; }
 
+/* 存储与安装卡片：三行事实用「标签 + 取值」两列，窄屏不换行成锯齿状。 */
+.storage-card { border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.storage-facts { display: grid; gap: 6px; margin: 0; }
+.storage-fact { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
+.storage-fact dt { min-width: 104px; color: #625d58; }
+.storage-fact dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+/* 新版本提示条：贴在底部导航上方，不遮挡导航，也不抢走编辑区的注意力。 */
+.update-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100% - 32px, 480px);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #24211f;
+  background: #fff;
+  box-shadow: 0 6px 24px rgb(36 33 31 / 22%);
+  font-size: 13px;
+}
+.update-notice span { flex: 1; min-width: 0; }
+
 /* ---------- 8 周视图 ---------- */
 .week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 

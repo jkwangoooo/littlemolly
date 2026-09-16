@@ -119,3 +119,58 @@ export const BACKUP_INVALID_CHANNEL = '请选择文件或粘贴备份内容。'
  */
 export const BACKUP_UNAVAILABLE_NOTE =
   '当前是云端模式，业务数据保存在云端账号里，没有可导出的本地库：这里的导出 / 导入只在本地模式下可用。云端数据请使用云端数据库自身的备份能力。'
+
+// ---------------------------------------------------------------- 存储与安装（PWA）
+
+export const STORAGE_TITLE = '存储与安装'
+
+/**
+ * 这一段是本页最容易写成营销腔的地方，所以先把事实写清楚：
+ * `persist()` 只是「请求」，浏览器可以拒绝；拿到了也只是降低被清掉的概率。
+ * 因此文案一律用「未获得 / 不支持」，不写「已保护」「已同步」这类不成立的结论。
+ */
+export const STORAGE_HINT =
+  '这里显示的是这台设备上的浏览器存储状态，用来判断本地数据有没有被系统清理的风险。'
+
+export const STORAGE_USAGE_LABEL = '本地存储用量'
+export const STORAGE_PERSIST_LABEL = '持久化存储'
+export const STORAGE_MODE_LABEL = '运行方式'
+
+export const STORAGE_USAGE_UNKNOWN = '读不到'
+
+/** 持久化的三种真实结果：拿到了 / 浏览器没批准 / 这个浏览器没有这个能力。 */
+export const STORAGE_PERSIST_TEXT = {
+  granted: '已获得',
+  denied: '未获得（浏览器暂未批准）',
+  unsupported: '这个浏览器不支持申请',
+} as const
+
+export const STORAGE_MODE_TEXT = {
+  standalone: '独立窗口（已安装到主屏幕）',
+  browser: '浏览器标签页',
+} as const
+
+export const STORAGE_REFRESH_ACTION = '刷新存储状态'
+export const STORAGE_INSTALL_ACTION = '安装到主屏幕'
+export const STORAGE_INSTALLED_NOTE = '已经安装，正以独立窗口运行。'
+
+/** iOS 不支持程序化安装，只能给路径；这里写的是操作步骤，不是广告词。 */
+export const STORAGE_IOS_HINT =
+  'iPhone / iPad 上系统不允许网页自己安装：点浏览器底部的分享按钮，再选「添加到主屏幕」。'
+
+/** 既不是 iOS、浏览器也没给安装入口时（例如桌面 Firefox），如实说明去哪儿找。 */
+export const STORAGE_NO_PROMPT_HINT =
+  '当前浏览器没有提供安装按钮。可以在浏览器菜单里找「安装应用」或「添加到主屏幕」。'
+
+export const STORAGE_INSTALL_ACCEPTED_NOTE = '已开始安装，完成后从主屏幕打开即可。'
+export const STORAGE_INSTALL_DISMISSED_NOTE = '这次没有安装。想装的时候再点一次即可。'
+
+/**
+ * 「为什么值得装」。本地模式与云端模式的事实完全不同，必须分开写：
+ * 本地模式下数据真的在这台设备的浏览器里，iOS 的 7 天无交互清理规则会把它清掉；
+ * 云端模式下本地只剩登录会话，装不装都不影响数据本身。
+ */
+export const STORAGE_WHY = isCloudBackend
+  ? '业务数据保存在云端账号里，浏览器本地只留着登录会话。安装到主屏幕可以让它像一个应用那样打开，但不会把云端数据搬到本地，也不改变任何同步行为。'
+  : '这个应用的数据保存在这台设备的浏览器里。没有安装到主屏幕时，iOS 会在连续 7 天没有打开之后清掉本地数据；添加到主屏幕的 Web App 使用独立存储分区，不计入那个计时。安装也只是降低风险：手动清理浏览器数据、卸载浏览器一样会丢，重要数据请用上面的备份导出留一份。'
+

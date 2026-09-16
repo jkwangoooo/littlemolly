@@ -25,6 +25,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { findBrowser } from './lib/find-browser.mjs'
 
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const EXPLICIT_APP_URL = process.env.APP_URL ?? null
@@ -78,21 +79,9 @@ function stopProcess(child) {
   }
 }
 
-function findBrowser() {
-  const candidates = [
-    process.env.CHROME_PATH,
-    process.env.ProgramFiles && join(process.env.ProgramFiles, 'Google/Chrome/Application/chrome.exe'),
-    process.env['ProgramFiles(x86)'] && join(process.env['ProgramFiles(x86)'], 'Google/Chrome/Application/chrome.exe'),
-    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Google/Chrome/Application/chrome.exe'),
-    process.env.ProgramFiles && join(process.env.ProgramFiles, 'Microsoft/Edge/Application/msedge.exe'),
-    process.env['ProgramFiles(x86)'] && join(process.env['ProgramFiles(x86)'], 'Microsoft/Edge/Application/msedge.exe'),
-    '/usr/bin/google-chrome',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  ].filter(Boolean)
-  const found = candidates.find((path) => existsSync(path))
-  if (!found) throw new Error('未找到 Chrome / Edge，请用 CHROME_PATH 指定浏览器可执行文件。')
-  return found
-}
+// 浏览器定位抽到 scripts/lib/find-browser.mjs：Git Bash 里 ProgramFiles 可能不存在，
+// 只按环境变量拼路径会把「本机装了 Chrome」误判成「本机没有浏览器」。
+// 图标生成脚本与 verify-pwa 共用同一份实现。
 
 async function launchBrowser(browserPath, userDataDir) {
   const child = spawn(
