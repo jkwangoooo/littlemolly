@@ -1,0 +1,49 @@
+{
+  "name": "happy-little-molly",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:no-empty": "tsc -b && vite build --emptyOutDir=false",
+    "typecheck": "tsc -b --pretty false",
+    "lint": "eslint .",
+    "check:dates": "node scripts/check-date-rules.mjs",
+    "check:local-data": "node scripts/check-local-data.mjs",
+    "check:backup": "node scripts/check-backup.mjs",
+    "check:cloud-parity": "node scripts/check-cloud-parity.mjs",
+    "check:sync": "node scripts/check-sync.mjs",
+    "verify:local": "node scripts/verify-local.mjs",
+    "verify:pwa": "node scripts/verify-pwa.mjs",
+    "verify:sync": "node scripts/verify-sync.mjs",
+    "verify:sql": "node scripts/verify-sql.mjs",
+    "db:local": "node scripts/local-db.mjs",
+    "db:local:init": "node scripts/local-db.mjs init",
+    "db:local:start": "node scripts/local-db.mjs start",
+    "db:local:stop": "node scripts/local-db.mjs stop",
+    "db:local:status": "node scripts/local-db.mjs status",
+    "db:local:reset": "node scripts/local-db.mjs reset",
+    "db:local:psql": "node scripts/local-db.mjs psql",
+    "icons": "node scripts/generate-icons.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.4.1",
+    "eslint": "^9.21.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.18",
+    "globals": "^15.15.0",
+    "typescript": "~5.7.3",
+    "typescript-eslint": "^8.24.0",
+    "vite": "^6.1.0"
+  }
+}

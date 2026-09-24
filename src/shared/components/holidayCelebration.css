@@ -1,0 +1,402 @@
+.holiday-celebration {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #3f2c2b;
+  isolation: isolate;
+  opacity: 1;
+  transition: opacity 900ms cubic-bezier(.22, .8, .2, 1);
+}
+
+.holiday-celebration-fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.holiday-celebration-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(43 31 33 / 72%);
+  opacity: 0;
+  transition: opacity 360ms ease;
+}
+
+.holiday-celebration-release .holiday-celebration-backdrop,
+.holiday-celebration-burst .holiday-celebration-backdrop,
+.holiday-celebration-settle .holiday-celebration-backdrop {
+  opacity: 1;
+}
+
+.holiday-celebration-outro .holiday-celebration-backdrop,
+.holiday-celebration-fade-out .holiday-celebration-backdrop,
+.holiday-celebration-reduced .holiday-celebration-backdrop {
+  opacity: .36;
+}
+
+.holiday-celebration-stage {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: min(100% - 32px, 760px);
+  min-height: 420px;
+  place-items: center;
+  padding: 72px 24px 88px;
+  text-align: center;
+}
+
+.holiday-visual-stack {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(320px, 70vw);
+  height: 210px;
+  transform: translate(-50%, -50%);
+}
+
+.holiday-visual-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  align-content: center;
+  justify-items: start;
+  border: 1px solid rgb(255 255 255 / 68%);
+  border-radius: 22px;
+  padding: 28px;
+  color: #493334;
+  background: #f3d8d0;
+  box-shadow: 0 24px 50px rgb(25 15 19 / 22%);
+  text-align: left;
+  transform: translate(-50%, -50%);
+  transition: transform 1100ms cubic-bezier(.22, .8, .2, 1);
+}
+
+.holiday-visual-card::after {
+  position: absolute;
+  right: 24px;
+  bottom: 22px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgb(63 44 43 / 18%);
+  border-radius: 14px;
+  content: '○';
+  color: rgb(63 44 43 / 48%);
+  font-size: 25px;
+  line-height: 38px;
+  text-align: center;
+}
+
+.holiday-visual-card span,
+.holiday-visual-card small {
+  color: rgb(73 51 52 / 64%);
+  font-size: 11px;
+}
+
+.holiday-visual-card strong {
+  margin: 6px 0;
+  font-family: "Iowan Old Style", "Songti SC", serif;
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.holiday-visual-card-back {
+  background: #d3e3d7;
+  transform: translate(-50%, -50%) translate(-15px, 14px) rotate(-5deg) scale(.94);
+}
+
+.holiday-visual-card-middle {
+  background: #f0c68e;
+  transform: translate(-50%, -50%) translate(13px, 9px) rotate(4deg) scale(.97);
+}
+
+.holiday-visual-card-old {
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 840ms cubic-bezier(.22, .8, .2, 1),
+    transform 1080ms cubic-bezier(.22, .8, .2, 1);
+}
+
+.holiday-visual-card-new {
+  z-index: 4;
+  background: #d5e5d9;
+  opacity: 0;
+  transform: translate(-50%, calc(-50% + 46px)) rotate(3deg) scale(.86);
+  transition:
+    opacity 1040ms cubic-bezier(.22, .8, .2, 1),
+    transform 1400ms cubic-bezier(.22, .8, .2, 1);
+}
+
+.holiday-celebration-release .holiday-visual-card-old,
+.holiday-celebration-burst .holiday-visual-card-old {
+  opacity: .68;
+  transform: translate(-50%, calc(-50% - 30px)) rotate(-7deg) scale(.9);
+}
+
+.holiday-celebration-release .holiday-visual-card-back,
+.holiday-celebration-burst .holiday-visual-card-back {
+  transform: translate(-50%, -50%) translate(-38px, 26px) rotate(-11deg) scale(.9);
+}
+
+.holiday-celebration-release .holiday-visual-card-middle,
+.holiday-celebration-burst .holiday-visual-card-middle {
+  transform: translate(-50%, -50%) translate(35px, 22px) rotate(10deg) scale(.93);
+}
+
+.holiday-celebration-settle .holiday-visual-card-new,
+.holiday-celebration-outro .holiday-visual-card-new {
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(0deg) scale(1);
+}
+
+.holiday-celebration-settle .holiday-visual-card-old,
+.holiday-celebration-outro .holiday-visual-card-old {
+  opacity: 0;
+  transform: translate(-50%, calc(-50% - 56px)) rotate(-10deg) scale(.82);
+}
+
+.holiday-celebration-copy {
+  position: absolute;
+  top: calc(50% + 132px);
+  right: 16px;
+  left: 16px;
+  z-index: 5;
+  display: grid;
+  justify-items: center;
+  max-width: 620px;
+  margin: 0 auto;
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 840ms ease,
+    transform 1240ms cubic-bezier(.32, .72, 0, 1);
+}
+
+.holiday-celebration-burst .holiday-celebration-copy,
+.holiday-celebration-settle .holiday-celebration-copy,
+.holiday-celebration-outro .holiday-celebration-copy,
+.holiday-celebration-reduced .holiday-celebration-copy {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.holiday-celebration-kicker {
+  color: #f2c3b6;
+  font-size: 10px;
+  letter-spacing: .14em;
+}
+
+.holiday-celebration-copy h1 {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 6px;
+  color: #fffaf3;
+  font-family: "Iowan Old Style", "Songti SC", serif;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.holiday-celebration-copy h1 span {
+  color: rgb(255 250 243 / 82%);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.holiday-celebration-copy h1 strong {
+  color: #fffaf3;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.holiday-celebration-copy p {
+  min-height: 22px;
+  margin: 0;
+  color: rgb(255 250 243 / 72%);
+  font-size: 13px;
+}
+
+.holiday-celebration-skip {
+  position: absolute;
+  right: 0;
+  bottom: 18px;
+  min-height: 42px;
+  border: 1px solid rgb(255 250 243 / 38%);
+  border-radius: 999px;
+  padding: 8px 16px;
+  color: #fffaf3;
+  background: rgb(255 250 243 / 9%);
+  font-size: 13px;
+}
+
+.holiday-celebration-skip:hover {
+  background: rgb(255 250 243 / 18%);
+}
+
+.holiday-celebration-skip:focus-visible {
+  outline: 2px solid #f4c7b9;
+  outline-offset: 3px;
+}
+
+.holiday-celebration-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.holiday-particle {
+  position: absolute;
+  top: 40%;
+  display: block;
+  width: var(--particle-width);
+  height: var(--particle-height);
+  border-radius: 2px;
+  background: var(--particle-color);
+  opacity: 0;
+  transform-origin: center;
+}
+
+.holiday-particle-left {
+  left: 0;
+  transform: translate3d(-20px, var(--particle-start-y), 0) rotate(0deg);
+}
+
+.holiday-particle-right {
+  right: 0;
+  transform: translate3d(20px, var(--particle-start-y), 0) rotate(0deg);
+}
+
+.holiday-celebration-burst .holiday-particle {
+  animation-delay: var(--particle-delay);
+  animation-duration: var(--particle-duration);
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(.18, .76, .26, 1);
+  filter: drop-shadow(0 2px 2px rgb(43 31 33 / 18%));
+}
+
+.holiday-celebration-burst .holiday-particle-left {
+  animation-name: holiday-particle-left;
+}
+
+.holiday-celebration-burst .holiday-particle-right {
+  animation-name: holiday-particle-right;
+}
+
+@keyframes holiday-particle-left {
+  0% {
+    opacity: 0;
+    transform: translate3d(-20px, var(--particle-start-y), 0) rotate(0deg);
+  }
+  18% { opacity: 1; }
+  46% {
+    opacity: 1;
+    transform: translate3d(var(--particle-burst-x), var(--particle-burst-y), 0) rotate(var(--particle-rotate));
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(calc(var(--particle-burst-x) + var(--particle-fall-x)), 106vh, 0) rotate(calc(var(--particle-rotate) + 280deg));
+  }
+}
+
+@keyframes holiday-particle-right {
+  0% {
+    opacity: 0;
+    transform: translate3d(20px, var(--particle-start-y), 0) rotate(0deg);
+  }
+  18% { opacity: 1; }
+  46% {
+    opacity: 1;
+    transform: translate3d(calc(var(--particle-burst-x) * -1), var(--particle-burst-y), 0) rotate(calc(var(--particle-rotate) * -1));
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(calc((var(--particle-burst-x) + var(--particle-fall-x)) * -1), 106vh, 0) rotate(calc((var(--particle-rotate) + 280deg) * -1));
+  }
+}
+
+.holiday-celebration-reduced .holiday-visual-card-old {
+  opacity: 0;
+}
+
+.holiday-celebration-reduced .holiday-visual-card-new {
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(0deg) scale(1);
+}
+
+.holiday-celebration-reduced .holiday-celebration-copy {
+  top: calc(50% + 132px);
+}
+
+@media (max-width: 620px) {
+  .holiday-celebration-stage {
+    width: min(100% - 24px, 520px);
+    min-height: 100%;
+    padding: 54px 0 calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .holiday-visual-stack {
+    top: 39%;
+    width: min(290px, calc(100vw - 48px));
+    height: 188px;
+  }
+
+  .holiday-visual-card {
+    border-radius: 20px;
+    padding: 23px;
+  }
+
+  .holiday-visual-card strong {
+    font-size: 32px;
+  }
+
+  .holiday-celebration-copy {
+    top: calc(39% + 132px);
+  }
+
+  .holiday-celebration-reduced .holiday-celebration-copy {
+    top: calc(39% + 132px);
+  }
+
+  .holiday-celebration-copy h1 {
+    max-width: none;
+  }
+
+  .holiday-celebration-copy h1 span {
+    font-size: 14px;
+  }
+
+  .holiday-celebration-copy h1 strong {
+    font-size: 20px;
+  }
+
+  .holiday-celebration-copy p {
+    font-size: 12px;
+  }
+
+  .holiday-celebration-skip {
+    right: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holiday-celebration *,
+  .holiday-celebration *::before,
+  .holiday-celebration *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .holiday-celebration {
+    animation: none !important;
+  }
+}

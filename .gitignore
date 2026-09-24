@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.workbuddy/
+# 本机智能体工作目录（验收截图、工作记忆）。与 .workbuddy/ 同类，不进公开仓库。
+.workbuddy-ai/
+.npm-cache/
+.npm-cache-deploy/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.local-supabase/
+
+.vercel
+.env*
+!.env.example

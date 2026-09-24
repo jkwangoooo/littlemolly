@@ -1,0 +1,9 @@
+.npm-cache-deploy/**
+.npm-cache/**
+.vercel-url.txt
+.vercel-anon.txt
+.env*
+node_modules/
+dist/
+coverage/
+.workbuddy-ai/

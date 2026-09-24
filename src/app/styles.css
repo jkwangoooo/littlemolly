@@ -1,0 +1,584 @@
+/* 幸福小Molly 全局样式
+   分段：1 主题 2 基础元素 3 布局 4 通用控件 5 状态与提示
+        6 今日页 7 选项页 8 周视图 9 弹层 10 移动端 */
+
+/* ---------- 1 主题 ---------- */
+:root {
+  color: #2f2927;
+  background: #fbf7f4;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------- 2 基础元素 ---------- */
+* { box-sizing: border-box; }
+
+html, body { height: 100%; overscroll-behavior: none; }
+
+/* overflow: hidden 是「固定外壳」的前提：页面本身不再滚动，也不再有橡皮筋。
+   内容交给 .page-scroll 自己滚（见布局段）。 */
+body { margin: 0; min-width: 320px; overflow: hidden; }
+
+#root { height: 100%; }
+
+/* 触摸交互按「应用」而不是「网页」处理：
+   - manipulation 关掉双击缩放（双指缩放由 viewportGuards 拦手势事件）；
+   - text-size-adjust 防止横屏时 iOS 自作主张放大正文。 */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, input, textarea, select, a, label { touch-action: manipulation; }
+
+h1, h2, p { margin-top: 0; }
+h1 { margin-bottom: 8px; font-size: 28px; font-weight: 650; }
+h2 { margin-bottom: 16px; font-size: 18px; }
+
+button, input, textarea { font: inherit; }
+button { cursor: pointer; transition: background-color 240ms ease, color 240ms ease, transform 240ms ease; }
+
+input, textarea {
+  width: 100%;
+  border: 1px solid #cfc3bd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: inherit;
+  background: #fffdfb;
+}
+textarea { min-height: 120px; resize: vertical; }
+input:focus, textarea:focus { outline: 2px solid #b93762; outline-offset: 1px; }
+
+select { width: 100%; border: 1px solid #cfc3bd; border-radius: 8px; padding: 10px 12px; background: #fffdfb; }
+
+/* ---------- 3 布局 ---------- */
+/*
+ * 应用外壳：页面本身**不滚动、不平移**，只有内容区（`.page-scroll`）内部滚动。
+ * 头部、日期与底部导航因此始终固定，观感是应用而不是可上下拖动的网页
+ * （用户反馈的「上下滑动显得廉价」就是整页滚动造成的）。
+ *
+ * 内容超出一屏时由内容区自己滚——不藏内容，也不把页面变成可拖动的一整块。
+ * 高度用 100%（配合 html/body/#root 的 height:100%），不用 100vh：
+ * 移动端地址栏收放时 vh 不会跟着变，会露出半屏空白。
+ */
+.page {
+  width: min(100% - 32px, 760px);
+  margin: 0 auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 上下内边距负责让出刘海 / Home 指示条与底部导航（导航是 fixed，会盖住内容）。 */
+  padding: calc(28px + env(safe-area-inset-top, 0px)) 0 calc(76px + env(safe-area-inset-bottom, 0px));
+}
+
+/* 唯一可滚动的区域。min-height: 0 不可省：flex 子项默认不肯收缩到内容高度以下。 */
+.page-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+
+.panel {
+  background: #fffdfb;
+  padding: 24px;
+}
+
+/* align-content: start 不可省：grid 默认 align-content: stretch，
+   在「容器高度被外壳固定住」的页面上会把每一行都拉伸填满剩余空间——
+   卡片内部因此出现莫名其妙的大空白，量高度时也分不清真实内容有多高。 */
+.stack { display: grid; gap: 16px; align-content: start; }
+
+.topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+
+.field { display: grid; gap: 7px; font-size: 14px; font-weight: 600; }
+
+/* ---------- 4 通用控件 ---------- */
+button {
+  min-height: 40px;
+  border: 1px solid #9d405c;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: #fff;
+  background: #a6405e;
+}
+button:hover:not(:disabled) { background: #87364f; }
+button.secondary { border-color: #b9aaa3; color: #493f3a; background: #fffdfb; }
+button:disabled { cursor: not-allowed; opacity: .58; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+.icon-button { width: 42px; min-width: 42px; padding: 4px; font-size: 26px; line-height: 1; }
+
+.arrow { color: #a6405e; font-size: 24px; }
+
+/* ---------- 5 状态与提示 ---------- */
+.eyebrow { margin: 0 0 4px; color: #a6405e; font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+
+.muted { color: #6c625d; line-height: 1.5; }
+
+.status { min-height: 24px; margin: 0; font-size: 14px; font-weight: 600; }
+.local-status { display: inline-flex; align-items: center; gap: 7px; width: fit-content; color: #746963; font-size: 12px; font-weight: 500; }
+.local-status::before { content: ''; width: 7px; height: 7px; flex: none; border-radius: 50%; background: #aaa09a; }
+.local-status.saving::before { background: #d6ae51; }
+.local-status.saved::before { background: #78a587; }
+.local-status.error::before { background: #b85a68; }
+.status.saving { color: #8b6a1a; }
+.status.saved { color: #3f7655; }
+.status.error { color: #a43f4e; }
+
+.notice { border-left: 3px solid #b85a68; padding: 10px 12px; color: #7e3040; background: #fff4f5; }
+.auth-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-left: 3px solid #c29a3d;
+  background: #fff9e9;
+  color: #63501e;
+  font-size: 14px;
+}
+.auth-result-connected { border-left-color: #4f8764; background: #f0f8f2; color: #2e5c3c; }
+.auth-result .icon-button { flex: 0 0 auto; }
+
+.history-note { margin: 0; border-left: 3px solid #a99b94; padding: 10px 12px; color: #6c625d; background: #f4f1ef; }
+
+.rest-note { margin: 0; border-left: 3px solid #d8a8b5; padding: 10px 12px; color: #6c625d; background: #fff7f8; }
+
+.loading-note { margin: 0; padding: 18px 0; text-align: center; }
+
+.empty-day { display: grid; gap: 6px; border: 1px dashed #d8a8b5; border-radius: 8px; padding: 16px 18px; background: #fff7f8; }
+.empty-day strong { font-size: 15px; }
+.empty-day p { margin: 0; font-size: 13px; }
+
+.empty-note { margin: 0; padding: 12px 0 4px; font-size: 13px; }
+
+/* ---------- 6 今日页 ---------- */
+.nav-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.nav-tabs button { flex: 1; border: 1px solid #d8a8b5; color: #8d3b55; background: #fff7f8; }
+.nav-tabs button.active { color: #fff; background: #a6405e; }
+
+/* 底部固定导航：今日 / 本周 / 选项（docs/02）。 */
+.bottom-nav {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  width: min(100%, 760px);
+  border-top: 1px solid #eadfdc;
+  background: #fffdfb;
+  box-shadow: 0 -2px 12px rgb(76 49 43 / 6%);
+  /* Home 指示条那一块留在导航自身的背景里，按钮不会被它盖住。 */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.bottom-nav button {
+  position: relative;
+  flex: 1;
+  min-height: 52px;
+  border: 0;
+  border-radius: 0;
+  color: #746963;
+  background: transparent;
+}
+.bottom-nav button.active { color: #a6405e; font-weight: 700; background: #fff7f8; }
+.bottom-nav button.active::after { content: ''; position: absolute; right: 24%; bottom: 0; left: 24%; height: 3px; border-radius: 3px 3px 0 0; background: #a6405e; }
+.bottom-nav button:active { transform: scale(.97); background: #f8eaed; }
+.bottom-nav button:not(:last-child) { border-right: 1px solid #f0ece9; }
+
+.date-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.date-heading h2 { margin-bottom: 4px; }
+.date-kicker { margin-bottom: 4px; color: #a6405e; font-size: 13px; font-weight: 700; }
+
+.mode-card { display: flex; justify-content: space-between; align-items: center; gap: 16px; border: 1px solid #eadfdc; border-radius: 8px; padding: 18px; background: #fdf9f6; }
+.mode-card strong { display: block; margin: 3px 0; font-size: 22px; }
+.mode-detail { margin: 0; color: #6c625d; font-size: 13px; }
+
+.progress-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; border-bottom: 1px solid #e4dfdb; padding-bottom: 12px; }
+.progress-head span { color: #3f7655; font-size: 13px; }
+
+.prep-list { display: grid; gap: 2px; }
+.prep-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #eee7e3; padding: 12px 0; }
+.prep-row input, .execution-row input { width: 20px; height: 20px; flex: none; accent-color: #a6405e; }
+.prep-row:has(input:checked) .row-main strong, .execution-row:has(input:checked) strong { color: #736f69; text-decoration: line-through; text-decoration-color: #c5b8b4; }
+.prep-row:has(input:checked) .row-main span, .execution-row:has(input:checked) small { opacity: .7; }
+.row-main { flex: 1; display: grid; gap: 3px; border: 0; padding: 0; min-height: 0; color: inherit; background: transparent; text-align: left; }
+.row-main:hover { background: transparent; color: inherit; }
+.row-main span, .execution-row small { color: #6c625d; font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
+
+.execute-list { display: grid; gap: 8px; }
+.execute-list h3, .timeline-head h3 { margin: 0; font-size: 16px; }
+.execution-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #eee7e3; padding: 10px 0; }
+.execution-row > span { display: grid; gap: 3px; flex: 1; min-width: 0; }
+
+.next-action { display: grid; gap: 10px; border-top: 1px solid #eadfdc; border-bottom: 1px solid #eadfdc; padding: 14px 0 16px; }
+.next-action-heading { display: flex; align-items: baseline; gap: 10px; }
+.next-action h2 { margin: 0; font-size: 17px; }
+.section-kicker { color: #a6405e; font-size: 12px; font-weight: 600; }
+.next-action-body { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.next-action-copy { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.next-action-copy strong { font-size: 16px; }
+.next-action-copy span { color: #6c625d; font-size: 13px; line-height: 1.4; }
+.next-action-button { flex: none; }
+.next-action-empty, .next-action-complete { margin: 0; font-size: 14px; }
+.next-action-complete { color: #3f7655; }
+.next-action-readonly { color: #746963; font-size: 12px; }
+.today-stage { display: grid; gap: 18px; min-width: 0; }
+.today-focus {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  border-left: 4px solid #b34f6b;
+  padding: 18px 20px;
+  background: #fbf1f2;
+  touch-action: pan-y;
+}
+.today-focus.is-unprepared { border-left-color: #bd9462; background: #faf5ee; }
+.today-focus-copy { min-width: 0; overflow-wrap: anywhere; }
+.today-focus .section-kicker { margin: 0 0 7px; }
+.today-focus h2 { margin: 0 0 10px; font-size: 18px; }
+.today-focus-item { display: block; font-size: 16px; line-height: 1.35; }
+.today-focus-detail { margin: 5px 0 0; color: #645b56; font-size: 13px; line-height: 1.5; }
+.today-focus-action { min-width: 84px; flex: none; }
+.today-focus-readonly { color: #645b56; font-size: 13px; }
+.today-route { min-width: 0; }
+.route-heading { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 1px solid #e8dfda; padding-bottom: 10px; }
+.route-heading .section-kicker { margin: 0 0 4px; }
+.route-heading h2 { margin: 0; font-size: 17px; }
+.today-route .progress-head { margin-top: 12px; }
+.route-list { list-style: none; margin: 0 0 0 10px; border-left: 2px solid #e5d5cf; padding: 6px 0 4px 20px; }
+.route-stop { position: relative; min-width: 0; }
+.route-stop::before {
+  position: absolute;
+  top: 22px;
+  left: -27px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ae7d73;
+  border-radius: 50%;
+  background: #fffdfb;
+  content: '';
+}
+.route-stop:has(.route-node-current)::before { border-color: #a6405e; background: #a6405e; box-shadow: 0 0 0 4px #f8e5e9; }
+.route-stop:has(.route-node-completed)::before { border-color: #4f8764; background: #4f8764; }
+.route-stop:has(.route-node-unprepared)::before { border-style: dashed; border-color: #b4a7a1; }
+.route-node { min-height: 56px; border-bottom-color: #f0eae7; }
+.route-node-copy { display: grid; flex: 1; min-width: 0; gap: 3px; overflow-wrap: anywhere; }
+.route-node-copy strong { font-size: 14px; line-height: 1.35; }
+.route-node-copy small { line-height: 1.35; }
+.route-node-unprepared { color: #746963; }
+.route-node-unprepared .route-node-copy strong { font-weight: 500; }
+.route-node-current .route-node-copy strong { color: #8d3b55; }
+.route-node-marker { width: 20px; height: 20px; flex: none; }
+.route-node-edit { flex: none; min-height: 32px; border: 0; padding: 4px 7px; color: #8d3b55; background: transparent; font-size: 12px; }
+.route-node-edit:hover:not(:disabled) { color: #6d2940; background: #fbf1f2; }
+.route-side-line { margin-top: 14px; }
+.route-side-heading { display: flex; align-items: center; gap: 10px; border-top: 1px solid #e8dfda; padding: 14px 0 2px; }
+.route-side-heading h3 { flex: 1; min-width: 0; margin: 0; font-size: 15px; }
+.route-side-mark { width: 12px; height: 12px; border: 2px solid #78938b; border-radius: 50%; }
+.route-side-heading .task-add-button { flex: none; }
+.route-list-side { border-left-color: #d4e0db; }
+.route-side-empty { margin-top: 10px; }
+.completion-feedback { position: fixed; right: 16px; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); left: 16px; z-index: 25; width: fit-content; max-width: min(100% - 32px, 420px); margin: 0 auto; border: 1px solid #cde0d1; border-radius: 8px; padding: 10px 14px; color: #2e5c3c; background: #f0f8f2; box-shadow: 0 3px 12px rgb(47 41 39 / 8%); font-size: 14px; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity 240ms ease, transform 240ms ease; }
+.completion-feedback.visible { opacity: 1; transform: translateY(0); }
+
+.timeline-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.task-row { border-bottom: 1px solid #eee7e3; }
+
+.mini { min-height: 32px; padding: 5px 9px; font-size: 12px; }
+.retry { min-height: 32px; margin-left: 8px; }
+
+/* L2 内容面板：分组多选（三餐 / 健身）与补剂清单 */
+.panel-hint { margin: 0 0 6px; font-size: 12px; }
+
+.panel-group { display: grid; gap: 6px; padding: 4px 0 12px; border-bottom: 1px solid #eee7e3; }
+.panel-group:last-of-type { border-bottom: 0; }
+.panel-group-label { margin: 0; color: #a6405e; font-size: 13px; font-weight: 700; }
+
+.picker { display: grid; gap: 2px; }
+.picker-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 14px; font-weight: 400; }
+.picker-row input[type="checkbox"] { width: 20px; min-width: 20px; height: 20px; accent-color: #a11b4a; }
+.picker-row span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.picker-note { margin: 2px 0; color: #625d58; font-size: 13px; }
+.picker-others { display: grid; gap: 2px; margin-top: 6px; border-left: 3px solid #e0c0cd; padding-left: 10px; }
+
+.panel-row { display: flex; align-items: center; gap: 10px; }
+.panel-row-name { flex: 1; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+.panel-row input:not([type="checkbox"]) { flex: 1; min-width: 0; }
+
+.inline-check { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 400; white-space: nowrap; }
+.inline-check input[type="checkbox"] { width: 20px; min-width: 20px; height: 20px; accent-color: #a11b4a; }
+
+.section-title { margin: 10px 0 0; color: #a6405e; font-size: 14px; }
+
+/* ---------- 7 选项页 ---------- */
+.option-section { display: grid; gap: 4px; }
+.option-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.option-summary { margin: 0; color: #625d58; font-size: 13px; }
+.option-empty { margin: 0; padding: 4px 0 8px; font-size: 13px; }
+
+.option-group { display: grid; }
+.option-group-label { margin: 10px 0 2px; color: #a6405e; font-size: 13px; font-weight: 700; }
+
+.option-row.inactive strong { color: #817a74; }
+.option-row.inactive small { color: #a09892; }
+/* 行内只剩手柄 + 「…」：动作从 5 个平铺收成一个入口（docs/17 §2.5）。 */
+.option-row { gap: 8px; }
+.option-row.dragging { background: #fff7f8; box-shadow: inset 3px 0 0 #a6405e; }
+
+/* 拖拽手柄：touch-action: none 是关键——不写的话手指一拖就被浏览器当成滚动，永远拖不动。 */
+.drag-handle {
+  flex: none;
+  width: 34px;
+  min-width: 34px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  color: #a09892;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+.drag-handle:active { cursor: grabbing; color: #a6405e; }
+.drag-handle:disabled { opacity: .4; }
+
+.row-menu-trigger { flex: none; min-width: 40px; padding: 4px 8px; font-size: 18px; line-height: 1; }
+/* 固定定位：行内绝对定位会被可滚动内容区裁掉，最后几行的菜单就看不见了。 */
+.row-menu-list {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  width: 150px;
+  padding: 6px;
+  border: 1px solid #e4dfdb;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgb(36 33 31 / 18%);
+}
+.row-menu-item {
+  justify-content: flex-start;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 6px;
+  color: #24211f;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+}
+.row-menu-item:hover { background: #f4f1ef; }
+.row-menu-item.danger { color: #a32d2d; }
+.row-menu-item:disabled { color: #a09892; }
+
+/* 概览页的入口行：名称 + 状态摘要 + 箭头，点击进子屏。 */
+.nav-list { display: grid; border: 1px solid #e4dfdb; border-radius: 8px; overflow: hidden; background: #fff; }
+.nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 0;
+  color: #24211f;
+  background: transparent;
+  text-align: left;
+}
+.nav-row + .nav-row { border-top: 1px solid #f0ece9; }
+.nav-row span:first-child { display: grid; gap: 2px; }
+.nav-row strong { font-size: 15px; }
+.nav-row small { color: #625d58; font-size: 13px; font-weight: 400; }
+.nav-row .arrow { flex: none; color: #a09892; font-size: 18px; }
+.nav-row.static { background: #faf8f6; }
+
+/* 子屏顶栏：返回按钮 + 当前层级标题。 */
+.topbar-back { display: flex; align-items: center; gap: 10px; }
+
+.account-card { border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.account-line { margin: 0; font-size: 14px; }
+.account-body { margin: 0; font-size: 13px; }
+
+/* 整体替换（S5）：两个手动动作，与上面的自动上传状态隔一条细线。
+   `.option-section` 本身是 grid，这里再套一层 grid 把标题 / 说明 / 按钮排开，
+   不用负外边距去抵消父级的 4px 间距——那类补偿在改父级间距时会静默错位。 */
+.sync-replace {
+  margin-top: 8px;
+  border-top: 1px solid #efeae6;
+  padding-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+.sync-replace-head { margin: 0; color: #a6405e; font-size: 13px; font-weight: 700; }
+
+/* 备份卡片：文本域是导出结果与导入输入的同一处，等宽字体便于人眼核对内容。 */
+.backup-card { border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.backup-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: pre;
+}
+.backup-file { flex: 1 1 220px; }
+.backup-file input[type="file"] { padding: 7px 10px; font-weight: 400; }
+
+/* 存储与安装卡片：三行事实用「标签 + 取值」两列，窄屏不换行成锯齿状。 */
+.storage-card { border-top: 1px solid #e4dfdb; padding-top: 16px; }
+.storage-facts { display: grid; gap: 6px; margin: 0; }
+.storage-fact { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
+.storage-fact dt { min-width: 104px; color: #625d58; }
+.storage-fact dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+/* 新版本提示条：贴在底部导航上方，不遮挡导航，也不抢走编辑区的注意力。
+   64px 是导航本身的高度，安全区另算——否则 iPhone 上提示条会压在 Home 指示条上。 */
+.update-notice {
+  position: fixed;
+  left: 50%;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100% - 32px, 480px);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #24211f;
+  background: #fff;
+  box-shadow: 0 6px 24px rgb(36 33 31 / 22%);
+  font-size: 13px;
+}
+.update-notice span { flex: 1; min-width: 0; }
+
+/* ---------- 8 周视图 ---------- */
+.week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+
+.week-day { min-height: 132px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 10px; border: 1px solid #e0c0cd; border-radius: 8px; color: #383431; background: #fff; text-align: left; }
+.week-day:hover:not(:disabled), .week-day.selected { border-color: #a11b4a; box-shadow: 0 0 0 2px rgb(161 27 74 / 14%); }
+.week-day.history { background: #f4f1ef; }
+.week-day-top { display: flex; justify-content: space-between; width: 100%; color: #a6405e; font-weight: 700; }
+.week-day small { color: #625d58; font-weight: 500; }
+.week-status { margin-top: auto; color: #625d58; font-size: 12px; }
+
+/* ---------- 9 弹层 ---------- */
+/*
+ * 层级表（改数字前先读完这段）：内容 < 居中遮罩 50 < 底部抽屉遮罩 60；
+ * 底部导航 30 与新版本提示条 40 都排在这两个遮罩**之下**。
+ *
+ * 弹层必须压过底部导航，这条不是审美问题：导航是 fixed 且 z-index 30，
+ * 抽屉也是 fixed 且贴着视口底边，两者在屏幕上抢同一条带子。导航若在上面，
+ * 抽屉钉底的操作区（「保存 / 取消」）会被整条盖住——真机上就是「看不到确认和取消、
+ * 也点不到」（2026-09-16 真机反馈，几何量出来是操作区 767→820、导航顶边 791）。
+ * 抽屉盖住导航是刻意的：弹层打开时导航本来就不该能点，否则用户会在编辑途中被切走。
+ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  /* padding-bottom 让出软键盘：iOS 弹键盘只缩小可视视口，遮罩若仍铺满布局视口，
+     卡片下半部分会落在键盘底下。--vv-keyboard-inset 见 visualViewport.ts。 */
+  padding-bottom: calc(20px + var(--vv-keyboard-inset, 0px));
+  background: rgb(36 33 31 / 38%);
+}
+.confirm-modal { width: min(100%, 440px); border-radius: 8px; padding: 24px; background: #fff; box-shadow: 0 12px 40px rgb(36 33 31 / 22%); }
+
+/* 居中编辑卡片（添加 / 编辑自定义事项）：字段少的短表单居中更聚焦。
+   与底部抽屉共享「标题固定 / 内容可滚 / 操作区钉底」结构，规则见 EditorDialog.tsx。 */
+.center-card {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 420px);
+  max-height: min(90vh, calc(var(--vv-height, 100vh) - 40px));
+  border-radius: 8px;
+  padding: 20px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgb(36 33 31 / 22%);
+}
+.center-card h2 { margin-bottom: 14px; }
+.center-card > .actions { flex: none; margin-top: 4px; border-top: 1px solid #eee7e3; padding-top: 12px; }
+
+/* 遮罩让出软键盘：iOS 弹键盘时只缩小可视视口，遮罩若仍铺满布局视口，
+   抽屉底部（含保存按钮）就会落在键盘底下。--vv-keyboard-inset 由
+   src/shared/appShell/visualViewport.ts 写入，取不到时为 0，行为与之前一致。
+   z-index 见本段开头的层级表：抽屉排在底部导航（30）之上，否则操作区被导航盖住。 */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; background: rgb(36 33 31 / 38%); padding-bottom: var(--vv-keyboard-inset, 0px); }
+.bottom-sheet {
+  width: min(100%, 760px);
+  /* 高度上限同时受「可视视口」约束：键盘弹起后 90vh 会超过真正能看到的区域。 */
+  max-height: min(90vh, calc(var(--vv-height, 100vh) - 16px));
+  margin: 0 auto;
+  border-radius: 14px 14px 0 0;
+  padding: 18px 24px 28px;
+  background: #fff;
+  box-shadow: 0 -8px 30px rgb(36 33 31 / 20%);
+  display: flex;
+  flex-direction: column;
+}
+/* 底部面板贴着屏幕底边弹出，最后一行的输入框同样要让开 Home 指示条。 */
+.bottom-sheet { padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
+/* 中间内容独立滚动，操作区因此永远钉在弹层底部可见（见 EditorDialog.tsx 的注释）。
+   两种形态共用这一条。 */
+.editor-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.bottom-sheet > .actions { flex: none; margin-top: 4px; border-top: 1px solid #eee7e3; padding-top: 12px; }
+.bottom-sheet .field, .center-card .field { margin-bottom: 12px; }
+.sheet-handle { width: 42px; height: 4px; margin: 0 auto 14px; border-radius: 2px; background: #c7bdb7; }
+
+@media (prefers-reduced-motion: reduce) {
+  button, .completion-feedback { transition: none; }
+  .bottom-nav button:active { transform: none; }
+  .completion-feedback { transform: none; }
+}
+
+/* ---------- 10 移动端 ---------- */
+@media (max-width: 480px) {
+  /* 固定外壳在窄屏上把「省下来的高度」全部让给内容：内边距与卡片间距一起收紧，
+     目的是让「执行今天」这一屏不必滚动就能看完（见 verify:pwa 的断言）。 */
+  .page { width: min(100% - 24px, 620px); padding: calc(16px + env(safe-area-inset-top, 0px)) 0 calc(60px + env(safe-area-inset-bottom, 0px)); }
+  .panel { padding: 16px; }
+  .stack { gap: 10px; }
+  .topbar { margin-bottom: 12px; }
+  h1 { font-size: 24px; }
+  .actions > button { flex: 1 1 132px; }
+  .mode-card { gap: 12px; padding: 14px; }
+  .mode-card strong { font-size: 20px; }
+  /* 日期块改成「流式一行」：今天 · 9月16日 · 周三 · 2026-09-16 依次排布、需要时才折行。
+     三行竖排在固定外壳里要多吃约 25px，而信息一条都没少。 */
+  .date-heading > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+  .date-heading h2, .date-kicker { margin-bottom: 0; }
+  .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .week-day { min-height: 116px; }
+  /* 窄屏收紧内边距，但底部那一份必须继续带 safe-area：写成简写的 24px 会把
+     上面 `.bottom-sheet` 的 `env(safe-area-inset-bottom)` 一起覆盖掉，
+     装上主屏幕后「保存 / 取消」就压在 Home 指示条上。 */
+  .bottom-sheet { padding: 16px 18px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .bottom-nav { width: 100%; }
+  .progress-head { display: grid; gap: 4px; }
+  .next-action-body { align-items: stretch; flex-direction: column; gap: 10px; }
+  .next-action-button { align-self: flex-start; }
+  .today-stage { gap: 12px; }
+  .today-focus { align-items: stretch; flex-direction: column; gap: 12px; padding: 14px; }
+  .today-focus-action { align-self: flex-start; }
+  .route-list { margin-left: 8px; padding-left: 16px; }
+  .route-stop::before { left: -23px; }
+  .route-node { gap: 7px; }
+  .route-node-edit { padding: 4px; }
+  /* 标题与「＋ 添加」按钮在窄屏也保持一行（只在实在放不下时才换行）。
+     竖排会让每个分区多占约 50px，而固定外壳下这些高度直接决定首页要不要滚动。 */
+  .timeline-head { flex-wrap: wrap; }
+  .task-row { flex-wrap: wrap; }
+  /* 选项行有五个操作按钮，窄屏挤在一行会折得很难读：改成名称一行、操作一行平分宽度。 */
+  /* 选项行在窄屏也保持一行：手柄 + 名称/状态 + 「…」。
+     旧版在窄屏把 5 个按钮折成两行，行高被撑到 102px；现在只有两个元素，一行放得下。 */
+  .option-row { gap: 6px; }
+  .drag-handle { width: 30px; min-width: 30px; }
+  /* 概览页的密度：入口行与分组标题一起收紧，让「概览一屏放下」在真机字体下也成立
+     （实测余量从 17px 提到 50px 以上，见 verify-local 的断言）。 */
+  .nav-row { padding: 10px 12px; }
+  .option-group-label { margin: 6px 0 0; }
+  /* 补剂行有名称 / 输入框 + 勾选 + 移除按钮，窄屏挤在一行会溢出：让名称独占一行。 */
+  .panel-row { flex-wrap: wrap; }
+  .panel-row-name, .panel-row input:not([type="checkbox"]) { flex: 1 1 100%; }
+  .inline-check { margin-left: auto; }
+}

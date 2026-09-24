@@ -1,0 +1,33 @@
+# Cloudflare Pages 的缓存规则。
+#
+# 与 vercel.json 的 headers 同一套口径：**只有带内容哈希的 /assets/\* 可以长缓存**，
+# service worker、manifest 与 index.html 一律 no-cache——否则用户拿不到新版本
+# （SW 被长缓存时，新构建永远不会被发现，页面会一直停在旧版）。
+#
+# 注意：这里**刻意不放 `_redirects`**。
+# Cloudflare Pages 在构建产物**没有顶层 `404.html`** 时会自动启用 SPA 回退
+# （官方文档：Pages assumes that you are deploying a single-page application，
+# 把未命中静态文件的路径交给 `/`），所以本来就不需要手写回退规则。
+# 而 `_redirects` 里的规则按官方文档是「总会执行，不管有没有静态资源匹配」——
+# 一条 `/* /index.html 200` 会把 `/sw.js` 与 `/assets/*` 一起改写掉，
+# 于是浏览器拿到一份 HTML 当 JS 解析，**整站崩**。收益为零、风险是致命的，因此不写。
+# 这条判断的回归在 `scripts/verify-pwa.mjs`：它断言构建产物里没有 `404.html`。
+
+# service worker：绝不能被缓存，否则新版本发布后用户永远拿不到。
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# manifest 会被浏览器缓存，改图标 / 名称后要能被读到。
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# 应用壳的入口。文件名不带哈希，只能靠 no-cache 保证用户拿到新构建。
+/index.html
+  Cache-Control: no-cache
+
+/
+  Cache-Control: no-cache
+
+# Vite 的输出目录，文件名带内容哈希——内容变了文件名就变了，可以永久缓存。
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
