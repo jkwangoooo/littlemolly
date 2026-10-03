@@ -407,6 +407,7 @@ export function DayPlanScreen({
           onNext={() => changeDate(1)}
           onSwitchMode={() => setPendingMode(mode === 'work' ? 'rest' : 'work')}
           onRestoreDefault={() => void restoreDefault()}
+          onAddTask={() => void openPanel('task')}
         />
 
         <SaveStatusBar
@@ -444,7 +445,6 @@ export function DayPlanScreen({
                 onToggle={toggleRouteNode}
                 onArrange={arrangeRouteNode}
                 onCopyYesterday={() => setConfirmCopy(true)}
-                onAddTask={() => void openPanel('task')}
                 onEditTask={(node) => {
                   if (node.task) {
                     setEditingTask(node.task)
