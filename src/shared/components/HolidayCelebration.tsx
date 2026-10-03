@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import './holidayCelebration.css'
+import { CelebrationParticles } from './CelebrationParticles'
 
 export type HolidayCelebrationCloseReason = 'natural' | 'skip' | 'escape'
 
@@ -21,46 +22,6 @@ type HolidayCelebrationProps = {
   onClose: (reason: HolidayCelebrationCloseReason) => void
   forceReducedMotion?: boolean
 }
-
-type ParticleSide = 'left' | 'right'
-
-const PARTICLE_COLORS = ['#d85d78', '#ef9a83', '#9cc5a9', '#e6bd68', '#fffaf3']
-const PARTICLE_COUNT = 112
-
-function createParticles() {
-  return Array.from({ length: PARTICLE_COUNT }, (_, index) => {
-    const side: ParticleSide = index % 2 === 0 ? 'left' : 'right'
-    const color = PARTICLE_COLORS[index % PARTICLE_COLORS.length]
-    const width = 6 + (index % 5) * 2
-    const height = 11 + (index % 6) * 2
-    const startY = -16 + ((index * 17) % 58)
-    const burstX = 28 + ((index * 29) % 72)
-    const burstY = -34 - ((index * 11) % 48)
-    const fallX = -24 + ((index * 19) % 49)
-    const rotate = 120 + ((index * 47) % 480)
-    const delay = (index % 14) * 0.012
-    const duration = 3.3 + (index % 5) * 0.2
-
-    return {
-      id: `${side}-${index}`,
-      side,
-      style: {
-        '--particle-color': color,
-        '--particle-width': `${width}px`,
-        '--particle-height': `${height}px`,
-        '--particle-start-y': `${startY}vh`,
-        '--particle-burst-x': `${burstX}vw`,
-        '--particle-burst-y': `${burstY}vh`,
-        '--particle-fall-x': `${fallX}vw`,
-        '--particle-rotate': `${rotate}deg`,
-        '--particle-delay': `${delay}s`,
-        '--particle-duration': `${duration}s`,
-      } as CSSProperties,
-    }
-  })
-}
-
-const PARTICLES = createParticles()
 
 export function HolidayCelebration({
   open,
@@ -188,15 +149,7 @@ export function HolidayCelebration({
     >
       <div className="holiday-celebration-backdrop" aria-hidden="true" />
       <div className="holiday-celebration-particles" aria-hidden="true">
-        {!reducedMotion
-          ? PARTICLES.map((particle) => (
-              <i
-                className={`holiday-particle holiday-particle-${particle.side}`}
-                key={particle.id}
-                style={particle.style}
-              />
-            ))
-          : null}
+        {!reducedMotion ? <CelebrationParticles /> : null}
       </div>
 
       <div className="holiday-celebration-stage">

@@ -252,74 +252,10 @@
   pointer-events: none;
 }
 
-.holiday-particle {
-  position: absolute;
-  top: 40%;
+.holiday-celebration-canvas {
   display: block;
-  width: var(--particle-width);
-  height: var(--particle-height);
-  border-radius: 2px;
-  background: var(--particle-color);
-  opacity: 0;
-  transform-origin: center;
-}
-
-.holiday-particle-left {
-  left: 0;
-  transform: translate3d(-20px, var(--particle-start-y), 0) rotate(0deg);
-}
-
-.holiday-particle-right {
-  right: 0;
-  transform: translate3d(20px, var(--particle-start-y), 0) rotate(0deg);
-}
-
-.holiday-celebration-burst .holiday-particle {
-  animation-delay: var(--particle-delay);
-  animation-duration: var(--particle-duration);
-  animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(.18, .76, .26, 1);
-  filter: drop-shadow(0 2px 2px rgb(43 31 33 / 18%));
-}
-
-.holiday-celebration-burst .holiday-particle-left {
-  animation-name: holiday-particle-left;
-}
-
-.holiday-celebration-burst .holiday-particle-right {
-  animation-name: holiday-particle-right;
-}
-
-@keyframes holiday-particle-left {
-  0% {
-    opacity: 0;
-    transform: translate3d(-20px, var(--particle-start-y), 0) rotate(0deg);
-  }
-  18% { opacity: 1; }
-  46% {
-    opacity: 1;
-    transform: translate3d(var(--particle-burst-x), var(--particle-burst-y), 0) rotate(var(--particle-rotate));
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(calc(var(--particle-burst-x) + var(--particle-fall-x)), 106vh, 0) rotate(calc(var(--particle-rotate) + 280deg));
-  }
-}
-
-@keyframes holiday-particle-right {
-  0% {
-    opacity: 0;
-    transform: translate3d(20px, var(--particle-start-y), 0) rotate(0deg);
-  }
-  18% { opacity: 1; }
-  46% {
-    opacity: 1;
-    transform: translate3d(calc(var(--particle-burst-x) * -1), var(--particle-burst-y), 0) rotate(calc(var(--particle-rotate) * -1));
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(calc((var(--particle-burst-x) + var(--particle-fall-x)) * -1), 106vh, 0) rotate(calc((var(--particle-rotate) + 280deg) * -1));
-  }
+  width: 100%;
+  height: 100%;
 }
 
 .holiday-celebration-reduced .holiday-visual-card-old {
