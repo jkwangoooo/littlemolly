@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type CSSProperties, type PointerEvent } from
 import { createPortal } from 'react-dom'
 import type { TodayRoute as Route, TodayRouteNode } from './todayRouteModel'
 import './todayStage.css'
+import './todayBubbleMotion.css'
 
 const STATUS: Record<TodayRouteNode['state'], string> = { completed: '已完成', current: '现在完成', upcoming: '待完成', unprepared: '尚未安排', readonly: '只读' }
 const icon = (node: TodayRouteNode) => node.completed ? '✓' : node.kind === 'meal' ? '◒' : node.kind === 'supplement' ? '✦' : node.kind === 'exercise' ? '↗' : node.kind === 'morning' ? '☼' : node.kind === 'routine' ? '⌂' : node.kind === 'custom-task' ? '○' : '□'
