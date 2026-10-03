@@ -1,6 +1,6 @@
 /* 幸福小Molly 全局样式
    分段：1 主题 2 基础元素 3 布局 4 通用控件 5 状态与提示
-        6 今日页 7 选项页 8 周视图 9 弹层 10 移动端 */
+        6 日程页 7 选项页 8 弹层 9 移动端 */
 
 /* ---------- 1 主题 ---------- */
 :root {
@@ -147,12 +147,9 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 
 .empty-note { margin: 0; padding: 12px 0 4px; font-size: 13px; }
 
-/* ---------- 6 今日页 ---------- */
-.nav-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
-.nav-tabs button { flex: 1; border: 1px solid #d8a8b5; color: #8d3b55; background: #fff7f8; }
-.nav-tabs button.active { color: #fff; background: #a6405e; }
+/* ---------- 6 日程页 ---------- */
 
-/* 底部固定导航：今日 / 本周 / 选项（docs/02）。 */
+/* 底部固定导航：执行今天 / 准备明天。 */
 .bottom-nav {
   position: fixed;
   left: 50%;
@@ -449,17 +446,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 }
 .update-notice span { flex: 1; min-width: 0; }
 
-/* ---------- 8 周视图 ---------- */
-.week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-
-.week-day { min-height: 132px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 10px; border: 1px solid #e0c0cd; border-radius: 8px; color: #383431; background: #fff; text-align: left; }
-.week-day:hover:not(:disabled), .week-day.selected { border-color: #a11b4a; box-shadow: 0 0 0 2px rgb(161 27 74 / 14%); }
-.week-day.history { background: #f4f1ef; }
-.week-day-top { display: flex; justify-content: space-between; width: 100%; color: #a6405e; font-weight: 700; }
-.week-day small { color: #625d58; font-weight: 500; }
-.week-status { margin-top: auto; color: #625d58; font-size: 12px; }
-
-/* ---------- 9 弹层 ---------- */
+/* ---------- 8 弹层 ---------- */
 /*
  * 层级表（改数字前先读完这段）：内容 < 居中遮罩 50 < 底部抽屉遮罩 60；
  * 底部导航 30 与新版本提示条 40 都排在这两个遮罩**之下**。
@@ -531,7 +518,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .completion-feedback { transform: none; }
 }
 
-/* ---------- 10 移动端 ---------- */
+/* ---------- 9 移动端 ---------- */
 @media (max-width: 480px) {
   /* 固定外壳在窄屏上把「省下来的高度」全部让给内容：内边距与卡片间距一起收紧，
      目的是让「执行今天」这一屏不必滚动就能看完（见 verify:pwa 的断言）。 */
@@ -547,8 +534,6 @@ button:disabled { cursor: not-allowed; opacity: .58; }
      三行竖排在固定外壳里要多吃约 25px，而信息一条都没少。 */
   .date-heading > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
   .date-heading h2, .date-kicker { margin-bottom: 0; }
-  .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .week-day { min-height: 116px; }
   /* 窄屏收紧内边距，但底部那一份必须继续带 safe-area：写成简写的 24px 会把
      上面 `.bottom-sheet` 的 `env(safe-area-inset-bottom)` 一起覆盖掉，
      装上主屏幕后「保存 / 取消」就压在 Home 指示条上。 */
@@ -557,10 +542,10 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .progress-head { display: grid; gap: 4px; }
   .next-action-body { align-items: stretch; flex-direction: column; gap: 10px; }
   .next-action-button { align-self: flex-start; }
-  .today-stage { gap: 12px; }
-  .today-focus { align-items: stretch; flex-direction: column; gap: 12px; padding: 14px; }
+  .today-stage { gap: 8px; }
+  .today-focus { align-items: stretch; flex-direction: column; gap: 12px; padding: 10px 14px; }
   .today-focus-action { align-self: flex-start; }
-  .route-list { margin-left: 8px; padding-left: 16px; }
+  .route-list { margin-left: 8px; padding: 2px 0 0 16px; }
   .route-stop::before { left: -23px; }
   .route-node { gap: 7px; }
   .route-node-edit { padding: 4px; }
@@ -582,3 +567,6 @@ button:disabled { cursor: not-allowed; opacity: .58; }
   .panel-row-name, .panel-row input:not([type="checkbox"]) { flex: 1 1 100%; }
   .inline-check { margin-left: auto; }
 }
+.page.options-page { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.bubble-shell-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}.bubble-shell-topbar h1{margin:0;font-size:20px}.bubble-options-button{min-height:34px;padding:6px 10px;border-radius:999px;font-size:11px}.page-content{gap:8px}.page-content>.save-status,.page-content>.status{min-height:18px;font-size:11px}
+@media(max-width:480px){.page{width:min(100% - 20px,620px);padding-top:calc(14px + env(safe-area-inset-top,0px))}.bubble-shell-topbar{margin-bottom:2px}.bubble-shell-topbar h1{font-size:18px}.bubble-options-button{min-height:30px;padding:4px 9px}.page-content{gap:6px}}

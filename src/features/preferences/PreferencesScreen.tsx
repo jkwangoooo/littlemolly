@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react'
+import { currentUser } from '../../services/api/authService'
 import type { AnyOption, OptionKind, SupplementPeriod } from '../../shared/types/options'
 import { SUPPLEMENT_PERIODS } from '../../shared/types/options'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { useSaveRunner } from '../../shared/hooks/useSaveRunner'
 import { SAVE_STATUS_PREFIX, SAVE_STATUS_TEXT } from '../../shared/saveStatus'
-import { currentUser, signOut } from '../../services/api/authService'
 import {
   createOption,
   deleteOption,
@@ -20,8 +20,6 @@ import { OptionEditor } from './components/OptionEditor'
 import { OptionListScreen, type OptionListGroup } from './components/OptionListScreen'
 import { OptionsOverview, type OptionsSection } from './components/OptionsOverview'
 import { StorageCard } from './components/StorageCard'
-import { BottomNav } from '../../shared/components/BottomNav'
-import type { View } from '../../shared/types/view'
 import {
   ACCOUNT_TITLE,
   BACKUP_TITLE,
@@ -41,8 +39,8 @@ type EditorState = { kind: OptionKind; mode: 'create' | 'rename'; option: AnyOpt
 
 /**
  * 选项页当前的层级。概览只放入口，三类清单与备份 / 存储各有自己的子屏（docs/17 §4）。
- * 用组件内状态而不是路由：项目没有路由库（docs/01），底部三个一级入口保持不变，
- * 子屏是「选项」这个二级入口内部的层级。
+ * 用组件内状态而不是路由：项目没有路由库（docs/01），日程入口保持在底部，
+ * 子屏是选项内容内部的层级。
  */
 type OptionsView = 'overview' | OptionKind | 'backup' | 'storage' | 'account'
 
@@ -51,10 +49,8 @@ type OptionsView = 'overview' | OptionKind | 'backup' | 'storage' | 'account'
  * 只负责编排：读取清单、串起写入与确认弹层、组装概览与子屏。
  * 校验与落库都在服务层，失败时保留弹层内容并显示具体原因。
  */
-export function PreferencesScreen({
-  onNavigate,
-}: {
-  onNavigate: (view: View) => void
+export function PreferencesScreen({ onBack }: {
+  onBack: () => void
 }) {
   const { lists, selectable, loading, loadError, reload } = useOptionLists()
   const { status, saveError, canRetry, runSave, retryLastSave } = useSaveRunner()
@@ -166,7 +162,7 @@ export function PreferencesScreen({
   }
 
   return (
-    <main className="page">
+    <main className="page options-page">
       <header className="topbar">
         {view === 'overview' ? (
           <div>
@@ -189,9 +185,10 @@ export function PreferencesScreen({
             </div>
           </div>
         )}
+        <button className="secondary" type="button" onClick={onBack}>返回日程</button>
       </header>
 
-      <section className="panel stack page-scroll">
+      <section className="stack page-scroll page-content">
         <p className={`status ${status}`} aria-live="polite">
           {SAVE_STATUS_PREFIX}
           {SAVE_STATUS_TEXT[status]}
@@ -261,7 +258,7 @@ export function PreferencesScreen({
 
             {view === 'account' ? (
               <>
-                <AccountCard username={username} onSignOut={() => void signOut()} />
+                <AccountCard username={username} />
                 <SyncCard username={username} />
               </>
             ) : null}
@@ -307,7 +304,6 @@ export function PreferencesScreen({
         </ConfirmDialog>
       ) : null}
 
-      <BottomNav current="options" onNavigate={onNavigate} />
     </main>
   )
 }

@@ -94,6 +94,8 @@ function buildExecutionNodes(input: BuildTodayRouteInput): TodayRouteNode[] {
   const hasAnyPlan = Boolean(
     plan || meals.length || supplements.length || exerciseItems.length || routines.length || tasks.length,
   )
+  // 今天即使尚未创建 DayPlan，也要投影完整的执行事项；用户需要先看到并安排它们。
+  // 只有历史日期和未来/明天空白日期保持空白，避免误造历史或未来执行数据。
   if (input.relation === 'history' && !hasAnyPlan) return []
   if ((input.relation === 'future' || input.relation === 'tomorrow') && !hasAnyPlan) return []
 
@@ -264,6 +266,19 @@ function taskNodes(tasks: CustomTask[]): TodayRouteNode[] {
   }))
 }
 
+function buildEmptyTodayTemplate(): TodayRouteNode[] {
+  return [
+    node({ id: 'morning', kind: 'morning', title: '晨间事项', detail: '尚未安排', completed: false, editable: true, editorTarget: 'morning', unprepared: true }),
+    node({ id: 'meal-breakfast', kind: 'meal', title: MEAL_NAMES.breakfast, detail: '尚未安排', completed: false, editable: true, editorTarget: 'meals', unprepared: true }),
+    node({ id: 'supplement-morning', kind: 'supplement', title: '早间补剂', detail: '尚未安排', completed: false, editable: true, editorTarget: 'supplements', unprepared: true }),
+    node({ id: 'meal-lunch', kind: 'meal', title: MEAL_NAMES.lunch, detail: '尚未安排', completed: false, editable: true, editorTarget: 'meals', unprepared: true }),
+    node({ id: 'supplement-noon', kind: 'supplement', title: '午间补剂', detail: '尚未安排', completed: false, editable: true, editorTarget: 'supplements', unprepared: true }),
+    node({ id: 'exercise-unprepared', kind: 'exercise', title: '健身', detail: '尚未安排', completed: false, editable: true, editorTarget: 'exercise', unprepared: true }),
+    node({ id: 'meal-dinner', kind: 'meal', title: MEAL_NAMES.dinner, detail: '尚未安排', completed: false, editable: true, editorTarget: 'meals', unprepared: true }),
+    node({ id: 'supplement-evening', kind: 'supplement', title: '晚间补剂', detail: '尚未安排', completed: false, editable: true, editorTarget: 'supplements', unprepared: true }),
+  ]
+}
+
 function applyStates(nodes: TodayRouteNode[], readonly: boolean, prepare: boolean): { nodes: TodayRouteNode[]; focus: TodayRouteNode | null } {
   const focusable = prepare ? nodes.filter((item) => item.kind === 'prep') : nodes
   const focus = readonly ? null : focusable.find((item) => item.state === 'unprepared') ??
@@ -325,6 +340,17 @@ export function buildTodayRoute(input: BuildTodayRouteInput): TodayRoute {
   } else {
     nodes = buildExecutionNodes(input)
   }
+  const hasConfiguredExecution = Boolean(
+    input.plan?.morning_focus.trim()
+      || input.plan?.exercise_decision
+      || input.mealItems.length
+      || input.meals.some((meal) => meal.note.trim())
+      || input.supplements.some((supplement) => supplement.planned)
+      || input.tasks.length
+  )
+  if (input.relation === 'today' && !input.prepare && input.mode === 'work' && !hasConfiguredExecution) {
+    nodes = buildEmptyTodayTemplate()
+  }
   nodes.push(...taskNodes(input.tasks))
   const resolved = applyStates(nodes, readonly, input.prepare && input.mode === 'work')
   return {
@@ -334,3 +360,6 @@ export function buildTodayRoute(input: BuildTodayRouteInput): TodayRoute {
     molly: input.relation === 'today' && !input.prepare ? deriveMollyFire(resolved.nodes) : null,
   }
 }
+
+
+

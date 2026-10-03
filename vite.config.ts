@@ -23,4 +23,6 @@ const BUILD_STAMP = String(Date.now())
 export default defineConfig({
   plugins: [react()],
   define: { __BUILD_STAMP__: JSON.stringify(BUILD_STAMP) },
+  server: { host: '127.0.0.1', port: 8800, strictPort: true },
+  preview: { host: '127.0.0.1', port: 8800, strictPort: true },
 })

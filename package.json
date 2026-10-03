@@ -18,6 +18,8 @@
     "verify:pwa": "node scripts/verify-pwa.mjs",
     "verify:sync": "node scripts/verify-sync.mjs",
     "verify:sql": "node scripts/verify-sql.mjs",
+    "deploy:setup": "node scripts/deploy.mjs setup",
+    "deploy": "node scripts/deploy.mjs",
     "db:local": "node scripts/local-db.mjs",
     "db:local:init": "node scripts/local-db.mjs init",
     "db:local:start": "node scripts/local-db.mjs start",

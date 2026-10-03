@@ -11,14 +11,14 @@
 // 依赖：本机已安装 Chrome 或 Edge。不使用第三方 npm 包，不写入项目目录。
 // 可用 CHROME_PATH 指定浏览器可执行文件；用 APP_URL 指向已存在的服务时，脚本不再自行拉起服务器。
 //
-// 覆盖：数据库冷升级（v1 → v6，含老自由文本搬迁、登录名字段改名、两张设备状态表）→ 登录页 → 注册 → 周视图 → 底部导航 →
+// 覆盖：数据库冷升级（v1 → v6，含老自由文本搬迁、登录名字段改名、两张设备状态表）→ 登录页 → 注册 → 双入口导航 →
 // 历史只读 → 模式切换与恢复默认 → 未来空日期引导 → 三餐多选 → 准备进度 → 健身多选（切「不健身」不清内容）→
 // 补剂实例（打开面板补齐 / 模板行不可删 / 自定义行可删 / 不重复补齐）→ 执行区勾选（与准备区分离）→
 // 自定义事项增改删 → 复制昨天（带内容、不带任何状态、不改模式）→
 // 休息日家务（正常休息日自动带拖地洗衣 / 临时不上班不带 / 隐藏工作日准备项 / 可勾选）→
 // 选项页（增改排序启停删、补剂时段分组、可用数量口径）→ 刷新恢复 → 账号间选项隔离 →
 // 账号与同步子屏（未配置云端时同步卡说明不可用、不出现「已同步」说法）→
-// 桌面与手机视口 → 退出登录 → 控制台干净。
+// 桌面与手机视口 → 通过认证 API 退出登录 → 控制台干净。
 //
 // 另有一条贯穿全脚本的判据：**未配置云端时整轮交互零跨域请求**（S1 引入，S3 起由同步卡继续守）。
 
@@ -59,6 +59,11 @@ async function startDevServer() {
   const child = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: PROJECT_ROOT,
     stdio: 'ignore',
+    env: {
+      ...process.env,
+      VITE_SUPABASE_URL: '',
+      VITE_SUPABASE_ANON_KEY: '',
+    },
   })
   child.on('error', () => {})
 
@@ -586,7 +591,14 @@ async function main() {
     }
     const goto = async () => {
       await cdp.send('Page.navigate', { url: appUrl })
-      await sleep(2200)
+      // Cold-upgrade navigation can leave Vite finishing an interrupted module request; wait for React instead of guessing with a fixed delay.
+      let rendered = false
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        rendered = await evaluate("Boolean(document.querySelector('#root > *'))")
+        if (rendered) break
+        await sleep(150)
+      }
+      if (!rendered) await sleep(2200)
       await evaluate(HELPERS)
     }
     const text = () => evaluate('window.__m.text()')
@@ -768,53 +780,39 @@ async function main() {
       migration.exerciseItem?.name === LEGACY_EXERCISE_TEXT && migration.exerciseItem?.optionId === null,
       JSON.stringify(migration.exerciseItem))
 
-    // 3. 周视图 + 底部导航
-    await evaluate(`window.__m.clickText('本周')`)
-    await sleep(1000)
-    const week = await evaluate(`
+    // 3. 日程双入口与右上角选项页
+    const dayNavigation = JSON.parse(await evaluate(`
       JSON.stringify({
-        days: document.querySelectorAll('.week-day').length,
-        text: window.__m.text(),
-        bottomNav: (() => {
-          const nav = document.querySelector('.bottom-nav');
-          if (!nav) return null;
-          return [...nav.querySelectorAll('button')].map((button) => ({ text: button.textContent.trim(), active: button.classList.contains('active') }));
-        })(),
+        labels: [...document.querySelectorAll('.bottom-nav button')].map((button) => button.textContent.trim()),
+        active: document.querySelector('.bottom-nav button.active')?.textContent.trim() ?? null,
+        hasScheduleContent: document.querySelector('.bubble-stage') !== null && document.querySelectorAll('.rhythm-bubble').length > 0 && !document.querySelector('.progress-ring strong')?.textContent?.startsWith('0/0'),
       })
-    `)
-    const weekData = JSON.parse(week)
-    record('本周视图固定显示 7 天', weekData.days === 7, `week-day 数量 = ${weekData.days}`)
-    record('底部导航含今日 / 本周 / 选项三入口且当前高亮本周',
-      weekData.bottomNav?.length === 3 &&
-        weekData.bottomNav.map((item) => item.text).join(',') === '今日,本周,选项' &&
-        weekData.bottomNav.find((item) => item.text === '本周')?.active === true,
-      `底部导航=${JSON.stringify(weekData.bottomNav)}`)
-    await evaluate(`window.__m.clickText('今日')`)
-    await sleep(900)
+    `))
+    record('底部导航只含执行今天 / 准备明天，当前高亮执行今天',
+      JSON.stringify(dayNavigation.labels) === JSON.stringify(['执行今天', '准备明天']) && dayNavigation.active === '执行今天',
+      `入口=${dayNavigation.labels.join(',')}, 高亮=${dayNavigation.active}`)
+    record('日程页保留日期与内容区域', dayNavigation.hasScheduleContent === true, `存在日程内容=${dayNavigation.hasScheduleContent}`)
 
-    // 3b. 底部导航可切换到选项页并高亮
     await evaluate(`window.__m.clickText('选项')`)
     await sleep(1200)
-    const optionsNav = await evaluate(`
+    const optionsPage = JSON.parse(await evaluate(`
       JSON.stringify({
         hasOptions: window.__m.text().includes('常用食物'),
-        active: (() => {
-          const nav = document.querySelector('.bottom-nav');
-          if (!nav) return null;
-          const button = [...nav.querySelectorAll('button')].find((item) => item.textContent.trim() === '选项');
-          return button ? button.classList.contains('active') : null;
-        })(),
+        hasBottomNav: document.querySelector('.bottom-nav') !== null,
+        hasReturn: window.__m.text().includes('返回日程'),
+        pageCount: document.querySelectorAll('main.page').length,
+        hasScheduleContent: document.querySelector('.bubble-stage') !== null && document.querySelectorAll('.rhythm-bubble').length > 0 && !document.querySelector('.progress-ring strong')?.textContent?.startsWith('0/0'),
       })
-    `)
-    const optionsNavData = JSON.parse(optionsNav)
-    record('底部导航可切到选项页且高亮选项',
-      optionsNavData.hasOptions === true && optionsNavData.active === true,
-      `选项页=${optionsNavData.hasOptions}, 高亮=${optionsNavData.active}`)
-    await evaluate(`window.__m.clickText('今日')`)
+    `))
+    await evaluate(`window.__m.clickText('返回日程')`)
     await sleep(900)
+    const returnedToSchedule = await evaluate(`document.querySelector('.bottom-nav') !== null`)
+    record('右上角选项进入独立页面，可返回日程且不显示底栏',
+      optionsPage.hasOptions && !optionsPage.hasBottomNav && optionsPage.hasReturn && optionsPage.pageCount === 1 && !optionsPage.hasScheduleContent && returnedToSchedule,
+      `选项内容=${optionsPage.hasOptions}, 底栏=${optionsPage.hasBottomNav}, 页面数=${optionsPage.pageCount}, 选项内日程=${optionsPage.hasScheduleContent}, 返回后日程=${returnedToSchedule}`)
 
     // 4. 历史日期只读
-    const movedBack = await evaluate(`window.__m.clickAria('前一天', '.icon-button')`)
+    const movedBack = await evaluate(`window.__m.clickAria('前一天', '.bubble-date-button')`)
     await sleep(1200)
     const history = await evaluate(`
       JSON.stringify({
@@ -830,7 +828,7 @@ async function main() {
       `note=${historyData.note}, hasSwitch=${historyData.hasSwitch}, nextButton=${historyData.hasNextButton}, locked=${historyData.locked}`)
 
     // 5. 模式切换与恢复默认
-    await evaluate(`window.__m.clickAria('后一天', '.icon-button')`)
+    await evaluate(`window.__m.clickAria('后一天', '.bubble-date-button')`)
     await sleep(1200)
     const modeBefore = await evaluate(`window.__m.modeLabel()`)
     await evaluate(`window.__m.clickContains('改为')`)
@@ -865,7 +863,7 @@ async function main() {
       (async () => {
         const read = () => (document.querySelector('.status') || {}).textContent || '';
         const before = read();
-        window.__m.clickAria('后一天', '.icon-button');
+        window.__m.clickAria('后一天', '.bubble-date-button');
         await window.__m.wait(1300);
         return JSON.stringify({ before, after: read() });
       })()
@@ -1178,7 +1176,7 @@ async function main() {
       (async () => {
         window.__m.clickText('执行今天');
         await window.__m.wait(1100);
-        window.__m.clickAria('后一天', '.icon-button');
+        window.__m.clickAria('后一天', '.bubble-date-button');
         await window.__m.wait(1400);
 
         const rows = window.__m.executeText();
@@ -1383,7 +1381,7 @@ async function main() {
     // 12. 复制昨天：内容复制但不带任何状态，且不改目标日模式与 mode_override
     const copied = await evaluate(`
       (async () => {
-        window.__m.clickAria('后一天', '.icon-button');
+        window.__m.clickAria('后一天', '.bubble-date-button');
         await window.__m.wait(1400);
         const modeBefore = window.__m.modeLabel();
         window.__m.clickText('复制昨天');
@@ -1459,9 +1457,9 @@ async function main() {
       (async () => {
         window.__m.clickText('执行今天');
         await window.__m.wait(1100);
-        window.__m.clickAria('后一天', '.icon-button');
+        window.__m.clickAria('后一天', '.bubble-date-button');
         await window.__m.wait(1100);
-        window.__m.clickAria('后一天', '.icon-button');
+        window.__m.clickAria('后一天', '.bubble-date-button');
         await window.__m.wait(1500);
         return JSON.stringify({
           states: window.__m.executeStates(),
@@ -1481,7 +1479,7 @@ async function main() {
         window.__m.clickText('执行今天');
         await window.__m.wait(1100);
         for (let i = 0; i < ${saturdayOffset}; i += 1) {
-          window.__m.clickAria('后一天', '.icon-button');
+          window.__m.clickAria('后一天', '.bubble-date-button');
           await window.__m.wait(900);
         }
         await window.__m.wait(1500);
@@ -2114,7 +2112,7 @@ async function main() {
       await shot(`06-选项页-视口-${label}`)
     }
     await cdp.send('Emulation.clearDeviceMetricsOverride')
-    await evaluate(`window.__m.clickText('今日')`)
+    await evaluate(`window.__m.clickText('返回日程')`)
     await sleep(900)
 
     // 19. 日计划页视口
@@ -2257,9 +2255,9 @@ async function main() {
       race.rows === 1 && race.ids.length === 1,
       `落库 ${race.rows} 行，返回 ${race.ids.length} 个不同 id`)
 
-    // 20. 退出登录
+    // 20. 退出登录（界面不提供按钮，验收通过认证 API 调用）
     await sleep(400)
-    await evaluate(`window.__m.clickText('退出登录')`)
+    await evaluate(`(async () => { const { signOut } = await import('/src/services/api/authService.ts'); await signOut(); })()` )
     await sleep(1500)
     const afterSignOut = await text()
     record('退出登录后回到登录页', afterSignOut.includes('账号') && afterSignOut.includes('注册'))
@@ -2377,7 +2375,7 @@ async function main() {
     // 断言只读「准备区」文本——选项页刚导完、刚 reload 过，全页文本里本来就有这些名字，
     // 拿全页文本去断言等于恒真。准备区的三餐摘要与补剂摘要来自这一天已保存的计划，
     // 它们出现才说明备份里的计划真的回到了界面上。
-    await evaluate(`window.__m.clickText('今日')`)
+    await evaluate(`window.__m.clickText('返回日程')`)
     await sleep(1000)
     await evaluate(`window.__m.clickText('准备明天')`)
     await sleep(1800)
@@ -2541,3 +2539,4 @@ main().catch((error) => {
   console.error('验收脚本异常：', error.message)
   process.exitCode = 2
 })
+

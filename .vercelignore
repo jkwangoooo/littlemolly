@@ -1,5 +1,8 @@
 .npm-cache-deploy/**
 .npm-cache/**
+.local-supabase/**
+.workbuddy/**
+.git/**
 .vercel-url.txt
 .vercel-anon.txt
 .env*

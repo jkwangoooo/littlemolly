@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
 import type { TodayRouteNode, TodayRoute } from './todayRouteModel'
 import './todayStack.css'
 
@@ -62,12 +62,15 @@ function StackCard({
   focused,
   saving,
   writable,
+  dragging,
+  dragOffset,
   onSelect,
   onToggle,
   onArrange,
   onEditTask,
   onDeleteTask,
   onPointerDown,
+  onPointerMove,
   onPointerUp,
   onPointerCancel,
 }: {
@@ -78,12 +81,15 @@ function StackCard({
   focused: boolean
   saving: boolean
   writable: boolean
+  dragging?: boolean
+  dragOffset?: { x: number; y: number }
   onSelect: () => void
   onToggle: () => void
   onArrange: () => void
   onEditTask: () => void
   onDeleteTask: () => void
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void
+  onPointerMove?: (event: PointerEvent<HTMLElement>) => void
   onPointerUp?: (event: PointerEvent<HTMLElement>) => void
   onPointerCancel?: () => void
 }) {
@@ -93,6 +99,8 @@ function StackCard({
     '--today-route-index': index,
     '--today-expanded-top': `${138 + index * 118}px`,
     '--today-expanded-top-mobile': `${118 + index * 128}px`,
+    '--today-stack-drag-x': `${focused ? (dragOffset?.x ?? 0) : 0}px`,
+    '--today-stack-drag-y': `${focused ? (dragOffset?.y ?? 0) : 0}px`,
   } as CSSProperties
   const canArrange = writable && Boolean(node.editorTarget) && !node.completionTarget
   const canEdit = view === 'expanded' && writable && Boolean(node.editorTarget) &&
@@ -120,6 +128,7 @@ function StackCard({
         `is-${node.state}`,
         focused ? 'is-focused' : '',
         focused ? 'today-focus' : '',
+        dragging ? 'is-dragging' : '',
         node.completed ? 'is-completed' : '',
       ].filter(Boolean).join(' ')}
       style={cardStyle}
@@ -128,6 +137,7 @@ function StackCard({
       data-focus-id={focused ? node.id : undefined}
       onClick={onSelect}
       onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
     >
@@ -256,13 +266,25 @@ export function TodayStack({
   onDeleteTask: (node: TodayRouteNode) => void
 }) {
   const [view, setView] = useState<StackView>('stacked')
-  const gestureRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const gestureRef = useRef<{ pointerId: number; x: number; y: number; nodeId: string } | null>(null)
   const didGestureRef = useRef(false)
-  const focusIndex = route.focus ? route.nodes.findIndex((node) => node.id === route.focus?.id) : -1
-  const stackTop = focusIndex >= 0
-    ? route.nodes[focusIndex]
-    : route.nodes.find((node) => node.completionTarget) ?? route.nodes[0]
-  const stackTopIndex = stackTop ? route.nodes.findIndex((node) => node.id === stackTop.id) : -1
+  const fallbackNode = route.focus ?? route.nodes.find((node) => node.completionTarget) ?? route.nodes[0] ?? null
+
+  useEffect(() => {
+    setActiveNodeId((current) => {
+      const active = current ? route.nodes.find((node) => node.id === current) : null
+      if (!active) return fallbackNode?.id ?? null
+      if (active.completed && route.focus && route.focus.id !== active.id) return route.focus.id
+      return active.id
+    })
+  }, [fallbackNode?.id, route.focus, route.nodes])
+  const activeNode = activeNodeId ? route.nodes.find((node) => node.id === activeNodeId) ?? null : null
+  const stackTop = activeNode ?? fallbackNode
+  const focusIndex = stackTop ? route.nodes.findIndex((node) => node.id === stackTop.id) : -1
+  const stackTopIndex = focusIndex
   const stackedNodes = stackTopIndex >= 0
     ? [stackTop, ...route.nodes.filter((_, index) => index !== stackTopIndex)]
     : route.nodes
@@ -270,6 +292,10 @@ export function TodayStack({
   const allComplete = route.nodes.length > 0 &&
     route.nodes.every((node) => node.completed || (!node.completionTarget && node.state !== 'unprepared'))
   const fieldStyle = {
+    '--today-stacked-height': `${340 + Math.max(0, route.nodes.length - 1) * 15}px`,
+    '--today-stacked-height-mobile': `${302 + Math.max(0, route.nodes.length - 1) * 15}px`,
+    '--today-stacked-anchor': '170px',
+    '--today-stacked-anchor-mobile': '151px',
     '--today-expanded-height': `${Math.max(360, 138 + route.nodes.length * 118 + 36)}px`,
     '--today-expanded-height-mobile': `${Math.max(360, 118 + route.nodes.length * 128 + 36)}px`,
   } as CSSProperties
@@ -287,9 +313,11 @@ export function TodayStack({
   }
 
   function handlePointerDown(event: PointerEvent<HTMLElement>) {
-    if (view !== 'stacked' || !route.focus || !route.focus.completionTarget || route.focus.completed || !writable || saving) return
-    if (!event.isPrimary || event.button !== 0 || event.target instanceof Element && event.target.closest('button')) return
-    gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+    if (view !== 'stacked' || !stackTop || route.readonly || saving) return
+    if (!event.isPrimary || event.button !== 0) return
+    if (event.target instanceof Element && event.target.closest('button, input, a, textarea, select')) return
+    gestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, nodeId: stackTop.id }
+    setIsDragging(true)
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {
@@ -297,20 +325,75 @@ export function TodayStack({
     }
   }
 
-  function handlePointerUp(event: PointerEvent<HTMLElement>) {
+  function handlePointerMove(event: PointerEvent<HTMLElement>) {
     const origin = gestureRef.current
-    gestureRef.current = null
-    if (!origin || origin.pointerId !== event.pointerId || !route.focus) return
+    if (!origin || origin.pointerId !== event.pointerId) return
+    event.preventDefault()
     const dx = event.clientX - origin.x
     const dy = event.clientY - origin.y
-    if (dx >= 72 && dx > Math.abs(dy)) {
-      didGestureRef.current = true
-      onToggle(route.focus)
+    if (Math.abs(dx) > Math.abs(dy)) {
+      setDragOffset({ x: Math.max(-120, Math.min(180, dx)), y: 0 })
+    } else {
+      setDragOffset({ x: 0, y: Math.max(-150, Math.min(150, dy)) })
     }
   }
 
+  function moveActive(step: -1 | 1) {
+    if (view !== 'stacked' || !stackTop || route.readonly) return
+    const currentIndex = route.nodes.findIndex((node) => node.id === stackTop.id)
+    if (currentIndex < 0) return
+    const nextIndex = Math.max(0, Math.min(route.nodes.length - 1, currentIndex + step))
+    if (nextIndex === currentIndex) return
+    didGestureRef.current = true
+    setActiveNodeId(route.nodes[nextIndex].id)
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLElement>) {
+    const origin = gestureRef.current
+    gestureRef.current = null
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      // Synthetic pointer events may not own a browser pointer.
+    }
+    setIsDragging(false)
+    setDragOffset({ x: 0, y: 0 })
+    if (!origin || origin.pointerId !== event.pointerId || origin.nodeId !== stackTop?.id) return
+    const dx = event.clientX - origin.x
+    const dy = event.clientY - origin.y
+    const horizontal = Math.abs(dx) > Math.abs(dy)
+    const vertical = Math.abs(dy) > Math.abs(dx)
+
+    if (horizontal && Math.abs(dx) >= 72) {
+      didGestureRef.current = true
+      if (dx >= 72 && stackTop.completionTarget && !stackTop.completed && writable && !saving) onToggle(stackTop)
+      return
+    }
+    if (vertical && Math.abs(dy) >= 56) {
+      didGestureRef.current = true
+      moveActive(dy < 0 ? 1 : -1)
+    }
+  }
+
+  function handlePointerCancel() {
+    gestureRef.current = null
+    setIsDragging(false)
+    setDragOffset({ x: 0, y: 0 })
+  }
+
+
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.target !== event.currentTarget) return
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveActive(1)
+      return
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveActive(-1)
+      return
+    }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       setView((current) => current === 'stacked' ? 'expanded' : 'stacked')
@@ -420,7 +503,7 @@ export function TodayStack({
       ) : null}
 
       <div
-        className={`today-stack-surface is-${view}`}
+        className={`today-stack-surface is-${view}${route.nodes.length ? '' : ' is-empty'}`}
         tabIndex={0}
         role="application"
         aria-label="今日卡片堆叠，可用回车展开或收起"
@@ -451,6 +534,8 @@ export function TodayStack({
                       view={view}
                       focused={node.id === stackTop?.id}
                       saving={saving}
+                      dragging={isDragging && node.id === stackTop?.id}
+                      dragOffset={dragOffset}
                       writable={writable}
                       onSelect={() => selectCard(node)}
                       onToggle={() => onToggle(node)}
@@ -458,8 +543,9 @@ export function TodayStack({
                       onEditTask={() => onEditTask(node)}
                       onDeleteTask={() => onDeleteTask(node)}
                       onPointerDown={node.id === stackTop?.id ? handlePointerDown : undefined}
+                      onPointerMove={node.id === stackTop?.id ? handlePointerMove : undefined}
                       onPointerUp={node.id === stackTop?.id ? handlePointerUp : undefined}
-                      onPointerCancel={() => { gestureRef.current = null }}
+                      onPointerCancel={node.id === stackTop?.id ? handlePointerCancel : undefined}
                     />
                   )
                 })
@@ -489,7 +575,7 @@ export function TodayStack({
           </div>
         )}
 
-        {view === 'stacked' && route.focus && route.focus.completionTarget && !route.focus.completed && writable ? (
+        {view === 'stacked' && stackTop?.completionTarget && !stackTop.completed && writable ? (
           <p className="today-stack-gesture-hint">向右滑动焦点卡，也可以完成</p>
         ) : null}
         {allComplete && !route.readonly ? (

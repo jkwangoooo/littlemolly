@@ -99,7 +99,7 @@
 
 .holiday-visual-card strong {
   margin: 6px 0;
-  font-family: "Iowan Old Style", "Songti SC", serif;
+  font-family: inherit;
   font-size: 36px;
   font-weight: 400;
   line-height: 1;
@@ -197,7 +197,7 @@
   gap: 4px;
   margin: 0 0 6px;
   color: #fffaf3;
-  font-family: "Iowan Old Style", "Songti SC", serif;
+  font-family: inherit;
   font-weight: 400;
   letter-spacing: 0;
   line-height: 1.2;

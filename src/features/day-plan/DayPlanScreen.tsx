@@ -6,7 +6,7 @@ import {
   HolidayCelebration,
   type HolidayCelebrationCloseReason,
 } from '../../shared/components/HolidayCelebration'
-import { signOut, type AuthResult } from '../../services/api/authService'
+import type { AuthResult } from '../../services/api/authService'
 import {
   copyYesterday,
   deleteCustomTask,
@@ -26,23 +26,20 @@ import {
   setSupplementCompleted,
   upsertDayPlan,
 } from '../../services/api/dayPlanService'
-import { WeekView } from '../week/WeekView'
 import { PreferencesScreen } from '../preferences/PreferencesScreen'
-import { DateHeading } from './components/DateHeading'
-import { DayNavTabs } from './components/DayNavTabs'
+import { BubbleHeader } from './components/BubbleHeader'
 import { EditorSheet, type EditorKind, type PanelPayload } from './components/EditorSheet'
 import { EmptyDayHint } from './components/EmptyDayHint'
 import type { ExecutionToggle } from './components/ExecuteList'
-import { ModeCard } from './components/ModeCard'
+
 import type { PrepKey } from './components/PrepList'
 import { SaveStatusBar } from './components/SaveStatusBar'
 import { COMPLETION_FEEDBACK, HISTORY_READONLY_TEXT, LOADING_TEXT, MODE_SWITCH_MESSAGE, REST_NO_ROUTINE_NOTE } from './dayPlanLabels'
 import { useSaveRunner } from '../../shared/hooks/useSaveRunner'
 import { useDayPlanData } from './useDayPlanData'
 import { BottomNav } from '../../shared/components/BottomNav'
-import type { View } from '../../shared/types/view'
 import { buildTodayRoute, type TodayRouteNode } from './components/todayRouteModel'
-import { TodayStage } from './components/TodayStage'
+import { TodayBubbleStage } from './components/TodayBubbleStage'
 
 type Tab = 'execute' | 'prepare'
 
@@ -58,7 +55,7 @@ export function DayPlanScreen({
   onDismissAuthResult: () => void
 }) {
   const today = getBusinessDateKey()
-  const [view, setView] = useState<View>('day')
+  const [optionsOpen, setOptionsOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(today)
   const [tab, setTab] = useState<Tab>('execute')
   const [panel, setPanel] = useState<EditorKind | null>(null)
@@ -119,6 +116,7 @@ export function DayPlanScreen({
     invalidatePageContext()
     setSelectedDate((current) => addDays(current, offset))
   }
+
 
   // 未来空日期的引导块：明天起的未规划日期显示一次说明，用户任意一次真实写入（勾选或保存面板）
   // 都会创建当天计划，引导随之消失；它自己不落库，也不阻止用户空着不填（docs/02）。
@@ -189,7 +187,7 @@ export function DayPlanScreen({
       if (
         navigationVersion !== navigationVersionRef.current
         || targetDate !== selectedDate
-        || view !== 'day'
+        || optionsOpen
         || sourceMode !== 'work'
         || targetMode !== 'rest'
       ) {
@@ -211,13 +209,13 @@ export function DayPlanScreen({
    */
   async function openPanel(kind: EditorKind) {
     setEditingTask(null)
+    setPanel(kind)
     if (kind === 'supplements' && writable) {
       await runSave(async () => {
         await ensurePlan()
         data.setSupplements(await ensureDaySupplements(selectedDate))
       })
     }
-    setPanel(kind)
   }
 
   async function savePanel(payload: PanelPayload) {
@@ -359,74 +357,28 @@ export function DayPlanScreen({
     })
   }
 
-  if (view === 'week') {
+  if (optionsOpen) {
     return (
-      <WeekView
-        selectedDate={selectedDate}
-        onSelectDate={(date) => {
-          invalidatePageContext()
-          setSelectedDate(date)
-          setView('day')
-        }}
-        onNavigate={(next) => {
-          if (next === 'day') {
-            invalidatePageContext()
-            setTab('execute')
-            setSelectedDate(today)
-            setView('day')
-          } else {
-            invalidatePageContext()
-            setView(next)
-          }
-        }}
+      <PreferencesScreen
+        onBack={() => setOptionsOpen(false)}
       />
     )
   }
 
-  if (view === 'options') {
-    return (
-      <PreferencesScreen
-        onNavigate={(next) => {
-          if (next === 'day') {
-            invalidatePageContext()
-            setTab('execute')
-            setSelectedDate(today)
-            setView('day')
-          } else {
-            invalidatePageContext()
-            setView(next)
-          }
-        }}
-      />
-    )
-  }
+
 
   return (
     <main className="page">
-      <header className="topbar">
+      <header className="bubble-shell-topbar">
         <div>
           <p className="eyebrow">幸福小Molly</p>
           <h1>{pageTitle}</h1>
         </div>
-        <button className="secondary" type="button" onClick={() => void signOut()}>
-          退出登录
+        <button className="secondary bubble-options-button" type="button" onClick={() => setOptionsOpen(true)}>
+          选项
         </button>
       </header>
 
-      <DayNavTabs
-        isExecuteActive={relation === 'today' && !isPrepare}
-        isPrepareActive={relation === 'tomorrow' && isPrepare}
-        onExecuteToday={() => {
-          invalidatePageContext()
-          setTab('execute')
-          setSelectedDate(today)
-        }}
-        onPrepareTomorrow={() => {
-          invalidatePageContext()
-          setTab('prepare')
-          setSelectedDate(addDays(today, 1))
-        }}
-      />
 
       {authResult ? (
         <div className={`auth-result auth-result-${authResult.cloud}`} role="status">
@@ -444,12 +396,17 @@ export function DayPlanScreen({
       ) : null}
 
       {/* page-scroll：固定外壳里唯一可滚动的区域（页面本身不滚动，见 styles.css 布局段）。 */}
-      <section className="panel stack page-scroll">
-        <DateHeading
+      <section className="stack page-scroll page-content">
+        <BubbleHeader
           relation={relation}
           selectedDate={selectedDate}
+          mode={mode}
+          modeOverride={Boolean(data.plan?.mode_override)}
+          writable={writable && status !== 'saving' && !celebration}
           onPrev={() => changeDate(-1)}
           onNext={() => changeDate(1)}
+          onSwitchMode={() => setPendingMode(mode === 'work' ? 'rest' : 'work')}
+          onRestoreDefault={() => void restoreDefault()}
         />
 
         <SaveStatusBar
@@ -470,19 +427,13 @@ export function DayPlanScreen({
           <>
             {showEmptyDayHint ? <EmptyDayHint /> : null}
 
-            <ModeCard
-              mode={mode}
-              modeOverride={Boolean(data.plan?.mode_override)}
-              writable={writable && status !== 'saving' && !celebration}
-              onRequestSwitch={() => setPendingMode(mode === 'work' ? 'rest' : 'work')}
-              onRestoreDefault={() => void restoreDefault()}
-            />
+
 
             {mode === 'rest' && data.plan?.mode_override ? (
               <p className="muted rest-note">{REST_NO_ROUTINE_NOTE}</p>
             ) : null}
             {!data.loadError ? (
-              <TodayStage
+              <TodayBubbleStage
                 route={route}
                 prepare={isPrepare && mode === 'work'}
                 progress={progress}
@@ -573,17 +524,11 @@ export function DayPlanScreen({
       ) : null}
 
       <BottomNav
-        current="day"
-        onNavigate={(next) => {
-          if (next === 'day') {
-            invalidatePageContext()
-            setTab('execute')
-            setSelectedDate(today)
-            setView('day')
-          } else {
-            invalidatePageContext()
-            setView(next)
-          }
+        current={isPrepare ? 'prepare' : 'execute'}
+        onNavigate={(destination) => {
+          invalidatePageContext()
+          setTab(destination)
+          setSelectedDate(destination === 'execute' ? today : addDays(today, 1))
         }}
       />
     </main>

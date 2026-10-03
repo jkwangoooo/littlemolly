@@ -135,6 +135,7 @@
 
 .today-stack-surface.is-stacked {
   touch-action: pan-y;
+  overflow: hidden;
 }
 
 .today-stack-surface.is-expanded {
@@ -268,8 +269,8 @@
 
 .today-stack-card-field {
   position: relative;
-  height: 340px;
-  min-height: 340px;
+  height: var(--today-stacked-height);
+  min-height: var(--today-stacked-height);
 }
 
 .today-stack-surface.is-expanded .today-stack-card-field {
@@ -282,7 +283,7 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 100%;
+  width: min(calc(100% - 42px), 740px);
   height: 238px;
   cursor: pointer;
   opacity: 1;
@@ -306,18 +307,17 @@
     scale(calc(1 - var(--today-stack-index) * .025));
 }
 
-.today-stack-card-shell.is-stacked.is-focused {
-  transform:
-    translate3d(-50%, -50%, 0)
-    rotate(0deg)
-    scale(1);
-}
 
 .today-stack-card-shell.is-stacked:not(.is-focused) {
   pointer-events: none;
 }
 
 .today-stack-card-shell.is-stacked.is-focused {
+  touch-action: none;
+  transform:
+    translate3d(calc(-50% + var(--today-stack-drag-x)), calc(-50% + var(--today-stack-drag-y)), 0)
+    rotate(0deg)
+    scale(1);
   cursor: grab;
 }
 
@@ -663,7 +663,14 @@
   text-align: center;
 }
 
+.today-stack-card-shell.is-stacked {
+  top: var(--today-stacked-anchor);
+}
+
 @media (max-width: 480px) {
+  .today-stack-card-shell.is-stacked {
+    top: var(--today-stacked-anchor-mobile);
+  }
   .today-stack.is-expanded {
     padding: 0 12px calc(24px + env(safe-area-inset-bottom, 0px));
   }
@@ -683,12 +690,21 @@
   }
 
   .today-stack-surface {
-    min-height: 330px;
+    min-height: 312px;
+  }
+
+  .today-stack-surface.is-empty {
+    min-height: 240px;
+  }
+
+  .today-stack-empty {
+    min-height: 240px;
+    padding: 18px;
   }
 
   .today-stack-card-field {
-    height: 320px;
-    min-height: 320px;
+    height: var(--today-stacked-height-mobile);
+    min-height: var(--today-stacked-height-mobile);
   }
 
   .today-stack-surface.is-expanded {
@@ -779,4 +795,8 @@
     animation-duration: 1ms !important;
     transition-duration: 1ms !important;
   }
+}
+.today-stack-card-shell.is-stacked.is-focused.is-dragging {
+  transition: none;
+  cursor: grabbing;
 }

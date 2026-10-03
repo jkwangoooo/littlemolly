@@ -1056,7 +1056,7 @@ async function main() {
     await sleep(500)
     await shot('06-storage-card-mobile')
 
-    // iOS 安全区：装上主屏幕后没有浏览器工具栏兜底，底部导航会压在 Home 指示条上。
+    // iOS 安全区：选项页是独立页面，日程页的固定底栏与页面内容各自让出 Home 指示条。
     // CDP 能模拟安全区（Chrome 152 实测支持 Emulation.setSafeAreaInsetsOverride），
     // 所以这一条不需要真机就能验：给一个 34px 的底部安全区，看有没有人把它让出来。
     const insetsApplied = await cdp
@@ -1064,22 +1064,27 @@ async function main() {
       .then(() => true)
       .catch(() => false)
     await sleep(400)
-    const safeArea = JSON.parse(
+    const optionsSafeArea = JSON.parse(
       await evaluate(`
         JSON.stringify({
           viewport: (document.querySelector('meta[name=viewport]') || {}).content || '',
-          navPaddingBottom: parseFloat(getComputedStyle(document.querySelector('.bottom-nav')).paddingBottom) || 0,
-          pagePaddingBottom: parseFloat(getComputedStyle(document.querySelector('.page')).paddingBottom) || 0,
+          hasBottomNav: document.querySelector('.bottom-nav') !== null,
+          pagePaddingBottom: parseFloat(getComputedStyle(document.querySelector('.options-page')).paddingBottom) || 0,
         })
       `),
     )
+    await evaluate(`window.__p.clickText('返回日程')`)
+    await sleep(900)
+    const scheduleSafeArea = JSON.parse(await evaluate(`JSON.stringify({ navPaddingBottom: parseFloat(getComputedStyle(document.querySelector('.bottom-nav')).paddingBottom) || 0, pagePaddingBottom: parseFloat(getComputedStyle(document.querySelector('.page')).paddingBottom) || 0 })`))
     record(
-      'iOS 安全区：底部导航与页面为 Home 指示条让出空间',
+      'iOS 安全区：选项页无底栏且自身为 Home 指示条让出空间',
       insetsApplied &&
-        safeArea.viewport.includes('viewport-fit=cover') &&
-        safeArea.navPaddingBottom === 34 &&
-        safeArea.pagePaddingBottom === 60 + 34,
-      `viewport-fit=cover=${safeArea.viewport.includes('viewport-fit=cover')}, 导航 padding-bottom=${safeArea.navPaddingBottom}px, 页面 padding-bottom=${safeArea.pagePaddingBottom}px（期望 34 / 94）`,
+        optionsSafeArea.viewport.includes('viewport-fit=cover') &&
+        optionsSafeArea.hasBottomNav === false &&
+        optionsSafeArea.pagePaddingBottom === 34 &&
+        scheduleSafeArea.navPaddingBottom === 34 &&
+        scheduleSafeArea.pagePaddingBottom === 94,
+      `viewport-fit=cover=${optionsSafeArea.viewport.includes('viewport-fit=cover')}, 选项底栏=${optionsSafeArea.hasBottomNav}, 选项页 padding-bottom=${optionsSafeArea.pagePaddingBottom}px, 日程导航 padding-bottom=${scheduleSafeArea.navPaddingBottom}px, 日程页 padding-bottom=${scheduleSafeArea.pagePaddingBottom}px（期望 选项无底栏 / 34，日程 34 / 94）`,
     )
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }).catch(() => {})
 
@@ -1139,8 +1144,8 @@ async function main() {
     `
 
     // ① 底部抽屉：用「准备明天 → 三餐」打开（三餐面板内容多，仍然走抽屉）。
-    // 注意此刻还在「选项」页，而「执行今天 / 准备明天」页签只存在于日计划页，必须先回今日。
-    await evaluate(`window.__p.clickText('今日')`)
+    // 安全区检查结束后已经返回日程页；从「准备明天」打开三餐面板。
+    await evaluate(`window.__p.clickText('执行今天')`)
     await sleep(1400)
     await evaluate(`window.__p.clickText('准备明天')`)
     await sleep(1800)
@@ -1179,7 +1184,7 @@ async function main() {
     await sleep(900)
 
     // ② 居中卡片：自定义事项改用的形态，同样要躲开键盘（否则卡片下半截被键盘盖住）。
-    await evaluate(`window.__p.clickText('今日')`)
+    await evaluate(`window.__p.clickText('执行今天')`)
     await sleep(1400)
     await evaluate(`window.__p.clickContains('添加事项')`)
     await sleep(1400)

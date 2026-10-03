@@ -681,7 +681,13 @@ async function main() {
     }
     const goto = async () => {
       await cdp.send('Page.navigate', { url: appUrl })
-      await sleep(2600)
+      let ready = false
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        ready = await evaluate("Boolean([...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === '注册'))")
+        if (ready) break
+        await sleep(150)
+      }
+      if (!ready) await sleep(2600)
       await evaluate(HELPERS)
     }
     const text = () => evaluate('window.__m.text()')
@@ -691,8 +697,8 @@ async function main() {
     /**
      * 打开「选项 → 账号与同步」。
      *
-     * 两步都不能省：同步卡住在选项页的账号子屏里，而选项页要先从底部导航切过去
-     * （日计划页上没有 `[data-option-entry]`，直接找会得到 `NO_ENTRY`）。
+     * 两步都不能省：同步卡在选项页的账号子屏里，必须先从日程页右上角进入选项
+     *，再从概览进入账号与同步（直接查找子屏入口会得到 `NO_ENTRY`）。
      */
     const openAccountCard = async () => {
       // 先退到概览：子屏里才有返回键，日计划页没有（`openOptionsOverview` 自己会判空）。
@@ -969,7 +975,7 @@ async function main() {
     // 判据分三块：绑定记在账号名下（读不到别人的）、未绑定的新账号一个请求都不发、
     // 换回原账号后别人的待上传条目仍然留在队列里（不会被顺手推走）。
     //
-    // 退出登录走的是**本地账号卡**上的按钮：它只清本地会话，**不清 `sync_state`**。
+    // 退出登录通过认证门面触发：它只清本地会话，**不清 `sync_state`**。
     // 这正是泄露发生的路径，所以必须用它来验，不能用「断开连接」（那条路本来就会清状态）。
     const accountA = await evaluate('window.__m.localUserId()')
     const stateRows = await evaluate('window.__m.syncStateRows()')
@@ -981,7 +987,7 @@ async function main() {
 
     const signOutAnd = async (account, action) => {
       await openAccountCard()
-      await evaluate(`window.__m.clickText('退出登录')`)
+      await evaluate(`(async () => { const { signOut } = await import('/src/services/api/authService.ts'); await signOut(); })()`)
       await sleep(1500)
       await evaluate(`
         (async () => {

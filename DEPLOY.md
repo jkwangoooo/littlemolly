@@ -64,7 +64,7 @@ notify pgrst, 'reload schema';
    - 确认 **Email** 已启用。
    - **关掉 Confirm email**（否则注册后拿不到会话——本项目没有配 SMTP）。
 2. 左侧 → **Authentication** → **URL Configuration**：
-   - **Site URL**：先填 `http://localhost:5173`，等 Vercel 部署完再回来改成正式域名。
+   - **Site URL**：先填 `http://127.0.0.1:8800`，等 Vercel 部署完再回来改成正式域名。
    - **Redirect URLs**：同样加上你的 Vercel 域名。
 
 ### 1.5 取两个值（第 2 步要用）

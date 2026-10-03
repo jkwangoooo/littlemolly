@@ -47,7 +47,7 @@ const TASKS = [
     aliases: ['dev'],
     group: '开发',
     label: '启动开发服务器',
-    note: '自动打开浏览器 · localhost:5173 · Ctrl+C 停止',
+    note: '自动打开浏览器 · 127.0.0.1:8800 · Ctrl+C 停止',
     steps: [npm('dev', '--', '--open')],
     needsInstall: true,
   },
