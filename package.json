@@ -14,6 +14,7 @@
     "check:backup": "node scripts/check-backup.mjs",
     "check:cloud-parity": "node scripts/check-cloud-parity.mjs",
     "check:sync": "node scripts/check-sync.mjs",
+    "check:feedback": "node scripts/feedback-policy.mjs",
     "verify:local": "node scripts/verify-local.mjs",
     "verify:pwa": "node scripts/verify-pwa.mjs",
     "verify:sync": "node scripts/verify-sync.mjs",

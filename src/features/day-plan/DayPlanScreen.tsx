@@ -2,10 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { CustomTask, DayMode, DayPlan } from '../../shared/types/dayPlan'
 import { addDays, classifyDate, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
-import {
-  HolidayCelebration,
-  type HolidayCelebrationCloseReason,
-} from '../../shared/components/HolidayCelebration'
 import type { AuthResult } from '../../services/api/authService'
 import {
   copyYesterday,
@@ -40,6 +36,10 @@ import { useDayPlanData } from './useDayPlanData'
 import { BottomNav } from '../../shared/components/BottomNav'
 import { buildTodayRoute, type TodayRouteNode } from './components/todayRouteModel'
 import { TodayBubbleStage } from './components/TodayBubbleStage'
+import { FloatingPet } from '../../shared/components/FloatingPet'
+import type { PetPosition } from '../../shared/components/PetMessageBubble'
+import { publishFeedback } from '../../shared/feedback/feedbackBus'
+import { FeedbackHost } from '../../shared/feedback/FeedbackHost'
 
 type Tab = 'execute' | 'prepare'
 
@@ -63,30 +63,54 @@ export function DayPlanScreen({
   const [confirmDelete, setConfirmDelete] = useState<CustomTask | null>(null)
   const [confirmCopy, setConfirmCopy] = useState(false)
   const [pendingMode, setPendingMode] = useState<DayMode | null>(null)
-  const [completionFeedback, setCompletionFeedback] = useState('')
   const [feedbackIndex, setFeedbackIndex] = useState(0)
-  const [celebration, setCelebration] = useState<{ headline: string } | null>(null)
-  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [celebrationOpen, setCelebrationOpen] = useState(false)
+  const [petPosition, setPetPosition] = useState<PetPosition | null>(null)
+  const [petViewport, setPetViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight, offsetLeft: window.visualViewport?.offsetLeft ?? 0, offsetTop: window.visualViewport?.offsetTop ?? 0 }))
   const navigationVersionRef = useRef(0)
+  const feedbackActionIdRef = useRef(0)
+  const previousSaveErrorRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const updateViewport = () => setPetViewport({
+      width: window.visualViewport?.width ?? window.innerWidth,
+      height: window.visualViewport?.height ?? window.innerHeight,
+      offsetLeft: window.visualViewport?.offsetLeft ?? 0,
+      offsetTop: window.visualViewport?.offsetTop ?? 0,
+    })
+    window.addEventListener('resize', updateViewport)
+    window.visualViewport?.addEventListener('resize', updateViewport)
+    window.visualViewport?.addEventListener('scroll', updateViewport)
+    return () => {
+      window.removeEventListener('resize', updateViewport)
+      window.visualViewport?.removeEventListener('resize', updateViewport)
+      window.visualViewport?.removeEventListener('scroll', updateViewport)
+    }
+  }, [])
+
 
   const data = useDayPlanData(selectedDate)
   const { status, saveError, canRetry, runSave, retryLastSave, resetForDateChange } = useSaveRunner()
 
+  useEffect(() => {
+    if (saveError && saveError !== previousSaveErrorRef.current) {
+      feedbackActionIdRef.current += 1
+      publishFeedback({
+        type: 'save-failed',
+        actionId: 'save-failed-' + feedbackActionIdRef.current,
+        scope: 'day-plan',
+        message: saveError,
+      })
+    }
+    previousSaveErrorRef.current = saveError
+  }, [saveError])
+
   // 切换日期时丢弃上一次的待重试写入请求与错误提示，避免跨日期误重试。
   useEffect(() => {
     resetForDateChange()
-    setCompletionFeedback('')
+    previousSaveErrorRef.current = null
   }, [selectedDate, resetForDateChange])
 
-  useEffect(() => {
-    if (saveError || data.loadError) setCompletionFeedback('')
-  }, [saveError, data.loadError])
-
-  useEffect(() => {
-    return () => {
-      if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
-    }
-  }, [])
 
   const relation = classifyDate(selectedDate, today)
   const writable = relation !== 'history'
@@ -109,7 +133,7 @@ export function DayPlanScreen({
   function invalidatePageContext() {
     navigationVersionRef.current += 1
     setPendingMode(null)
-    setCelebration(null)
+    setCelebrationOpen(false)
   }
 
   function changeDate(offset: number) {
@@ -135,15 +159,10 @@ export function DayPlanScreen({
   function showCompletionFeedback() {
     const message = COMPLETION_FEEDBACK[feedbackIndex % COMPLETION_FEEDBACK.length]
     setFeedbackIndex((current) => current + 1)
-    setCompletionFeedback(message)
-    if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
-    feedbackTimer.current = setTimeout(() => setCompletionFeedback(''), 2100)
+    feedbackActionIdRef.current += 1
+    publishFeedback({ type: 'completion', actionId: 'completion-' + feedbackActionIdRef.current, date: selectedDate, text: message })
   }
 
-  function clearCompletionFeedback() {
-    if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
-    setCompletionFeedback('')
-  }
 
   function toggleRouteNode(node: TodayRouteNode) {
     if (!writable || status === 'saving' || !node.completionTarget) return
@@ -179,7 +198,6 @@ export function DayPlanScreen({
     const targetDate = selectedDate
     const sourceMode = mode
     const navigationVersion = navigationVersionRef.current
-    const headline = classifyDate(targetDate, today) === 'today' ? '今天不上班' : '这一天不上班'
 
     await runSave(async () => {
       const saved = await upsertDayPlan(targetDate, { mode: targetMode, mode_override: true })
@@ -193,13 +211,17 @@ export function DayPlanScreen({
       ) {
         return
       }
-      setCelebration({ headline })
+      feedbackActionIdRef.current += 1
+      publishFeedback({
+        type: 'day-mode-changed',
+        actionId: 'mode-switch-' + feedbackActionIdRef.current,
+        date: targetDate,
+        from: sourceMode,
+        to: targetMode,
+        relation: classifyDate(targetDate, today),
+        localSaved: true,
+      })
     })
-  }
-
-  function handleCelebrationClose(reason: HolidayCelebrationCloseReason) {
-    setCelebration(null)
-    if (reason !== 'natural') return
   }
 
   /**
@@ -260,13 +282,11 @@ export function DayPlanScreen({
   async function togglePrep(key: PrepKey) {
     if (!writable) return
     const nextCompleted = !data.plan?.[key]
-    clearCompletionFeedback()
     await savePlan({ [key]: nextCompleted } as Partial<DayPlan>, nextCompleted)
   }
 
   async function toggleExecution(toggle: ExecutionToggle) {
     if (!writable) return
-    clearCompletionFeedback()
 
     if (toggle.kind === 'morning') {
       const nextCompleted = !data.plan?.morning_completed
@@ -302,7 +322,6 @@ export function DayPlanScreen({
     if (!writable) return
     const task = data.tasks.find((item) => item.id === id)
     if (!task) return
-    clearCompletionFeedback()
     const nextCompleted = !task.completed
     await runSave(async () => {
       const saved = await saveCustomTask(selectedDate, { ...task, completed: nextCompleted })
@@ -315,7 +334,6 @@ export function DayPlanScreen({
     if (!writable) return
     const routine = data.routines.find((item) => item.id === id)
     if (!routine) return
-    clearCompletionFeedback()
     const nextCompleted = !routine.completed
     await runSave(async () => {
       data.setRoutines(await setRoutineCompleted(selectedDate, id, nextCompleted))
@@ -369,6 +387,8 @@ export function DayPlanScreen({
 
   return (
     <main className="page">
+      <FloatingPet onPositionChange={setPetPosition} />
+      
       <header className="bubble-shell-topbar">
         <div>
           <p className="eyebrow">幸福小Molly</p>
@@ -402,7 +422,7 @@ export function DayPlanScreen({
           selectedDate={selectedDate}
           mode={mode}
           modeOverride={Boolean(data.plan?.mode_override)}
-          writable={writable && status !== 'saving' && !celebration}
+          writable={writable && status !== 'saving' && !celebrationOpen}
           onPrev={() => changeDate(-1)}
           onNext={() => changeDate(1)}
           onSwitchMode={() => setPendingMode(mode === 'work' ? 'rest' : 'work')}
@@ -458,9 +478,6 @@ export function DayPlanScreen({
         )}
       </section>
 
-      <p className={`completion-feedback${completionFeedback ? ' visible' : ''}`} aria-live="polite">
-        {completionFeedback}
-      </p>
 
       {pendingMode ? (
         <ConfirmDialog
@@ -478,12 +495,12 @@ export function DayPlanScreen({
         </ConfirmDialog>
       ) : null}
 
-      <HolidayCelebration
-        open={celebration !== null}
-        headline={celebration?.headline ?? ''}
-        fromLabel="工作日"
-        toLabel="休息日"
-        onClose={handleCelebrationClose}
+      <FeedbackHost
+        selectedDate={selectedDate}
+        optionsOpen={optionsOpen}
+        onCelebrationChange={setCelebrationOpen}
+        petPosition={petPosition}
+        petViewport={petViewport}
       />
 
       {confirmDelete ? (

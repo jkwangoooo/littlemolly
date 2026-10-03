@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f8f4">
+  <title>工作日转休息日 · 礼花动效演示</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #34413e;
+      --muted: #7c8984;
+      --line: #dce5df;
+      --paper: #f6f8f4;
+      --white: #fff;
+      --green: #94b8a2;
+      --green-deep: #58816b;
+      --pink: #d87f88;
+      --yellow: #d9b75f;
+      --blue: #83aebb;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    }
+    button { font: inherit; }
+    .app {
+      width: min(100%, 1040px);
+      min-height: 100dvh;
+      margin: 0 auto;
+      padding: 24px 28px calc(26px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .brand { margin: 0 0 8px; color: #82918a; font-size: 12px; }
+    h1 { margin: 0; font-size: 23px; font-weight: 650; }
+    .preview-tag { border: 1px solid var(--line); padding: 7px 10px; color: #77847e; font-size: 11px; background: #fff; }
+    .datebar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 27px; }
+    .date-copy { display: grid; gap: 5px; }
+    .date-copy span { color: var(--muted); font-size: 12px; }
+    .date-copy strong { font-size: 18px; font-weight: 600; }
+    .mode-control { display: flex; align-items: center; gap: 12px; }
+    .mode-pill { padding: 7px 10px; border: 1px solid #dfe8e2; color: var(--green-deep); background: #eaf2ec; font-size: 12px; transition: background .4s, color .4s; }
+    .mode-pill.rest { border-color: #eadbd5; color: #a36c66; background: #f8ece8; }
+    .mode-link { border: 0; padding: 6px 0; color: #617b6b; background: none; text-decoration: underline; text-underline-offset: 3px; font-size: 12px; cursor: pointer; }
+    .stage-wrap { display: grid; align-content: center; min-height: 520px; padding: 12px 0 20px; }
+    .stage { position: relative; width: min(100%, 680px); aspect-ratio: 1.44; max-height: 490px; margin: 0 auto; isolation: isolate; }
+    .orbit { position: absolute; left: 50%; top: 50%; border: 1px solid #e5ebe6; border-radius: 50%; transform: translate(-50%, -50%); transition: transform 850ms cubic-bezier(.2,.75,.25,1), opacity 500ms; }
+    .orbit.one { width: 61%; height: 85%; }
+    .orbit.two { width: 39%; height: 55%; border-style: dashed; opacity: .85; }
+    .progress-orb { position: absolute; z-index: 2; left: 50%; top: 50%; width: clamp(142px, 24vw, 188px); aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; background: #fff; box-shadow: 0 12px 36px #52675a12, inset 0 0 0 1px #e4ebe5; transform: translate(-50%, -50%); transition: transform 320ms cubic-bezier(.2,.75,.25,1), background 500ms; }
+    .progress-orb::before { content: ""; position: absolute; inset: 10px; border-radius: 50%; background: conic-gradient(var(--green) var(--progress, 42%), #edf1ed 0); mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px)); }
+    .progress-copy { display: grid; justify-items: center; gap: 5px; }
+    .progress-copy strong { font-size: 31px; font-weight: 600; line-height: 1; transition: color 400ms; }
+    .progress-copy small { color: var(--muted); font-size: 11px; }
+    .progress-copy em { min-height: 16px; color: #9a8175; font-size: 10px; font-style: normal; }
+    .bubble { --x: 0px; --y: 0px; --delay: 0ms; --tone: var(--green); position: absolute; z-index: 3; left: 50%; top: 50%; width: clamp(76px, 13vw, 96px); min-height: 86px; display: grid; place-content: center; justify-items: center; gap: 5px; border: 1px solid color-mix(in srgb, var(--tone) 38%, white); border-radius: 50%; background: #fff; box-shadow: 0 5px 18px #40574b0c; transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))); transition: opacity 480ms ease, transform 720ms cubic-bezier(.18,.72,.25,1), border-color 400ms, background 400ms; transition-delay: var(--delay); animation: float 5.4s ease-in-out infinite; }
+    .bubble::before { content: ""; width: 13px; height: 13px; border: 1.5px solid var(--tone); border-radius: 50%; }
+    .bubble strong { max-width: 84px; font-size: 11px; font-weight: 600; text-align: center; }
+    .bubble small { color: #85918b; font-size: 9px; }
+    .bubble.meal { --tone: var(--pink); }
+    .bubble.supplement { --tone: var(--yellow); }
+    .bubble.exercise { --tone: var(--blue); }
+    .bubble.custom { --tone: #9a99bb; }
+    .bubble.rest-task { --tone: var(--green-deep); opacity: 0; transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y) + 16px)) scale(.84); }
+    .bubble:nth-of-type(3) { animation-delay: -1.1s; }
+    .bubble:nth-of-type(4) { animation-delay: -2.2s; }
+    .bubble:nth-of-type(5) { animation-delay: -3.1s; }
+    .bubble:nth-of-type(6) { animation-delay: -4s; }
+    .bubble[data-kind="work"] { }
+    .stage.is-rest .orbit.one { transform: translate(-50%, -50%) scale(1.09); opacity: .72; }
+    .stage.is-rest .orbit.two { transform: translate(-50%, -50%) scale(1.13); opacity: .45; }
+    .stage.is-rest .progress-orb { background: #fffaf8; }
+    .stage.is-rest .progress-orb::before { background: conic-gradient(#d9a39b 22%, #f1e8e4 0); }
+    .stage.is-rest .progress-copy strong { color: #a36c66; }
+    .stage.is-rest .bubble[data-kind="work"] { opacity: 0; transform: translate(calc(-50% + var(--x) * 1.24), calc(-50% + var(--y) * 1.24 - 8px)) scale(.78); }
+    .stage.is-rest .bubble[data-kind="keep"] { transform: translate(calc(-50% + var(--x) * 1.12), calc(-50% + var(--y) * 1.12)); }
+    .stage.is-rest .bubble.rest-task { opacity: 1; transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1); }
+    .stage.is-burst .progress-orb { animation: orb-breathe 780ms cubic-bezier(.2,.75,.25,1); }
+    .stage.is-burst .orbit { animation: orbit-breathe 900ms cubic-bezier(.2,.75,.25,1); }
+    .sprinkles { position: fixed; z-index: 20; inset: 0; overflow: hidden; pointer-events: none; }
+    #sprinkleCanvas { width: 100%; height: 100%; display: block; }
+    .particle { position: absolute; left: var(--origin-x); top: var(--origin-y); width: var(--w); height: var(--h); border-radius: 2px; opacity: 0; background: var(--color); transform: translate(-50%, -50%) rotate(0); animation: firework var(--duration) cubic-bezier(.16,.73,.2,1) var(--delay) both; }
+    .particle.dot { width: var(--w); height: var(--w); border-radius: 50%; }
+    .particle.star { width: 13px; height: 13px; background: transparent; }
+    .particle.star::before, .particle.star::after { content: ""; position: absolute; left: 5px; top: 0; width: 3px; height: 13px; border-radius: 3px; background: var(--color); }
+    .particle.star::after { transform: rotate(90deg); }
+    .status-note { position: fixed; z-index: 21; left: 50%; top: 50%; display: grid; gap: 7px; width: min(88vw, 470px); margin: 0; padding: 16px 24px 17px; border: 1px solid rgb(255 255 255 / 78%); border-radius: 18px; color: #71817a; background: rgb(255 255 255 / 58%); box-shadow: 0 16px 42px rgb(68 85 75 / 15%), inset 0 1px 0 rgb(255 255 255 / 80%); backdrop-filter: blur(16px) saturate(120%); text-align: center; opacity: 0; transform: translate(-50%, calc(-50% + 20px)) scale(.94); transition: opacity .55s cubic-bezier(.2,.75,.25,1), transform .75s cubic-bezier(.2,.75,.25,1); pointer-events: none; }
+    .status-note.visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    .status-note .status-kicker { color: #6f8278; font-size: 12px; font-weight: 650; letter-spacing: .18em; }
+    .status-note .status-main { color: #9b5f5c; font-size: clamp(24px, 5vw, 42px); font-weight: 700; letter-spacing: .04em; text-shadow: 0 3px 16px rgb(163 108 102 / 18%); }
+    .toolbar { display: flex; justify-content: center; align-items: center; gap: 9px; flex-wrap: wrap; padding-top: 18px; border-top: 1px solid var(--line); }
+    .toolbar button { min-height: 40px; border: 1px solid #d4e0d7; padding: 0 15px; color: #476652; background: #e8f0e9; cursor: pointer; transition: transform .16s, background .2s; }
+    .toolbar button:hover { background: #dce9df; }
+    .toolbar button:active { transform: translateY(1px) scale(.98); }
+    .toolbar button.secondary { color: #66736d; background: #fff; }
+    .toolbar label { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; color: #728079; font-size: 12px; cursor: pointer; }
+    .toolbar input { accent-color: #71947c; }
+    .nav-preview { display: flex; justify-content: center; gap: 32px; margin-top: 14px; color: #9aa59f; font-size: 11px; }
+    .nav-preview span:first-child { color: #587762; border-bottom: 2px solid #8eaf98; padding-bottom: 7px; }
+    .caption { margin: 12px auto 0; max-width: 580px; color: #95a09a; font-size: 11px; line-height: 1.65; text-align: center; }
+    @keyframes float { 0%,100% { margin-top: -3px; } 50% { margin-top: 4px; } }
+    @keyframes orb-breathe { 0% { scale: 1; } 35% { scale: .93; } 100% { scale: 1; } }
+    @keyframes orbit-breathe { 0% { scale: 1; } 45% { scale: 1.09; } 100% { scale: 1; } }
+    @keyframes firework {
+      0% { opacity: 0; transform: translate(-50%, -50%) rotate(0deg) scale(.55); }
+      8% { opacity: 1; }
+      24% { opacity: 1; transform: translate(calc(-50% + var(--vx) * .48), calc(-50% + var(--vy) * .48)) rotate(calc(var(--spin) * .35)) scale(1); }
+      46% { opacity: .98; transform: translate(calc(-50% + var(--vx) * .82), calc(-50% + var(--vy) * .82 + var(--gravity) * .12)) rotate(var(--spin)) scale(.96); }
+      68% { opacity: .82; transform: translate(calc(-50% + var(--vx) * .96 + var(--wind)), calc(-50% + var(--vy) + var(--gravity) * .42)) rotate(calc(var(--spin) * 1.35)) scale(.86); }
+      100% { opacity: 0; transform: translate(calc(-50% + var(--vx) + var(--wind)), calc(-50% + var(--vy) + var(--gravity))) rotate(calc(var(--spin) * 2)) scale(.5); }
+    }
+    @media (max-width: 620px) {
+      .app { padding: 19px 16px calc(20px + env(safe-area-inset-bottom)); }
+      .datebar { align-items: flex-start; margin-top: 21px; }
+      .mode-control { display: grid; justify-items: end; gap: 6px; }
+      .stage-wrap { min-height: 460px; }
+      .stage { width: min(100%, 500px); aspect-ratio: 1.04; }
+      .orbit.one { width: 86%; height: 78%; }
+      .orbit.two { width: 60%; height: 52%; }
+      .bubble { width: 76px; min-height: 76px; }
+      .progress-orb { width: 145px; }
+      .toolbar { gap: 7px; }
+      .toolbar button { min-height: 38px; padding: 0 11px; font-size: 12px; }
+      .caption { max-width: 340px; }
+      .status-note { width: min(88vw, 380px); padding: 13px 16px 14px; }
+      .status-note .status-kicker { font-size: 10px; }
+      .status-note .status-main { font-size: clamp(22px, 7vw, 32px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="topbar">
+        <div><p class="brand">幸福小Molly</p><h1>执行今天</h1></div>
+        <span class="preview-tag">独立动效预览</span>
+      </div>
+      <div class="datebar">
+        <div class="date-copy"><span>今天 · 2026年10月5日 · 星期一</span><strong>把今天安排得刚刚好</strong></div>
+        <div class="mode-control"><span class="mode-pill" id="modePill">工作日</span><button class="mode-link" id="switchLink" type="button">改为休息日</button></div>
+      </div>
+    </header>
+
+    <section class="stage-wrap" aria-label="休息日礼花动效演示">
+      <div class="stage" id="stage">
+        <div class="orbit one" aria-hidden="true"></div><div class="orbit two" aria-hidden="true"></div>
+        <div class="progress-orb" id="progressOrb">
+          <div class="progress-copy"><strong id="progressValue">3<small> / 7</small></strong><small>已完成</small><em id="focusText">现在完成一项</em></div>
+        </div>
+        <div class="bubble" data-kind="work" style="--x:0px;--y:-174px;--tone:#83aebb"><strong>晨间事项</strong><small>待完成</small></div>
+        <div class="bubble meal" data-kind="work" style="--x:145px;--y:-100px"><strong>早餐</strong><small>已完成</small></div>
+        <div class="bubble supplement" data-kind="keep" style="--x:174px;--y:46px"><strong>早间补剂</strong><small>待完成</small></div>
+        <div class="bubble meal" data-kind="work" style="--x:94px;--y:158px"><strong>午餐</strong><small>待完成</small></div>
+        <div class="bubble exercise" data-kind="keep" style="--x:-80px;--y:169px"><strong>健身</strong><small>已安排</small></div>
+        <div class="bubble custom" data-kind="keep" style="--x:-170px;--y:35px"><strong>我的事项</strong><small>待完成</small></div>
+        <div class="bubble rest-task" style="--x:-119px;--y:-130px;--delay:100ms"><strong>休息日</strong><small>轻松一点</small></div>
+        <div class="bubble rest-task" style="--x:124px;--y:-132px;--delay:180ms"><strong>自由安排</strong><small>按自己的节奏</small></div>
+      </div>
+      <p class="status-note" id="statusNote" aria-live="polite"><span class="status-kicker">幸福小Molly</span><strong class="status-main"></strong></p>
+    </section>
+
+    <footer>
+      <div class="toolbar">
+        <button type="button" id="playButton">确认切换并播放</button>
+        <button type="button" class="secondary" id="replayButton">重播礼花</button>
+        <label><input type="checkbox" id="reducedToggle">减少动态效果</label>
+      </div>
+      <nav class="nav-preview" aria-label="底部导航预览"><span>执行今天</span><span>准备明天</span></nav>
+      <p class="caption">演示仅展示界面动效，不会保存或修改正式计划。礼花只在工作日成功切为休息日时播放；重播按钮用于重复查看。</p>
+    </footer>
+  </main>
+  <div class="sprinkles" id="sprinkles" aria-hidden="true"><canvas id="sprinkleCanvas"></canvas></div>
+  <script>
+    (() => {
+      const stage = document.getElementById('stage');
+      const playButton = document.getElementById('playButton');
+      const replayButton = document.getElementById('replayButton');
+      const reducedToggle = document.getElementById('reducedToggle');
+      const note = document.getElementById('statusNote');
+      const modePill = document.getElementById('modePill');
+      const switchLink = document.getElementById('switchLink');
+      const progressValue = document.getElementById('progressValue');
+      const focusText = document.getElementById('focusText');
+      const sprinkles = document.getElementById('sprinkles');
+      let isRest = false;
+      let timer;
+      const colors = ['#d87f88', '#d9b75f', '#94b8a2', '#83aebb', '#a9a7c6', '#f0a66f', '#cf7194', '#78a99a'];
+      function announce(text) {
+        const main = note.querySelector('.status-main');
+        if (main) main.textContent = text;
+        note.setAttribute('aria-label', '幸福小Molly，' + text);
+        note.classList.add('visible');
+        clearTimeout(timer);
+        timer = setTimeout(() => note.classList.remove('visible'), 1900);
+      }
+      let particleFrame = 0;
+      function makeParticles() {
+        const canvas = document.getElementById('sprinkleCanvas');
+        const context = canvas.getContext('2d');
+        const mobile = window.matchMedia('(max-width: 620px)').matches;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        cancelAnimationFrame(particleFrame);
+        const colors = ['#d87f88', '#d9b75f', '#94b8a2', '#83aebb', '#a9a7c6', '#f0a66f', '#cf7194', '#78a99a'];
+        const particles = [];
+        const count = mobile ? 150 : 280;
+        for (let index = 0; index < count; index += 1) {
+          const fromRight = index % 2 === 1;
+          particles.push({ x: fromRight ? width + 8 : -8, y: height * (0.38 + Math.random() * 0.14), vx: (fromRight ? -1 : 1) * (width * (0.16 + Math.random() * 0.24)), vy: -(height * (0.28 + Math.random() * 0.2)), gravity: height * (0.36 + Math.random() * 0.22), drag: 0.985 + Math.random() * 0.01, wind: (Math.random() - 0.5) * (mobile ? 8 : 14), width: 4 + Math.random() * 5, height: 7 + Math.random() * 8, rotation: Math.random() * Math.PI, spin: (Math.random() - 0.5) * 10, color: colors[index % colors.length], life: 0, maxLife: 2.7 + Math.random() * 0.9, delay: Math.random() * 0.16 });
+        }
+        let previous = performance.now();
+        function frame(now) {
+          const dt = Math.min((now - previous) / 1000, 0.032);
+          previous = now;
+          context.clearRect(0, 0, width, height);
+          let alive = false;
+          for (const particle of particles) {
+            if (particle.delay > 0) { particle.delay -= dt; alive = true; continue; }
+            particle.life += dt;
+            particle.vx += particle.wind * dt;
+            particle.vx *= Math.pow(particle.drag, dt * 60);
+            particle.vy += particle.gravity * dt;
+            particle.x += particle.vx * dt;
+            particle.y += particle.vy * dt;
+            particle.rotation += particle.spin * dt;
+            if (particle.life >= particle.maxLife || particle.y > height + 40) continue;
+            alive = true;
+            const fade = particle.life < 0.25 ? particle.life / 0.25 : Math.min(1, (particle.maxLife - particle.life) / 0.72);
+            context.save();
+            context.globalAlpha = Math.max(0, fade) * 0.92;
+            context.translate(particle.x, particle.y);
+            context.rotate(particle.rotation);
+            context.fillStyle = particle.color;
+            context.fillRect(-particle.width / 2, -particle.height / 2, particle.width, particle.height);
+            context.restore();
+          }
+          if (alive) particleFrame = requestAnimationFrame(frame);
+          else { context.clearRect(0, 0, width, height); }
+        }
+        particleFrame = requestAnimationFrame(frame);
+      }
+      function showRest() {
+        isRest = true;
+        stage.classList.add('is-rest');
+        modePill.textContent = '休息日';
+        modePill.classList.add('rest');
+        switchLink.textContent = '改为工作日';
+        progressValue.innerHTML = '0<small> / 3</small>';
+        focusText.textContent = '按自己的节奏来';
+      }
+      function showWork() {
+        isRest = false;
+        stage.classList.remove('is-rest');
+        modePill.textContent = '工作日';
+        modePill.classList.remove('rest');
+        switchLink.textContent = '改为休息日';
+        progressValue.innerHTML = '3<small> / 7</small>';
+        focusText.textContent = '现在完成一项';
+      }
+      function play() {
+        if (isRest) showWork();
+        if (reducedToggle.checked) {
+          showRest();
+          announce('今天不上班 · 已保存到本地');
+          return;
+        }
+        stage.classList.remove('is-burst');
+        void stage.offsetWidth;
+        stage.classList.add('is-burst');
+        showRest();
+        makeParticles();
+        window.setTimeout(() => announce('今天不上班'), 520);
+        setTimeout(() => stage.classList.remove('is-burst'), 1000);
+      }
+      playButton.addEventListener('click', play);
+      replayButton.addEventListener('click', () => {
+        if (!isRest) showRest();
+        if (reducedToggle.checked) return announce('减少动态效果已启用');
+        stage.classList.remove('is-burst');
+        void stage.offsetWidth;
+        stage.classList.add('is-burst');
+        makeParticles();
+        announce('礼花动效重播');
+        setTimeout(() => stage.classList.remove('is-burst'), 1000);
+      });
+      switchLink.addEventListener('click', () => {
+        if (isRest) { showWork(); announce('已切回工作日'); }
+        else play();
+      });
+      reducedToggle.addEventListener('change', () => {
+        if (reducedToggle.checked) sprinkles.replaceChildren();
+      });
+    })();
+  </script>
+</body>
+</html>

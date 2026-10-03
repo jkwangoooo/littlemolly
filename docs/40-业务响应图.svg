@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1040" viewBox="0 0 1440 1040" role="img" aria-labelledby="title desc">
+  <title id="title">幸福小Molly业务响应图</title>
+  <desc id="desc">从用户动作、本地写入、反馈事件与策略编排到界面响应的业务流程图。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#65726d"/></marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#c25555"/></marker>
+    <style>
+      text{font-family:"Microsoft YaHei","Noto Sans CJK SC",sans-serif;fill:#263b37}
+      .title{font-size:30px;font-weight:700}.subtitle{font-size:14px;fill:#667873}
+      .lane-title{font-size:15px;font-weight:700;letter-spacing:0}
+      .node-title{font-size:16px;font-weight:700}.node-copy{font-size:13px;fill:#53645f}
+      .small{font-size:12px;fill:#667873}.label{font-size:12px;font-weight:700}
+      .lane{fill:#f6f8f6;stroke:#e0e7e3;stroke-width:1}.node{stroke-width:1.5;rx:12}
+      .user{fill:#fff1df;stroke:#e2ad67}.write{fill:#e8f3eb;stroke:#8bad92}
+      .event{fill:#e7f0f4;stroke:#7aa2b1}.strategy{fill:#eef0fa;stroke:#929bc7}
+      .success{fill:#e8f3eb;stroke:#8bad92}.celebrate{fill:#fff0e8;stroke:#dc9474}
+      .error{fill:#fceaea;stroke:#cc7777}.muted{fill:#f1f3f2;stroke:#b9c3bf}
+      .line{fill:none;stroke:#65726d;stroke-width:2;marker-end:url(#arrow)}
+      .line-red{fill:none;stroke:#c25555;stroke-width:2;marker-end:url(#arrow-red)}
+      .dash{stroke-dasharray:7 6}
+    </style>
+  </defs>
+  <rect width="1440" height="1040" fill="#ffffff"/>
+  <text x="56" y="58" class="title">业务响应图</text>
+  <text x="56" y="86" class="subtitle">用户动作只产生业务事实；本地结果决定反馈，不由动画反向改变业务状态。</text>
+
+  <rect x="36" y="118" width="1368" height="180" rx="14" class="lane"/>
+  <rect x="36" y="314" width="1368" height="172" rx="14" class="lane"/>
+  <rect x="36" y="502" width="1368" height="204" rx="14" class="lane"/>
+  <rect x="36" y="722" width="1368" height="280" rx="14" class="lane"/>
+  <text x="58" y="148" class="lane-title">01 用户动作</text>
+  <text x="58" y="344" class="lane-title">02 业务与本地数据</text>
+  <text x="58" y="532" class="lane-title">03 反馈编排</text>
+  <text x="58" y="752" class="lane-title">04 用户可见响应</text>
+
+  <rect x="82" y="174" width="250" height="82" class="node user"/>
+  <text x="104" y="205" class="node-title">完成一项 / 修改计划</text>
+  <text x="104" y="230" class="node-copy">勾选、编辑、切换日期模式</text>
+  <rect x="422" y="174" width="250" height="82" class="node user"/>
+  <text x="444" y="205" class="node-title">其他业务动作</text>
+  <text x="444" y="230" class="node-copy">备份、账号、云端操作（后续扩展）</text>
+
+  <rect x="166" y="370" width="310" height="82" class="node write"/>
+  <text x="190" y="401" class="node-title">业务服务执行本地写入</text>
+  <text x="190" y="426" class="node-copy">IndexedDB 是唯一业务写入落点</text>
+  <polygon points="720,365 814,411 720,457 626,411" fill="#fff" stroke="#87948f" stroke-width="1.5"/>
+  <text x="687" y="407" class="node-title">写入结果</text>
+  <text x="688" y="428" class="small">成功 / 失败</text>
+
+  <path d="M332 215H375V370" class="line"/>
+  <path d="M547 256V323H476V370" class="line"/>
+  <path d="M476 411H620" class="line"/>
+  <text x="512" y="397" class="small">执行并等待</text>
+
+  <rect x="876" y="354" width="226" height="74" class="node success"/>
+  <text x="900" y="383" class="node-title">成功：发布领域事件</text>
+  <text x="900" y="406" class="node-copy">completion / day-mode-changed</text>
+  <rect x="1152" y="354" width="210" height="74" class="node error"/>
+  <text x="1176" y="383" class="node-title">失败：发布错误事件</text>
+  <text x="1176" y="406" class="node-copy">save-failed；不发布成功反馈</text>
+  <path d="M814 397H876" class="line"/>
+  <path d="M767 443V463H1152V428" class="line-red"/>
+  <text x="838" y="458" class="label" fill="#a74646">失败分支</text>
+
+  <rect x="112" y="560" width="230" height="94" class="node event"/>
+  <text x="136" y="591" class="node-title">FeedbackBus</text>
+  <text x="136" y="616" class="node-copy">actionId 去重、订阅分发</text>
+  <text x="136" y="638" class="small">不读写业务数据</text>
+  <rect x="454" y="560" width="278" height="94" class="node strategy"/>
+  <text x="478" y="591" class="node-title">FeedbackPolicy</text>
+  <text x="478" y="616" class="node-copy">优先级、日期过滤、互斥判断</text>
+  <text x="478" y="638" class="small">错误 critical · 庆祝 high · 普通 normal</text>
+  <rect x="846" y="560" width="244" height="94" class="node strategy"/>
+  <text x="870" y="591" class="node-title">FeedbackHost</text>
+  <text x="870" y="616" class="node-copy">统一管理表现状态与时序</text>
+  <text x="870" y="638" class="small">不承担数据保存或重试</text>
+  <path d="M1010 428V520H228V560" class="line"/>
+  <path d="M1256 428V520H228" class="line-red"/>
+  <path d="M342 607H454" class="line"/>
+  <path d="M732 607H846" class="line"/>
+
+  <rect x="82" y="788" width="252" height="92" class="node success"/>
+  <text x="106" y="819" class="node-title">普通完成</text>
+  <text x="106" y="844" class="node-copy">短暂文案 + aria-live</text>
+  <text x="106" y="864" class="small">约 2.1 秒后清除</text>
+  <rect x="382" y="788" width="252" height="92" class="node celebrate"/>
+  <text x="406" y="819" class="node-title">工作日 → 休息日</text>
+  <text x="406" y="844" class="node-copy">礼花 + 庆祝文案</text>
+  <text x="406" y="864" class="small">宠物回应；用户可跳过</text>
+  <rect x="682" y="788" width="252" height="92" class="node error"/>
+  <text x="706" y="819" class="node-title">保存失败</text>
+  <text x="706" y="844" class="node-copy">错误播报 + 既有错误栏</text>
+  <text x="706" y="864" class="small">重试仍由业务页操作</text>
+  <rect x="982" y="788" width="300" height="92" class="node muted"/>
+  <text x="1006" y="819" class="node-title">丢弃 / 不打断</text>
+  <text x="1006" y="844" class="node-copy">日期不匹配、选项面板打开</text>
+  <text x="1006" y="864" class="small">庆祝期间忽略普通完成提示</text>
+  <path d="M930 654V750H208V788" class="line"/>
+  <path d="M964 654V788" class="line"/>
+  <path d="M1000 654V748H808V788" class="line-red"/>
+  <path d="M1040 654V738H1132V788" class="line dash"/>
+
+  <rect x="82" y="910" width="1260" height="58" rx="10" fill="#f8f8f2" stroke="#d9ded7"/>
+  <text x="106" y="935" class="label">全局约束</text>
+  <text x="194" y="935" class="node-copy">本地保存成功不代表云端同步成功</text>
+  <text x="490" y="935" class="node-copy">动画永远不改变业务数据</text>
+  <text x="744" y="935" class="node-copy">减少动态效果偏好由庆祝组件尊重</text>
+  <text x="1092" y="935" class="node-copy">失败绝不伪装成功</text>
+  <text x="56" y="1018" class="small">幸福小Molly · 反馈编排业务视图 · 2026-10-03</text>
+</svg>

@@ -570,3 +570,58 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .page.options-page { padding-bottom: env(safe-area-inset-bottom, 0px); }
 .bubble-shell-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}.bubble-shell-topbar h1{margin:0;font-size:20px}.bubble-options-button{min-height:34px;padding:6px 10px;border-radius:999px;font-size:11px}.page-content{gap:8px}.page-content>.save-status,.page-content>.status{min-height:18px;font-size:11px}
 @media(max-width:480px){.page{width:min(100% - 20px,620px);padding-top:calc(14px + env(safe-area-inset-top,0px))}.bubble-shell-topbar{margin-bottom:2px}.bubble-shell-topbar h1{font-size:18px}.bubble-options-button{min-height:30px;padding:4px 9px}.page-content{gap:6px}}
+
+/* ---------- 10 悬浮小火球 ---------- */
+.floating-pet-layer { position: fixed; inset: 0; z-index: 35; pointer-events: none; }
+.floating-pet { position: fixed; left: var(--pet-x); top: var(--pet-y); width: 88px; height: 88px; min-height: 88px; padding: 0; border: 0; border-radius: 50%; background: transparent !important; box-shadow: none; pointer-events: auto; touch-action: none; cursor: grab; filter: drop-shadow(0 8px 10px rgb(92 47 28 / 18%)); }
+.floating-pet:active { cursor: grabbing; background: transparent; }
+.floating-pet:hover, .floating-pet:active, .floating-pet:focus, .floating-pet:focus-visible { background: transparent !important; box-shadow: none; }
+.floating-pet-sprite { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none; }
+.floating-pet-sprite-right { transform: scaleX(-1); }
+.floating-pet:focus-visible { outline: 2px solid #b93762; outline-offset: 4px; }
+.floating-pet-flame { position: absolute; inset: 7px 9px 6px; display: block; border: 2px solid #9f473b; border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%; background: #eb6b43; transform: rotate(-5deg); }
+.floating-pet-flame::before { position: absolute; right: 9px; bottom: 7px; left: 8px; height: 42px; border-radius: 50% 50% 42% 42%; background: #f5a33e; content: ''; }
+.floating-pet-flame::after { position: absolute; top: -12px; left: 27px; width: 21px; height: 30px; border: 2px solid #9f473b; border-radius: 62% 38% 60% 40%; background: #f07b3f; content: ''; transform: rotate(18deg); }
+.floating-pet-face { position: absolute; right: 17px; bottom: 21px; left: 17px; z-index: 1; display: flex; justify-content: space-between; align-items: center; }
+.floating-pet-face i { width: 7px; height: 9px; border-radius: 50%; background: #3f2c2b; }
+.floating-pet-face b { position: absolute; right: 21px; bottom: -12px; width: 21px; height: 9px; border-bottom: 2px solid #3f2c2b; border-radius: 50%; transform: rotate(4deg); }
+.floating-pet-highlight { position: absolute; top: 18px; left: 18px; z-index: 1; width: 13px; height: 8px; border-radius: 50%; background: #fff4cc; transform: rotate(-28deg); }
+.floating-pet-bubble { position: fixed; z-index: 1; display: grid; gap: 5px; width: min(236px, calc(100vw - 32px)); border: 1px solid #e4b9a8; border-radius: 12px; padding: 12px 38px 12px 14px; color: #4a302b; background: #fffaf3; box-shadow: 0 8px 22px rgb(76 49 43 / 15%); pointer-events: auto; font-size: 13px; line-height: 1.35; }
+.floating-pet-bubble strong { font-size: 14px; }
+.floating-pet-bubble span { color: #7a6258; }
+.floating-pet-bubble-top { left: var(--bubble-x); top: var(--bubble-y); }
+.floating-pet-bubble-bottom { left: var(--bubble-x); top: var(--bubble-y); }
+.floating-pet-bubble-left { left: var(--bubble-x); top: var(--bubble-y); }
+.floating-pet-bubble-right { left: var(--bubble-x); top: var(--bubble-y); }
+.floating-pet-bubble-close { position: absolute; top: 5px; right: 5px; width: 28px; min-width: 28px; min-height: 28px; border: 0; padding: 0; color: #7a6258; background: transparent; font-size: 22px; line-height: 1; }
+.floating-pet-hide { min-height: 30px; margin-top: 3px; border-color: #d49b83; padding: 5px 8px; color: #7c3f35; background: #fff1e7; font-size: 12px; }
+.floating-pet-restore { position: fixed; right: 16px; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); z-index: 35; width: 36px; min-width: 36px; height: 36px; min-height: 36px; border: 1px solid #dc9c7f; border-radius: 50%; padding: 0; color: #9f473b; background: #fffaf3; box-shadow: 0 4px 12px rgb(76 49 43 / 14%); font-size: 18px; }
+@keyframes floating-pet-bounce { 0%, 100% { transform: translateY(0) rotate(-5deg); } 45% { transform: translateY(-8px) rotate(-7deg) scale(1.04); } }
+@keyframes floating-pet-flicker { from { transform: rotate(18deg) scale(.94); } to { transform: rotate(24deg) scale(1.05); } }
+@keyframes floating-pet-idle { 0%, 100% { transform: rotate(-5deg) translateY(0); } 50% { transform: rotate(-3deg) translateY(-4px); } }
+@media (max-width: 480px) { .floating-pet-sprite { transform: scale(.9); } .floating-pet-sprite-right { transform: scaleX(-1) scale(.9); } }
+@media (prefers-reduced-motion: reduce) { .floating-pet-sprite { animation: none !important; } .floating-pet { transition: none; } }
+/* 临时鼓励消息：与宠物本体状态解耦，事件消息互相替换。 */
+.pet-message-bubble { position: fixed; z-index: 36; display: grid; gap: 4px; width: min(244px, calc(100vw - 40px)); border: 1px solid #e4b9a8; border-radius: 12px; padding: 12px 38px 12px 14px; color: #4a302b; background: #fffaf3; box-shadow: 0 7px 20px rgb(76 49 43 / 14%); font-size: 13px; line-height: 1.4; animation: pet-message-in 180ms ease-out both; }
+.pet-message-bubble strong { font-size: 14px; }
+.pet-message-bubble span { color: #725b52; }
+.pet-message-bubble-close { position: absolute; top: 4px; right: 4px; width: 30px; min-width: 30px; min-height: 30px; border: 0; padding: 0; color: #7a6258; background: transparent; font-size: 22px; line-height: 1; }
+@keyframes pet-message-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 480px) { .pet-message-bubble { width: min(228px, calc(100vw - 32px)); } }
+@media (prefers-reduced-motion: reduce) { .pet-message-bubble { animation: none; } }
+.feedback-error {
+  position: fixed;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 80;
+  max-width: min(560px, calc(100vw - 32px));
+  margin: 0;
+  border: 1px solid rgb(160 64 64 / 28%);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #7b3030;
+  background: rgb(255 244 240 / 94%);
+  box-shadow: 0 10px 26px rgb(63 44 43 / 14%);
+  font-size: 13px;
+  transform: translateX(-50%);
+}

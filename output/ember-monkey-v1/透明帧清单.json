@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "source": "原图切帧/原始精灵图.png",
+  "sourceSize": {
+    "width": 2048,
+    "height": 2048
+  },
+  "grid": {
+    "columns": 4,
+    "rows": 4,
+    "cell": 512
+  },
+  "runtimeFrameSize": {
+    "width": 256,
+    "height": 256
+  },
+  "frames": [
+    {
+      "index": 1,
+      "name": "待机睁眼-01",
+      "sourceCell": {
+        "row": 1,
+        "column": 1
+      },
+      "file": "透明帧/01-待机睁眼-01.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 74,
+        "y": 19,
+        "width": 379,
+        "height": 493
+      },
+      "visiblePixels": 102682,
+      "partialAlphaPixels": 100564
+    },
+    {
+      "index": 2,
+      "name": "待机火焰-02",
+      "sourceCell": {
+        "row": 1,
+        "column": 2
+      },
+      "file": "透明帧/02-待机火焰-02.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 0,
+        "y": 36,
+        "width": 451,
+        "height": 476
+      },
+      "visiblePixels": 109267,
+      "partialAlphaPixels": 107222
+    },
+    {
+      "index": 3,
+      "name": "待机火焰-03",
+      "sourceCell": {
+        "row": 1,
+        "column": 3
+      },
+      "file": "透明帧/03-待机火焰-03.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 62,
+        "y": 20,
+        "width": 450,
+        "height": 492
+      },
+      "visiblePixels": 104689,
+      "partialAlphaPixels": 102983
+    },
+    {
+      "index": 4,
+      "name": "眨眼半闭",
+      "sourceCell": {
+        "row": 1,
+        "column": 4
+      },
+      "file": "透明帧/04-眨眼半闭.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 65,
+        "y": 18,
+        "width": 377,
+        "height": 494
+      },
+      "visiblePixels": 103343,
+      "partialAlphaPixels": 101136
+    },
+    {
+      "index": 5,
+      "name": "眨眼闭眼",
+      "sourceCell": {
+        "row": 2,
+        "column": 1
+      },
+      "file": "透明帧/05-眨眼闭眼.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 70,
+        "y": 18,
+        "width": 379,
+        "height": 494
+      },
+      "visiblePixels": 106084,
+      "partialAlphaPixels": 104668
+    },
+    {
+      "index": 6,
+      "name": "左走-01",
+      "sourceCell": {
+        "row": 2,
+        "column": 2
+      },
+      "file": "透明帧/06-左走-01.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 0,
+        "y": 11,
+        "width": 512,
+        "height": 501
+      },
+      "visiblePixels": 115200,
+      "partialAlphaPixels": 114229
+    },
+    {
+      "index": 7,
+      "name": "左走-02",
+      "sourceCell": {
+        "row": 2,
+        "column": 3
+      },
+      "file": "透明帧/07-左走-02.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 62,
+        "y": 0,
+        "width": 450,
+        "height": 512
+      },
+      "visiblePixels": 104539,
+      "partialAlphaPixels": 103323
+    },
+    {
+      "index": 8,
+      "name": "左走-03",
+      "sourceCell": {
+        "row": 2,
+        "column": 4
+      },
+      "file": "透明帧/08-左走-03.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 0,
+        "y": 23,
+        "width": 425,
+        "height": 489
+      },
+      "visiblePixels": 100152,
+      "partialAlphaPixels": 99419
+    },
+    {
+      "index": 9,
+      "name": "左走-04",
+      "sourceCell": {
+        "row": 3,
+        "column": 1
+      },
+      "file": "透明帧/09-左走-04.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 68,
+        "y": 19,
+        "width": 387,
+        "height": 493
+      },
+      "visiblePixels": 105947,
+      "partialAlphaPixels": 104968
+    },
+    {
+      "index": 10,
+      "name": "左走-05",
+      "sourceCell": {
+        "row": 3,
+        "column": 2
+      },
+      "file": "透明帧/10-左走-05.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 0,
+        "y": 26,
+        "width": 451,
+        "height": 486
+      },
+      "visiblePixels": 105419,
+      "partialAlphaPixels": 104517
+    },
+    {
+      "index": 11,
+      "name": "左走-06",
+      "sourceCell": {
+        "row": 3,
+        "column": 3
+      },
+      "file": "透明帧/11-左走-06.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 62,
+        "y": 27,
+        "width": 450,
+        "height": 485
+      },
+      "visiblePixels": 102782,
+      "partialAlphaPixels": 101813
+    },
+    {
+      "index": 12,
+      "name": "释放缓冲-01",
+      "sourceCell": {
+        "row": 3,
+        "column": 4
+      },
+      "file": "透明帧/12-释放缓冲-01.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 65,
+        "y": 39,
+        "width": 361,
+        "height": 473
+      },
+      "visiblePixels": 97434,
+      "partialAlphaPixels": 96876
+    },
+    {
+      "index": 13,
+      "name": "释放恢复-02",
+      "sourceCell": {
+        "row": 4,
+        "column": 1
+      },
+      "file": "透明帧/13-释放恢复-02.png",
+      "canvas": {
+        "width": 256,
+        "height": 256
+      },
+      "sourceBounds": {
+        "x": 70,
+        "y": 13,
+        "width": 383,
+        "height": 499
+      },
+      "visiblePixels": 103828,
+      "partialAlphaPixels": 101971
+    }
+  ],
+  "preview": "预览/统一尺寸帧预览-明暗背景.png",
+  "note": "来自用户精灵图的 RGBA 网格切片；按透明外接框等比居中缩放，未做模型重绘或污边修复；第 16 格为空白。 APNG 为节奏原型，未验证角色锚点和应用拖拽效果。",
+  "animationPreview": "预览/小猴动作预览-原型.apng",
+  "animationOrder": [
+    "待机睁眼-01",
+    "待机火焰-02",
+    "待机火焰-03",
+    "待机火焰-02",
+    "眨眼半闭",
+    "眨眼闭眼",
+    "眨眼半闭",
+    "待机睁眼-01",
+    "左走-01",
+    "左走-02",
+    "左走-03",
+    "左走-04",
+    "左走-05",
+    "左走-06",
+    "左走-05",
+    "左走-04",
+    "左走-03",
+    "左走-02",
+    "左走-01",
+    "释放缓冲-01",
+    "释放恢复-02",
+    "待机睁眼-01"
+  ],
+  "alphaChecks": [
+    {
+      "name": "待机睁眼-01",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 38182,
+      "opaquePixels": 575
+    },
+    {
+      "name": "待机火焰-02",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 34634,
+      "opaquePixels": 563
+    },
+    {
+      "name": "待机火焰-03",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 37878,
+      "opaquePixels": 472
+    },
+    {
+      "name": "眨眼半闭",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 38487,
+      "opaquePixels": 619
+    },
+    {
+      "name": "眨眼闭眼",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 38521,
+      "opaquePixels": 380
+    },
+    {
+      "name": "左走-01",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 37550,
+      "opaquePixels": 256
+    },
+    {
+      "name": "左走-02",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 39870,
+      "opaquePixels": 310
+    },
+    {
+      "name": "左走-03",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 39346,
+      "opaquePixels": 204
+    },
+    {
+      "name": "左走-04",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 37651,
+      "opaquePixels": 281
+    },
+    {
+      "name": "左走-05",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 37078,
+      "opaquePixels": 247
+    },
+    {
+      "name": "左走-06",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 37586,
+      "opaquePixels": 271
+    },
+    {
+      "name": "释放缓冲-01",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 38108,
+      "opaquePixels": 154
+    },
+    {
+      "name": "释放恢复-02",
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 38960,
+      "opaquePixels": 497
+    }
+  ]
+}
