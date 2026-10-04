@@ -153,19 +153,9 @@ export function HolidayCelebration({
       </div>
 
       <div className="holiday-celebration-stage">
-        <div className="holiday-visual-stack" aria-hidden="true">
-          <div className="holiday-visual-card holiday-visual-card-back" />
-          <div className="holiday-visual-card holiday-visual-card-middle" />
-          <div className="holiday-visual-card holiday-visual-card-old">
-            <span>今天的模式</span>
-            <strong>{fromLabel}</strong>
-            <small>安排先放在这里</small>
-          </div>
-          <div className="holiday-visual-card holiday-visual-card-new">
-            <span>今天的模式</span>
-            <strong>{toLabel}</strong>
-            <small>留一点时间给自己</small>
-          </div>
+        <div className="holiday-mode-badge" aria-hidden="true">
+          <span>模式已切入</span>
+          <strong>{toLabel}</strong>
         </div>
 
         <div className="holiday-celebration-copy">

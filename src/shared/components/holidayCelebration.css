@@ -47,120 +47,47 @@
   text-align: center;
 }
 
-.holiday-visual-stack {
+.holiday-mode-badge {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(320px, 70vw);
-  height: 210px;
-  transform: translate(-50%, -50%);
-}
-
-.holiday-visual-card {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+  z-index: 4;
   display: grid;
-  width: 100%;
-  height: 100%;
-  align-content: center;
-  justify-items: start;
-  border: 1px solid rgb(255 255 255 / 68%);
-  border-radius: 22px;
-  padding: 28px;
-  color: #493334;
-  background: #f3d8d0;
-  box-shadow: 0 24px 50px rgb(25 15 19 / 22%);
-  text-align: left;
-  transform: translate(-50%, -50%);
-  transition: transform 1100ms cubic-bezier(.22, .8, .2, 1);
+  gap: 10px;
+  justify-items: center;
+  min-width: min(300px, 76vw);
+  padding: 24px 30px 26px;
+  border: 1px solid rgb(255 250 243 / 48%);
+  border-radius: 999px;
+  color: #fffaf3;
+  background: rgb(255 250 243 / 10%);
+  box-shadow: 0 18px 54px rgb(20 14 16 / 24%), inset 0 1px 0 rgb(255 255 255 / 24%);
+  backdrop-filter: blur(14px) saturate(120%);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.86);
+  transition: opacity 700ms cubic-bezier(.2,.75,.25,1), transform 1000ms cubic-bezier(.2,.75,.25,1);
 }
 
-.holiday-visual-card::after {
-  position: absolute;
-  right: 24px;
-  bottom: 22px;
-  width: 42px;
-  height: 42px;
-  border: 1px solid rgb(63 44 43 / 18%);
-  border-radius: 14px;
-  content: '○';
-  color: rgb(63 44 43 / 48%);
-  font-size: 25px;
-  line-height: 38px;
-  text-align: center;
+.holiday-mode-badge span {
+  color: rgb(255 250 243 / 74%);
+  font-size: 12px;
+  letter-spacing: .18em;
 }
 
-.holiday-visual-card span,
-.holiday-visual-card small {
-  color: rgb(73 51 52 / 64%);
-  font-size: 11px;
-}
-
-.holiday-visual-card strong {
-  margin: 6px 0;
-  font-family: inherit;
-  font-size: 36px;
-  font-weight: 400;
+.holiday-mode-badge strong {
+  color: #fffaf3;
+  font-size: clamp(32px, 7vw, 58px);
+  font-weight: 500;
   line-height: 1;
 }
 
-.holiday-visual-card-back {
-  background: #d3e3d7;
-  transform: translate(-50%, -50%) translate(-15px, 14px) rotate(-5deg) scale(.94);
-}
-
-.holiday-visual-card-middle {
-  background: #f0c68e;
-  transform: translate(-50%, -50%) translate(13px, 9px) rotate(4deg) scale(.97);
-}
-
-.holiday-visual-card-old {
-  z-index: 3;
-  transform: translate(-50%, -50%);
-  transition:
-    opacity 840ms cubic-bezier(.22, .8, .2, 1),
-    transform 1080ms cubic-bezier(.22, .8, .2, 1);
-}
-
-.holiday-visual-card-new {
-  z-index: 4;
-  background: #d5e5d9;
-  opacity: 0;
-  transform: translate(-50%, calc(-50% + 46px)) rotate(3deg) scale(.86);
-  transition:
-    opacity 1040ms cubic-bezier(.22, .8, .2, 1),
-    transform 1400ms cubic-bezier(.22, .8, .2, 1);
-}
-
-.holiday-celebration-release .holiday-visual-card-old,
-.holiday-celebration-burst .holiday-visual-card-old {
-  opacity: .68;
-  transform: translate(-50%, calc(-50% - 30px)) rotate(-7deg) scale(.9);
-}
-
-.holiday-celebration-release .holiday-visual-card-back,
-.holiday-celebration-burst .holiday-visual-card-back {
-  transform: translate(-50%, -50%) translate(-38px, 26px) rotate(-11deg) scale(.9);
-}
-
-.holiday-celebration-release .holiday-visual-card-middle,
-.holiday-celebration-burst .holiday-visual-card-middle {
-  transform: translate(-50%, -50%) translate(35px, 22px) rotate(10deg) scale(.93);
-}
-
-.holiday-celebration-settle .holiday-visual-card-new,
-.holiday-celebration-outro .holiday-visual-card-new {
+.holiday-celebration-burst .holiday-mode-badge,
+.holiday-celebration-settle .holiday-mode-badge,
+.holiday-celebration-outro .holiday-mode-badge,
+.holiday-celebration-reduced .holiday-mode-badge {
   opacity: 1;
-  transform: translate(-50%, -50%) rotate(0deg) scale(1);
+  transform: translate(-50%, -50%) scale(1);
 }
-
-.holiday-celebration-settle .holiday-visual-card-old,
-.holiday-celebration-outro .holiday-visual-card-old {
-  opacity: 0;
-  transform: translate(-50%, calc(-50% - 56px)) rotate(-10deg) scale(.82);
-}
-
 .holiday-celebration-copy {
   position: absolute;
   top: calc(50% + 132px);
@@ -178,6 +105,7 @@
     transform 1240ms cubic-bezier(.32, .72, 0, 1);
 }
 
+.holiday-celebration-release .holiday-celebration-copy,
 .holiday-celebration-burst .holiday-celebration-copy,
 .holiday-celebration-settle .holiday-celebration-copy,
 .holiday-celebration-outro .holiday-celebration-copy,
@@ -256,19 +184,6 @@
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.holiday-celebration-reduced .holiday-visual-card-old {
-  opacity: 0;
-}
-
-.holiday-celebration-reduced .holiday-visual-card-new {
-  opacity: 1;
-  transform: translate(-50%, -50%) rotate(0deg) scale(1);
-}
-
-.holiday-celebration-reduced .holiday-celebration-copy {
-  top: calc(50% + 132px);
 }
 
 @media (max-width: 620px) {
