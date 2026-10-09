@@ -15,6 +15,9 @@
 * { box-sizing: border-box; }
 
 html, body { height: 100%; overscroll-behavior: none; }
+html, body, #root { width: 100%; max-width: 100%; min-width: 0; overflow-x: hidden; }
+.scroll-region, .page-scroll, .editor-body, .today-stack.is-expanded, .motion-lab { min-width: 0; max-width: 100%; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.scroll-region::-webkit-scrollbar, .page-scroll::-webkit-scrollbar, .editor-body::-webkit-scrollbar, .today-stack.is-expanded::-webkit-scrollbar, .motion-lab::-webkit-scrollbar { display: none; }
 
 /* overflow: hidden 是「固定外壳」的前提：页面本身不再滚动，也不再有橡皮筋。
    内容交给 .page-scroll 自己滚（见布局段）。 */
@@ -70,7 +73,7 @@ select { width: 100%; border: 1px solid #cfc3bd; border-radius: 8px; padding: 10
 }
 
 /* 唯一可滚动的区域。min-height: 0 不可省：flex 子项默认不肯收缩到内容高度以下。 */
-.page-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.page-scroll { flex: 1; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 
 .panel {
   background: #fffdfb;
@@ -153,31 +156,35 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .bottom-nav {
   position: fixed;
   left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   z-index: 30;
   display: flex;
-  width: min(100%, 760px);
-  border-top: 1px solid #eadfdc;
-  background: #fffdfb;
-  box-shadow: 0 -2px 12px rgb(76 49 43 / 6%);
-  /* Home 指示条那一块留在导航自身的背景里，按钮不会被它盖住。 */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  width: min(calc(100% - 32px), 280px);
+  padding: 4px;
+  transform: translateX(-50%);
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 18px;
+  background: rgb(255 252 250 / 68%);
+  box-shadow: 0 10px 28px rgb(76 49 43 / 14%), inset 0 1px 0 rgb(255 255 255 / 82%);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  isolation: isolate;
 }
 .bottom-nav button {
   position: relative;
   flex: 1;
-  min-height: 52px;
+  min-height: 40px;
   border: 0;
-  border-radius: 0;
+  border-radius: 14px;
   color: #746963;
   background: transparent;
+  font-size: 14px;
+  transition: color 180ms ease, background 180ms ease, transform 180ms ease;
 }
-.bottom-nav button.active { color: #a6405e; font-weight: 700; background: #fff7f8; }
-.bottom-nav button.active::after { content: ''; position: absolute; right: 24%; bottom: 0; left: 24%; height: 3px; border-radius: 3px 3px 0 0; background: #a6405e; }
-.bottom-nav button:active { transform: scale(.97); background: #f8eaed; }
-.bottom-nav button:not(:last-child) { border-right: 1px solid #f0ece9; }
-
+.bottom-nav button.active { color: #a6405e; font-weight: 700; background: rgb(255 247 248 / 88%); box-shadow: 0 2px 8px rgb(166 64 94 / 10%), inset 0 1px 0 rgb(255 255 255 / 82%); }
+.bottom-nav button.active::after { content: ''; position: absolute; right: 35%; bottom: 3px; left: 35%; height: 2px; border-radius: 2px; background: #a6405e; }
+.bottom-nav button:active { transform: scale(.96); background: rgb(248 234 237 / 76%); }
+.bottom-nav button:not(:last-child) { border-right: 0; }
 .date-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .date-heading h2 { margin-bottom: 4px; }
 .date-kicker { margin-bottom: 4px; color: #a6405e; font-size: 13px; font-weight: 700; }
@@ -522,7 +529,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 @media (max-width: 480px) {
   /* 固定外壳在窄屏上把「省下来的高度」全部让给内容：内边距与卡片间距一起收紧，
      目的是让「执行今天」这一屏不必滚动就能看完（见 verify:pwa 的断言）。 */
-  .page { width: min(100% - 24px, 620px); padding: calc(16px + env(safe-area-inset-top, 0px)) 0 calc(60px + env(safe-area-inset-bottom, 0px)); }
+  .page { width: min(100% - 24px, 620px); padding: calc(16px + env(safe-area-inset-top, 0px)) 0 calc(84px + env(safe-area-inset-bottom, 0px)); }
   .panel { padding: 16px; }
   .stack { gap: 10px; }
   .topbar { margin-bottom: 12px; }
@@ -538,7 +545,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
      上面 `.bottom-sheet` 的 `env(safe-area-inset-bottom)` 一起覆盖掉，
      装上主屏幕后「保存 / 取消」就压在 Home 指示条上。 */
   .bottom-sheet { padding: 16px 18px calc(24px + env(safe-area-inset-bottom, 0px)); }
-  .bottom-nav { width: 100%; }
+  .bottom-nav { width: min(calc(100% - 24px), 280px); }
   .progress-head { display: grid; gap: 4px; }
   .next-action-body { align-items: stretch; flex-direction: column; gap: 10px; }
   .next-action-button { align-self: flex-start; }
@@ -595,7 +602,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .floating-pet-bubble-right { left: var(--bubble-x); top: var(--bubble-y); }
 .floating-pet-bubble-close { position: absolute; top: 5px; right: 5px; width: 28px; min-width: 28px; min-height: 28px; border: 0; padding: 0; color: #7a6258; background: transparent; font-size: 22px; line-height: 1; }
 .floating-pet-hide { min-height: 30px; margin-top: 3px; border-color: #d49b83; padding: 5px 8px; color: #7c3f35; background: #fff1e7; font-size: 12px; }
-.floating-pet-restore { position: fixed; right: 16px; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); z-index: 35; width: 36px; min-width: 36px; height: 36px; min-height: 36px; border: 1px solid #dc9c7f; border-radius: 50%; padding: 0; color: #9f473b; background: #fffaf3; box-shadow: 0 4px 12px rgb(76 49 43 / 14%); font-size: 18px; }
+.floating-pet-restore { position: fixed; right: 16px; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); z-index: 35; width: 36px; min-width: 36px; height: 36px; min-height: 36px; border: 1px solid #dc9c7f; border-radius: 50%; padding: 0; color: #9f473b; background: #fffaf3; box-shadow: 0 4px 12px rgb(76 49 43 / 14%); font-size: 18px; }
 @keyframes floating-pet-bounce { 0%, 100% { transform: translateY(0) rotate(-5deg); } 45% { transform: translateY(-8px) rotate(-7deg) scale(1.04); } }
 @keyframes floating-pet-flicker { from { transform: rotate(18deg) scale(.94); } to { transform: rotate(24deg) scale(1.05); } }
 @keyframes floating-pet-idle { 0%, 100% { transform: rotate(-5deg) translateY(0); } 50% { transform: rotate(-3deg) translateY(-4px); } }

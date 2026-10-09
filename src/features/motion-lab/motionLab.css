@@ -1,3 +1,5 @@
+@import '../responsive-lab-layout.css';
+
 .motion-lab {
   --motion-ink: #f5eee8;
   --motion-muted: #a89c96;
@@ -943,7 +945,7 @@
   }
 
   .motion-stage {
-    min-height: 840px;
+    min-height: clamp(300px, calc(100dvh - 180px), 620px);
     border-radius: 20px;
   }
 
@@ -1114,8 +1116,8 @@
 .motion-lab.is-expanded-mode .motion-card-field {
   position: relative;
   inset: auto;
-  height: 820px;
-  min-height: 820px;
+  height: max(calc(100dvh - 72px), calc(150px * var(--motion-card-count, 5) + 56px));
+  min-height: 0;
   padding-bottom: 24px;
 }
 
@@ -1222,8 +1224,8 @@
   .motion-lab.is-expanded-mode .motion-card-field {
     position: relative;
     inset: auto;
-    height: 940px;
-    min-height: 940px;
+    height: max(calc(100dvh - 66px), calc(172px * var(--motion-card-count, 5) + 48px));
+    min-height: 0;
     padding-bottom: 24px;
   }
 

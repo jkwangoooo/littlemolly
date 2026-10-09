@@ -36,6 +36,7 @@ import { useDayPlanData } from './useDayPlanData'
 import { BottomNav } from '../../shared/components/BottomNav'
 import { buildTodayRoute, type TodayRouteNode } from './components/todayRouteModel'
 import { TodayBubbleStage } from './components/TodayBubbleStage'
+import { DayPlanAside } from './components/DayPlanAside'
 import { FloatingPet } from '../../shared/components/FloatingPet'
 import type { PetPosition } from '../../shared/components/PetMessageBubble'
 import { publishFeedback } from '../../shared/feedback/feedbackBus'
@@ -416,7 +417,9 @@ export function DayPlanScreen({
       ) : null}
 
       {/* page-scroll：固定外壳里唯一可滚动的区域（页面本身不滚动，见 styles.css 布局段）。 */}
-      <section className="stack page-scroll page-content">
+      <section className="page-scroll page-content">
+        <div className="day-plan-layout">
+          <div className="stack day-plan-main">
         <BubbleHeader
           relation={relation}
           selectedDate={selectedDate}
@@ -476,6 +479,9 @@ export function DayPlanScreen({
             ) : null}
           </>
         )}
+          </div>
+          <DayPlanAside route={route} prepare={isPrepare && mode === 'work'} progress={progress} saving={status === 'saving'} relation={relation} />
+        </div>
       </section>
 
 

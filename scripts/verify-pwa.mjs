@@ -340,7 +340,7 @@ const PAGE_HELPERS = `
 window.__p = {
   byText: (text) => [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === text),
   clickText: (text) => { const el = window.__p.byText(text); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
-  clickContains: (text) => { const el = [...document.querySelectorAll('button')].find((node) => node.textContent.includes(text)); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
+  clickContains: (text) => { const el = [...document.querySelectorAll('button, [role=button], .row-main')].find((node) => node.textContent.includes(text)); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
   // 选项页现在是「概览 + 子屏」：存储状态卡片在「存储与安装」子屏里，先进入再读。
   openStorageScreen: async () => {
     const back = document.querySelector('.topbar-back button');
@@ -1094,7 +1094,7 @@ async function main() {
         JSON.stringify({
           viewport: (document.querySelector('meta[name=viewport]') || {}).content || '',
           bodyTouchAction: getComputedStyle(document.body).touchAction,
-          buttonTouchAction: getComputedStyle(document.querySelector('button')).touchAction,
+          buttonTouchAction: getComputedStyle(document.querySelector('button:not(.floating-pet)')).touchAction,
         })
       `),
     )
@@ -1166,9 +1166,16 @@ async function main() {
       prepWorkday,
     )
 
-    const mealsOpened = await evaluate(`window.__p.clickContains('三餐已安排')`)
+    await evaluate(`(() => { const toggle = document.querySelector('[data-section-toggle=prepare]'); if (toggle && toggle.getAttribute('aria-expanded') === 'false') toggle.click(); return 'expanded'; })()`)
+    await sleep(500)
+    await until(`document.querySelector('[aria-label=准备明天]') !== null`, 5000)
+    const mealsOpened = await evaluate(`(() => { const node = document.querySelector('[data-node-id=meal-breakfast]'); if (!node) return 'NOT_FOUND:meal-breakfast'; for (const type of ['pointerdown', 'pointerup']) node.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, isPrimary: true, button: 0, clientX: 10, clientY: 10 })); return 'OK'; })()`)
+    await sleep(500)
+    await evaluate(`(() => { const button = document.querySelector('[data-editor-open=meals]'); if (!button) return 'NOT_FOUND:meals-editor'; button.click(); return 'OK'; })()`)
     await sleep(1500)
-    const sheetKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('.bottom-sheet[data-editor-card]')))
+    await sleep(1200)
+    await until(`Boolean(document.querySelector('[data-editor-backdrop=bottom] .bottom-sheet'))`, 5000)
+    const sheetKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('[data-editor-backdrop=bottom] .bottom-sheet')))
     record(
       '软键盘弹出（可视视口缩到 508）时底部抽屉整体让开键盘',
       sheetKeyboard.found && sheetKeyboard.insetVar === '336px' && sheetKeyboard.bottom !== null && sheetKeyboard.bottom <= 508,
@@ -1186,9 +1193,13 @@ async function main() {
     // ② 居中卡片：自定义事项改用的形态，同样要躲开键盘（否则卡片下半截被键盘盖住）。
     await evaluate(`window.__p.clickText('执行今天')`)
     await sleep(1400)
-    await evaluate(`window.__p.clickContains('添加事项')`)
+    const taskEditorOpened = await evaluate(`(() => { const button = document.querySelector('[data-editor-open=task]'); if (!button) return 'NOT_FOUND:task-editor'; button.click(); return 'OK'; })()`)
+    if (taskEditorOpened !== 'OK') throw new Error(taskEditorOpened)
     await sleep(1400)
-    const cardKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('.center-card[data-editor-card]')))
+    await sleep(1200)
+    await until(`document.querySelector('[aria-label=执行今天]') !== null`, 5000)
+    await until(`Boolean(document.querySelector('[data-editor-backdrop=center] .center-card'))`, 5000)
+    const cardKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('[data-editor-backdrop=center] .center-card')))
     record(
       '软键盘弹出时居中卡片整体让开键盘（没有被顶到键盘下面）',
       cardKeyboard.found && cardKeyboard.insetVar === '336px' && cardKeyboard.top >= 0 && cardKeyboard.bottom <= 508,

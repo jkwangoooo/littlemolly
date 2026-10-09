@@ -11,6 +11,9 @@ import { registerAppServiceWorker } from './shared/pwa/serviceWorker'
 import { initInstallPrompt } from './shared/storage/installPrompt'
 import { requestStoragePersistence } from './shared/storage/storageStatus'
 import './app/styles.css'
+import './app/responsive-layout.css'
+import './app/viewport-layout-fixes.css'
+import './app/density-tuning.css'
 
 const isMotionLab =
   window.location.pathname === '/motion-lab' ||

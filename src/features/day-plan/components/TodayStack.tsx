@@ -492,7 +492,7 @@ export function TodayStack({
 
       {writable ? (
         <button
-          className="task-add-button today-stack-compat-add"
+          className="task-add-button today-stack-compat-add" data-editor-open="task"
           type="button"
           aria-hidden="true"
           tabIndex={-1}

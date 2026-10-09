@@ -1,0 +1,503 @@
+.holiday-lab {
+  min-height: 100%;
+  overflow-y: auto;
+  color: #3d3030;
+  background:
+    linear-gradient(135deg, rgb(252 244 239 / 92%), rgb(241 232 224 / 94%)),
+    #f8efe9;
+}
+
+.holiday-lab-shell {
+  width: min(100% - 40px, 1180px);
+  margin: 0 auto;
+  padding: 36px 0 48px;
+}
+
+.holiday-lab-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 36px;
+  margin-bottom: 30px;
+}
+
+.holiday-lab-back {
+  display: inline-flex;
+  margin-bottom: 26px;
+  color: #81515a;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.holiday-lab-back:hover { color: #a6405e; }
+
+.holiday-lab-kicker,
+.holiday-lab-stage-topline span,
+.holiday-lab-control-heading span,
+.holiday-lab-stamp small {
+  margin: 0;
+  color: #a45e68;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.holiday-lab-header h1 {
+  margin: 10px 0 14px;
+  color: #4a3535;
+  font-family: inherit;
+  font-size: clamp(48px, 7vw, 86px);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: .98;
+}
+
+.holiday-lab-header h1 em {
+  color: #b05268;
+  font-style: normal;
+}
+
+.holiday-lab-lede {
+  max-width: 590px;
+  margin: 0;
+  color: #725f5b;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.holiday-lab-stamp {
+  display: grid;
+  width: 112px;
+  height: 112px;
+  flex: none;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid #d6aaa1;
+  border-radius: 34px;
+  color: #a05262;
+  background: rgb(255 253 251 / 42%);
+  transform: rotate(5deg);
+}
+
+.holiday-lab-stamp span {
+  font-family: inherit;
+  font-size: 42px;
+  line-height: .9;
+}
+
+.holiday-lab-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, .8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.holiday-lab-stage,
+.holiday-lab-controls {
+  border: 1px solid rgb(119 81 75 / 15%);
+  background: rgb(255 253 251 / 66%);
+  box-shadow: 0 18px 40px rgb(81 53 47 / 8%);
+}
+
+.holiday-lab-stage {
+  min-width: 0;
+  padding: 24px;
+}
+
+.holiday-lab-stage-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.holiday-lab-stage-topline div {
+  display: grid;
+  gap: 6px;
+}
+
+.holiday-lab-stage-topline strong {
+  color: #563d3b;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.holiday-lab-save-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #aaa09a;
+  box-shadow: 0 0 0 6px rgb(170 160 154 / 14%);
+}
+
+.holiday-lab-save-dot.is-saving { background: #d4a646; box-shadow: 0 0 0 6px rgb(212 166 70 / 14%); }
+.holiday-lab-save-dot.is-celebrating { background: #5f9b73; box-shadow: 0 0 0 6px rgb(95 155 115 / 14%); }
+.holiday-lab-save-dot.is-failure { background: #bd5d68; box-shadow: 0 0 0 6px rgb(189 93 104 / 14%); }
+
+.holiday-demo-canvas {
+  position: relative;
+  min-height: 540px;
+  overflow: hidden;
+  border: 1px solid #ead9d3;
+  background: #fbf7f3;
+}
+
+.holiday-demo-canvas::before {
+  position: absolute;
+  top: 116px;
+  right: -90px;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: rgb(212 229 215 / 44%);
+  content: '';
+  filter: blur(2px);
+}
+
+.holiday-demo-topbar {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #eee4df;
+  padding: 18px 20px;
+  color: #846e68;
+  font-size: 12px;
+}
+
+.holiday-demo-page {
+  position: relative;
+  width: min(100% - 72px, 470px);
+  margin: 64px auto 0;
+}
+
+.holiday-demo-kicker {
+  color: #a45e68;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+}
+
+.holiday-demo-card {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 14px;
+  border: 1px solid #ead9d3;
+  border-radius: 18px;
+  padding: 24px;
+  background: #f2d8d1;
+  box-shadow: 0 18px 32px rgb(92 55 50 / 10%);
+  transition: background-color 420ms ease, transform 420ms cubic-bezier(.32, .72, 0, 1);
+}
+
+.holiday-demo-canvas.is-rest .holiday-demo-card {
+  background: #dce9de;
+  transform: translateY(2px);
+}
+
+.holiday-demo-card div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.holiday-demo-card small,
+.holiday-demo-card span {
+  color: rgb(72 48 48 / 66%);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.holiday-demo-card strong {
+  color: #503b3a;
+  font-family: inherit;
+  font-size: 40px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.holiday-demo-card i {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  place-items: center;
+  border: 1px solid rgb(80 59 58 / 18%);
+  border-radius: 16px;
+  color: #76514f;
+  font-size: 24px;
+  font-style: normal;
+}
+
+.holiday-demo-lines {
+  display: grid;
+  gap: 13px;
+  margin-top: 54px;
+}
+
+.holiday-demo-lines i {
+  display: block;
+  width: 100%;
+  height: 9px;
+  border-radius: 6px;
+  background: #eee3de;
+}
+
+.holiday-demo-lines i:nth-child(2) { width: 76%; }
+.holiday-demo-lines i:nth-child(3) { width: 54%; }
+
+.holiday-demo-saving,
+.holiday-demo-error {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  left: 20px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.holiday-demo-saving { color: #755a20; background: #fff4d9; }
+.holiday-demo-error { color: #7d3540; background: #fff0f2; }
+
+.holiday-lab-notice {
+  min-height: 44px;
+  margin: 16px 0 12px;
+  color: #705d58;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.holiday-lab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.holiday-lab-actions button {
+  min-width: 128px;
+}
+
+.holiday-lab-controls {
+  display: grid;
+  gap: 24px;
+  padding: 24px;
+}
+
+.holiday-lab-control-heading {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid #ead9d3;
+  padding-bottom: 18px;
+}
+
+.holiday-lab-control-heading strong {
+  font-family: inherit;
+  font-size: 28px;
+  font-weight: 400;
+}
+
+.holiday-lab-controls fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.holiday-lab-controls legend {
+  margin-bottom: 2px;
+  color: #644d49;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.holiday-lab-segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e0c8c1;
+  border-radius: 10px;
+  background: #f8eeea;
+}
+
+.holiday-lab-segmented button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 7px;
+  padding: 6px 8px;
+  color: #775e58;
+  background: transparent;
+  font-size: 12px;
+}
+
+.holiday-lab-segmented button.is-active {
+  color: #fff;
+  background: #a6405e;
+}
+
+.holiday-lab-controls fieldset p {
+  margin: 0;
+  color: #806d67;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.holiday-lab-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.holiday-lab-toggle input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  accent-color: #a6405e;
+}
+
+.holiday-lab-toggle span {
+  display: grid;
+  gap: 4px;
+}
+
+.holiday-lab-toggle strong {
+  font-size: 13px;
+}
+
+.holiday-lab-toggle small {
+  color: #806d67;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.holiday-lab-checklist {
+  border-top: 1px solid #ead9d3;
+  padding-top: 18px;
+}
+
+.holiday-lab-checklist span {
+  color: #a45e68;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+}
+
+.holiday-lab-checklist p {
+  margin: 10px 0 0;
+  color: #806d67;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.holiday-lab-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(43 31 33 / 32%);
+}
+
+.holiday-lab-confirm {
+  width: min(100%, 420px);
+  border: 1px solid #ead9d3;
+  border-radius: 16px;
+  padding: 24px;
+  background: #fffdfb;
+  box-shadow: 0 16px 46px rgb(53 32 31 / 20%);
+}
+
+.holiday-lab-confirm h2 {
+  margin: 10px 0;
+  color: #4e3938;
+  font-family: inherit;
+  font-size: 30px;
+  font-weight: 400;
+}
+
+.holiday-lab-confirm p {
+  margin-bottom: 20px;
+  color: #806d67;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .holiday-lab-shell {
+    width: min(100% - 24px, 620px);
+    padding-top: 24px;
+  }
+
+  .holiday-lab-header {
+    align-items: flex-start;
+    gap: 18px;
+  }
+
+  .holiday-lab-stamp {
+    width: 78px;
+    height: 78px;
+    border-radius: 24px;
+  }
+
+  .holiday-lab-stamp span { font-size: 30px; }
+  .holiday-lab-stamp small { font-size: 8px; }
+
+  .holiday-lab-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .holiday-lab-stage,
+  .holiday-lab-controls {
+    padding: 18px;
+  }
+
+  .holiday-demo-canvas {
+    min-height: 500px;
+  }
+
+  .holiday-demo-page {
+    width: min(100% - 40px, 470px);
+    margin-top: 58px;
+  }
+}
+
+@media (max-width: 480px) {
+  .holiday-lab-header h1 {
+    font-size: clamp(42px, 13vw, 64px);
+  }
+
+  .holiday-lab-stamp {
+    display: none;
+  }
+
+  .holiday-demo-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .holiday-demo-card {
+    align-items: flex-start;
+    padding: 18px;
+  }
+
+  .holiday-demo-card strong {
+    font-size: 32px;
+  }
+
+  .holiday-demo-card i {
+    width: 40px;
+    height: 40px;
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "version": 2,
+  "source": "新行走图集/原始12帧图集-RGBA.png",
+  "sourceSize": {
+    "width": 2048,
+    "height": 2048
+  },
+  "sourceColorType": "RGBA; original alpha preserved",
+  "grid": {
+    "columns": 4,
+    "rows": 3,
+    "cell": {
+      "width": 512,
+      "height": 682
+    }
+  },
+  "outputFrameSize": {
+    "width": 256,
+    "height": 256
+  },
+  "backgroundRemoval": {
+    "method": "none; source alpha preserved",
+    "caveat": "white outline is part of source art and has not been removed"
+  },
+  "frames": [
+    {
+      "name": "行走-01.png",
+      "sourceCell": {
+        "row": 1,
+        "column": 1
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 159054,
+      "opaquePixels": 156431
+    },
+    {
+      "name": "行走-02.png",
+      "sourceCell": {
+        "row": 1,
+        "column": 2
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 161240,
+      "opaquePixels": 157504
+    },
+    {
+      "name": "行走-03.png",
+      "sourceCell": {
+        "row": 1,
+        "column": 3
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 161147,
+      "opaquePixels": 156406
+    },
+    {
+      "name": "行走-04.png",
+      "sourceCell": {
+        "row": 1,
+        "column": 4
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 158755,
+      "opaquePixels": 159426
+    },
+    {
+      "name": "行走-05.png",
+      "sourceCell": {
+        "row": 2,
+        "column": 1
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 163206,
+      "opaquePixels": 153882
+    },
+    {
+      "name": "行走-06.png",
+      "sourceCell": {
+        "row": 2,
+        "column": 2
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 161843,
+      "opaquePixels": 155121
+    },
+    {
+      "name": "行走-07.png",
+      "sourceCell": {
+        "row": 2,
+        "column": 3
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 160436,
+      "opaquePixels": 155431
+    },
+    {
+      "name": "行走-08.png",
+      "sourceCell": {
+        "row": 2,
+        "column": 4
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 161861,
+      "opaquePixels": 154766
+    },
+    {
+      "name": "行走-09.png",
+      "sourceCell": {
+        "row": 3,
+        "column": 1
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 167657,
+      "opaquePixels": 145043
+    },
+    {
+      "name": "行走-10.png",
+      "sourceCell": {
+        "row": 3,
+        "column": 2
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 170365,
+      "opaquePixels": 145939
+    },
+    {
+      "name": "行走-11.png",
+      "sourceCell": {
+        "row": 3,
+        "column": 3
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 172659,
+      "opaquePixels": 143787
+    },
+    {
+      "name": "行走-12.png",
+      "sourceCell": {
+        "row": 3,
+        "column": 4
+      },
+      "width": 256,
+      "height": 256,
+      "transparentPixels": 174055,
+      "opaquePixels": 143438
+    }
+  ],
+  "preview": "新行走帧预览/新增12帧-明暗背景.png"
+}

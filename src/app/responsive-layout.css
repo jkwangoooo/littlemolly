@@ -1,0 +1,142 @@
+/* 自适应应用壳：横向不溢出，纵向滚动保留但不显示系统滚动条。 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.page,
+.page-scroll,
+.stack,
+.panel,
+.today-stage,
+.bubble-stage,
+.today-stack,
+.motion-lab {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.page {
+  container: app-shell / inline-size;
+  width: min(100% - 32px, 1180px);
+  padding-top: calc(28px + var(--safe-top));
+  padding-bottom: calc(76px + var(--safe-bottom));
+}
+
+.page-scroll {
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.page-scroll::-webkit-scrollbar,
+.scroll-region::-webkit-scrollbar,
+.today-stack.is-expanded::-webkit-scrollbar,
+.motion-lab::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-region,
+.today-stack.is-expanded,
+.motion-lab {
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.bottom-nav {
+  width: min(100%, 1180px);
+  min-width: 0;
+  padding-bottom: var(--safe-bottom);
+}
+
+.page.options-page {
+  padding-bottom: var(--safe-bottom);
+}
+
+@media (max-width: 480px) {
+  .page {
+    width: min(100% - 20px, 620px);
+    padding-top: calc(14px + var(--safe-top));
+    padding-bottom: calc(84px + var(--safe-bottom));
+  }
+}
+
+@media (max-height: 559px) {
+  .page {
+    padding-top: calc(12px + var(--safe-top));
+    padding-bottom: calc(56px + var(--safe-bottom));
+  }
+
+  .bottom-nav button {
+    min-height: 44px;
+  }
+
+  .bubble-stage {
+    padding-bottom: 72px;
+  }
+}
+
+@media (min-width: 900px) and (min-height: 560px) {
+  .page {
+    width: min(100% - 48px, 1180px);
+    padding: calc(24px + var(--safe-top)) 0 calc(24px + var(--safe-bottom)) 184px;
+  }
+
+  .page.options-page {
+    padding-bottom: calc(24px + var(--safe-bottom));
+  }
+
+  .bottom-nav {
+    top: 0;
+    right: auto;
+    bottom: 0;
+    left: 0;
+    width: 160px;
+    height: 100%;
+    flex-direction: column;
+    transform: none;
+    border-top: 0;
+    border-right: 1px solid #eadfdc;
+    padding: calc(20px + var(--safe-top)) 12px var(--safe-bottom) var(--safe-left);
+    box-shadow: 2px 0 12px rgb(76 49 43 / 6%);
+  }
+
+  .bottom-nav button {
+    flex: none;
+    min-height: 46px;
+    border-right: 0;
+    border-bottom: 1px solid #f0ece9;
+    border-radius: 8px;
+    text-align: left;
+  }
+
+  .bottom-nav button.active::after {
+    top: 8px;
+    right: auto;
+    bottom: 8px;
+    left: 0;
+    width: 3px;
+    height: auto;
+    border-radius: 0 3px 3px 0;
+  }
+}
+
+@container app-shell (min-width: 760px) {
+  .today-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr);
+    align-items: start;
+    gap: 24px;
+  }
+}

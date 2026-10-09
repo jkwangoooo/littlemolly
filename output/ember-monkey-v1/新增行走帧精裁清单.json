@@ -1,0 +1,289 @@
+{
+  "version": 3,
+  "source": "新行走图集/走路动画-RGBA.png",
+  "sourceSize": {
+    "width": 2048,
+    "height": 2048
+  },
+  "sourceColorType": "RGBA; original alpha preserved",
+  "grid": {
+    "columns": 4,
+    "rows": 3,
+    "referenceCell": {
+      "width": 512,
+      "height": 682
+    }
+  },
+  "cropMethod": "per-cell connected alpha components, tight alpha bounds, shared scale and aligned foot baseline",
+  "outputFrameSize": {
+    "width": 256,
+    "height": 256
+  },
+  "frames": [
+    {
+      "name": "行走-01.png",
+      "sourceCell": {
+        "row": 1,
+        "column": 1
+      },
+      "crop": {
+        "minX": 17,
+        "minY": 51,
+        "maxX": 492,
+        "maxY": 681,
+        "width": 476,
+        "height": 631
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 39,
+        "y": 16,
+        "width": 178,
+        "height": 236
+      }
+    },
+    {
+      "name": "行走-02.png",
+      "sourceCell": {
+        "row": 1,
+        "column": 2
+      },
+      "crop": {
+        "minX": 0,
+        "minY": 51,
+        "maxX": 491,
+        "maxY": 681,
+        "width": 492,
+        "height": 631
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 36,
+        "y": 16,
+        "width": 184,
+        "height": 236
+      }
+    },
+    {
+      "name": "行走-03.png",
+      "sourceCell": {
+        "row": 1,
+        "column": 3
+      },
+      "crop": {
+        "minX": 0,
+        "minY": 56,
+        "maxX": 471,
+        "maxY": 681,
+        "width": 472,
+        "height": 626
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 40,
+        "y": 18,
+        "width": 176,
+        "height": 234
+      }
+    },
+    {
+      "name": "行走-04.png",
+      "sourceCell": {
+        "row": 1,
+        "column": 4
+      },
+      "crop": {
+        "minX": 0,
+        "minY": 52,
+        "maxX": 454,
+        "maxY": 681,
+        "width": 455,
+        "height": 630
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 43,
+        "y": 17,
+        "width": 170,
+        "height": 235
+      }
+    },
+    {
+      "name": "行走-05.png",
+      "sourceCell": {
+        "row": 2,
+        "column": 1
+      },
+      "crop": {
+        "minX": 21,
+        "minY": 39,
+        "maxX": 511,
+        "maxY": 681,
+        "width": 491,
+        "height": 643
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 36,
+        "y": 12,
+        "width": 183,
+        "height": 240
+      }
+    },
+    {
+      "name": "行走-06.png",
+      "sourceCell": {
+        "row": 2,
+        "column": 2
+      },
+      "crop": {
+        "minX": 0,
+        "minY": 40,
+        "maxX": 473,
+        "maxY": 681,
+        "width": 474,
+        "height": 642
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 39,
+        "y": 12,
+        "width": 177,
+        "height": 240
+      }
+    },
+    {
+      "name": "行走-07.png",
+      "sourceCell": {
+        "row": 2,
+        "column": 3
+      },
+      "crop": {
+        "minX": 0,
+        "minY": 42,
+        "maxX": 465,
+        "maxY": 681,
+        "width": 466,
+        "height": 640
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 41,
+        "y": 13,
+        "width": 174,
+        "height": 239
+      }
+    },
+    {
+      "name": "行走-08.png",
+      "sourceCell": {
+        "row": 2,
+        "column": 4
+      },
+      "crop": {
+        "minX": 0,
+        "minY": 42,
+        "maxX": 448,
+        "maxY": 681,
+        "width": 449,
+        "height": 640
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 44,
+        "y": 13,
+        "width": 168,
+        "height": 239
+      }
+    },
+    {
+      "name": "行走-09.png",
+      "sourceCell": {
+        "row": 3,
+        "column": 1
+      },
+      "crop": {
+        "minX": 27,
+        "minY": 14,
+        "maxX": 493,
+        "maxY": 649,
+        "width": 467,
+        "height": 636
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 41,
+        "y": 15,
+        "width": 174,
+        "height": 237
+      }
+    },
+    {
+      "name": "行走-10.png",
+      "sourceCell": {
+        "row": 3,
+        "column": 2
+      },
+      "crop": {
+        "minX": 4,
+        "minY": 18,
+        "maxX": 482,
+        "maxY": 650,
+        "width": 479,
+        "height": 633
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 38,
+        "y": 16,
+        "width": 179,
+        "height": 236
+      }
+    },
+    {
+      "name": "行走-11.png",
+      "sourceCell": {
+        "row": 3,
+        "column": 3
+      },
+      "crop": {
+        "minX": 0,
+        "minY": 22,
+        "maxX": 459,
+        "maxY": 651,
+        "width": 460,
+        "height": 630
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 42,
+        "y": 17,
+        "width": 172,
+        "height": 235
+      }
+    },
+    {
+      "name": "行走-12.png",
+      "sourceCell": {
+        "row": 3,
+        "column": 4
+      },
+      "crop": {
+        "minX": 0,
+        "minY": 22,
+        "maxX": 438,
+        "maxY": 651,
+        "width": 439,
+        "height": 630
+      },
+      "scale": 0.37325038880248834,
+      "draw": {
+        "x": 46,
+        "y": 17,
+        "width": 164,
+        "height": 235
+      }
+    }
+  ],
+  "preview": "新行走帧预览/新增12帧-精裁明暗背景.png"
+}

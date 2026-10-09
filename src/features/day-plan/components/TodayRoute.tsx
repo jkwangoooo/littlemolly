@@ -185,7 +185,7 @@ export function TodayRoute({
             <span className="route-side-mark" aria-hidden="true" />
             <h3 id="route-side-title">自定义事项</h3>
             {writable ? (
-              <button className="task-add-button" type="button" disabled={saving} onClick={onAddTask}>
+              <button className="task-add-button" type="button" data-editor-open="task" disabled={saving} onClick={onAddTask}>
                 ＋ 添加事项
               </button>
             ) : null}
@@ -197,7 +197,7 @@ export function TodayRoute({
           <span className="route-side-mark" aria-hidden="true" />
           <h3>自定义事项</h3>
           {writable ? (
-            <button className="task-add-button" type="button" disabled={saving} onClick={onAddTask}>
+            <button className="task-add-button" type="button" data-editor-open="task" disabled={saving} onClick={onAddTask}>
               ＋ 添加事项
             </button>
           ) : null}

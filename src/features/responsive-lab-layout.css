@@ -1,0 +1,83 @@
+/* 自适应覆盖：实验页同样禁止横向拖动，滚动条隐藏但保留滚动能力。 */
+.motion-lab,
+.holiday-lab {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.motion-lab::-webkit-scrollbar,
+.holiday-lab::-webkit-scrollbar {
+  display: none;
+}
+
+.motion-lab-shell,
+.holiday-lab-shell,
+.motion-lab-layout,
+.holiday-lab-grid {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.motion-stage,
+.holiday-demo-canvas {
+  min-height: clamp(300px, calc(100dvh - 280px), 610px);
+}
+
+.motion-lab.is-expanded-mode .motion-stage {
+  height: auto;
+  min-height: calc(100dvh - 72px);
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.motion-lab.is-expanded-mode .motion-card-field {
+  height: max(calc(100dvh - 72px), calc(150px * var(--motion-card-count, 5) + 56px));
+  min-height: 0;
+}
+
+@media (max-width: 620px) {
+  .motion-lab.is-expanded-mode .motion-stage {
+    min-height: calc(100dvh - 66px);
+  }
+
+  .motion-lab.is-expanded-mode .motion-card-field {
+    height: max(calc(100dvh - 66px), calc(172px * var(--motion-card-count, 5) + 48px));
+  }
+}
+
+@media (max-height: 559px) {
+  .motion-lab-shell,
+  .holiday-lab-shell {
+    padding-top: 16px;
+    padding-bottom: 20px;
+  }
+
+  .motion-lab-header,
+  .holiday-lab-header {
+    margin-bottom: 20px;
+  }
+
+  .motion-stage,
+  .holiday-demo-canvas {
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 760px) {
+  .holiday-lab {
+    overflow-y: auto;
+  }
+
+  .holiday-lab-shell {
+    width: min(calc(100% - 24px), 620px);
+  }
+
+  .holiday-demo-canvas {
+    min-height: clamp(360px, calc(100dvh - 250px), 500px);
+  }
+}

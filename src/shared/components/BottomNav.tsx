@@ -8,8 +8,8 @@ export function BottomNav({
   onNavigate: (destination: DayDestination) => void
 }) {
   const items: { key: DayDestination; label: string }[] = [
-    { key: 'execute', label: '执行今天' },
-    { key: 'prepare', label: '准备明天' },
+    { key: 'execute', label: '今天' },
+    { key: 'prepare', label: '明天' },
   ]
 
   return (

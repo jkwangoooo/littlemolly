@@ -1,0 +1,35 @@
+/* 交互密度微调：底部导航更轻，主舞台在高屏中部呈现。 */
+.bottom-nav {
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: min(calc(100% - 64px), 250px);
+  padding: 2px;
+  border-radius: 14px;
+}
+
+.bottom-nav button {
+  min-height: 34px;
+  border-radius: 11px;
+  font-size: 13px;
+}
+
+.bottom-nav button.active::after {
+  bottom: 2px;
+}
+
+@media (max-width: 480px) {
+  .bottom-nav {
+    width: min(calc(100% - 64px), 250px);
+  }
+}
+
+@media (min-height: 700px) and (max-width: 899px) {
+  .bubble-stage {
+    padding-top: clamp(24px, 6vh, 72px);
+  }
+}
+
+@media (max-height: 699px) {
+  .bubble-stage {
+    padding-top: 12px;
+  }
+}

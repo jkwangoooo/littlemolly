@@ -1,0 +1,51 @@
+/* 键盘与安全区的最终布局覆盖：弹层以可视区域为边界，主页面不重复叠加底部让位。 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --vv-available-height: min(100dvh, var(--vv-height, 100dvh));
+}
+
+button,
+input,
+textarea,
+select,
+a,
+label {
+  touch-action: manipulation;
+}
+
+.page:not(.options-page) {
+  padding-bottom: calc(60px + var(--safe-bottom));
+}
+
+.page.options-page {
+  padding-bottom: var(--safe-bottom);
+}
+
+.modal-backdrop,
+.sheet-backdrop {
+  min-height: 0;
+  padding-bottom: calc(var(--vv-keyboard-inset, 0px) + var(--safe-bottom));
+}
+
+.center-card {
+  max-height: min(90vh, calc(var(--vv-available-height) - 40px));
+}
+
+.bottom-sheet {
+  max-height: min(90vh, calc(var(--vv-available-height) - 16px));
+}
+
+@media (max-width: 480px) {
+  .page:not(.options-page) {
+    padding-bottom: calc(60px + var(--safe-bottom));
+  }
+}
+
+@media (min-width: 900px) and (min-height: 560px) {
+  .page:not(.options-page) {
+    padding-bottom: calc(24px + var(--safe-bottom));
+  }
+}

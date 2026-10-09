@@ -63,8 +63,8 @@ export function EditorDialog({
 
   if (placement === 'center') {
     return (
-      <div className="modal-backdrop">
-        <section className="center-card" role="dialog" aria-modal="true" aria-label={title} data-editor-card>
+      <div className="modal-backdrop" data-editor-backdrop="center">
+        <section className="center-card" role="dialog" aria-modal="true" aria-label={title} data-editor-card="true">
           <h2>{title}</h2>
           <div className="editor-body">{children}</div>
           {actions}
@@ -74,8 +74,8 @@ export function EditorDialog({
   }
 
   return (
-    <div className="sheet-backdrop">
-      <section className="bottom-sheet" role="dialog" aria-modal="true" aria-label={title} data-editor-card>
+    <div className="sheet-backdrop" data-editor-backdrop="bottom">
+      <section className="bottom-sheet" role="dialog" aria-modal="true" aria-label={title} data-editor-card="true">
         <div className="sheet-handle" />
         <h2>{title}</h2>
         <div className="editor-body">{children}</div>

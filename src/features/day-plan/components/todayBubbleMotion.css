@@ -1,50 +1,50 @@
 .rhythm-bubble {
-  --bubble-drift: 8px;
-  --bubble-sway: 3px;
-  --bubble-tilt: 1deg;
-  --bubble-duration: 5.2s;
+  --bubble-drift: 3px;
+  --bubble-sway: 1.2px;
+  --bubble-tilt: 0.35deg;
+  --bubble-duration: 6.8s;
   animation: bubble-float var(--bubble-duration) ease-in-out infinite;
   translate: 0 0;
-  will-change: translate;
+  will-change: translate, rotate;
 }
 
-.bubble-canvas > button:nth-of-type(1) { animation-delay: -0.15s; }
-.bubble-canvas > button:nth-of-type(2) { animation-delay: -0.8s; }
-.bubble-canvas > button:nth-of-type(3) { animation-delay: -1.45s; }
-.bubble-canvas > button:nth-of-type(4) { animation-delay: -2.1s; }
-.bubble-canvas > button:nth-of-type(5) { animation-delay: -2.75s; }
-.bubble-canvas > button:nth-of-type(6) { animation-delay: -3.4s; }
-.bubble-canvas > button:nth-of-type(7) { animation-delay: -4.05s; }
-.bubble-canvas > button:nth-of-type(8) { animation-delay: -4.7s; }
-.bubble-canvas > button:nth-of-type(9) { animation-delay: -5.35s; }
+.bubble-canvas > button:nth-of-type(1) { animation-delay: -0.2s; }
+.bubble-canvas > button:nth-of-type(2) { animation-delay: -1.05s; }
+.bubble-canvas > button:nth-of-type(3) { animation-delay: -2.25s; }
+.bubble-canvas > button:nth-of-type(4) { animation-delay: -3.05s; }
+.bubble-canvas > button:nth-of-type(5) { animation-delay: -4.35s; }
+.bubble-canvas > button:nth-of-type(6) { animation-delay: -5.15s; }
+.bubble-canvas > button:nth-of-type(7) { animation-delay: -6.25s; }
+.bubble-canvas > button:nth-of-type(8) { animation-delay: -7.1s; }
+.bubble-canvas > button:nth-of-type(9) { animation-delay: -8.15s; }
 
 .rhythm-bubble.current {
-  --bubble-drift: 11px;
-  --bubble-sway: 4px;
-  --bubble-tilt: 1.35deg;
-  --bubble-duration: 4.6s;
+  --bubble-drift: 5px;
+  --bubble-sway: 1.8px;
+  --bubble-tilt: 0.55deg;
+  --bubble-duration: 5.8s;
 }
 
 .rhythm-bubble.completed {
-  --bubble-drift: 3px;
-  --bubble-sway: 1px;
-  --bubble-tilt: 0.35deg;
-  --bubble-duration: 7.2s;
+  --bubble-drift: 1.5px;
+  --bubble-sway: 0.45px;
+  --bubble-tilt: 0.12deg;
+  --bubble-duration: 8.6s;
 }
 
 .rhythm-bubble.unprepared,
 .rhythm-bubble.readonly {
-  --bubble-drift: 4px;
-  --bubble-sway: 1.5px;
-  --bubble-tilt: 0.5deg;
-  --bubble-duration: 7.8s;
+  --bubble-drift: 1.8px;
+  --bubble-sway: 0.6px;
+  --bubble-tilt: 0.15deg;
+  --bubble-duration: 8.8s;
 }
 
 .rhythm-bubble:hover,
 .rhythm-bubble:focus-visible,
 .rhythm-bubble.pressing {
   animation-play-state: paused;
-  translate: 0 -3px;
+  translate: 0 -2px;
 }
 
 .rhythm-bubble:active {
@@ -54,18 +54,18 @@
 @keyframes bubble-float {
   0%,
   100% {
-    translate: calc(var(--bubble-sway) * -0.65) calc(var(--bubble-drift) * -0.5);
+    translate: calc(var(--bubble-sway) * -0.5) calc(var(--bubble-drift) * -0.45);
     rotate: calc(var(--bubble-tilt) * -1);
   }
 
-  35% {
-    translate: calc(var(--bubble-sway) * 0.35) calc(var(--bubble-drift) * 0.35);
-    rotate: calc(var(--bubble-tilt) * 0.45);
+  36% {
+    translate: calc(var(--bubble-sway) * 0.45) calc(var(--bubble-drift) * 0.35);
+    rotate: calc(var(--bubble-tilt) * 0.4);
   }
 
-  68% {
-    translate: var(--bubble-sway) calc(var(--bubble-drift) * -0.2);
-    rotate: calc(var(--bubble-tilt) * -0.35);
+  70% {
+    translate: calc(var(--bubble-sway) * 0.75) calc(var(--bubble-drift) * -0.22);
+    rotate: calc(var(--bubble-tilt) * -0.3);
   }
 }
 
@@ -83,3 +83,10 @@
     translate: 0 0;
   }
 }
+
+/* Clearly visible floating motion, still independent from inline ring placement. */
+.rhythm-bubble{--bubble-drift:9px;--bubble-sway:3.8px;--bubble-tilt:1deg;--bubble-duration:5.4s;animation-name:bubble-float-obvious}
+.rhythm-bubble.current{--bubble-drift:13px;--bubble-sway:5.5px;--bubble-tilt:1.5deg;--bubble-duration:4.6s}
+.rhythm-bubble.completed{--bubble-drift:5px;--bubble-sway:2px;--bubble-tilt:.45deg;--bubble-duration:6.8s}
+.rhythm-bubble.unprepared,.rhythm-bubble.readonly{--bubble-drift:4px;--bubble-sway:1.6px;--bubble-tilt:.3deg;--bubble-duration:7.4s}
+@keyframes bubble-float-obvious{0%,100%{translate:calc(var(--bubble-sway)*-1) calc(var(--bubble-drift)*-.7);rotate:calc(var(--bubble-tilt)*-1)}30%{translate:calc(var(--bubble-sway)*.8) calc(var(--bubble-drift)*.65);rotate:calc(var(--bubble-tilt)*.7)}55%{translate:calc(var(--bubble-sway)*-.35) calc(var(--bubble-drift)*-.2);rotate:calc(var(--bubble-tilt)*-.45)}78%{translate:calc(var(--bubble-sway)*1) calc(var(--bubble-drift)*.4);rotate:calc(var(--bubble-tilt)*.35)}}

@@ -1,0 +1,53 @@
+/* 键盘与安全区的最终布局覆盖：弹层以可视区域为边界，主页面不重复叠加底部让位。 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --vv-available-height: min(100dvh, var(--vv-height, 100dvh));
+}
+
+/* 可拖拽浮宠主体保留 none；其余控件关闭双击缩放并交给应用处理。 */
+button:not(.floating-pet),
+input,
+textarea,
+select,
+a,
+label {
+  touch-action: manipulation;
+}
+
+.page:not(.options-page) { padding-bottom: calc(60px + var(--safe-bottom)); }
+.page.options-page { padding-bottom: var(--safe-bottom); }
+
+.modal-backdrop,
+.sheet-backdrop {
+  position: fixed;
+  min-height: 0;
+  height: auto;
+  inset: 0 0 var(--vv-keyboard-inset, 0px) 0;
+  padding-bottom: calc(var(--vv-keyboard-inset, 0px) + var(--safe-bottom));
+  overflow: hidden;
+}
+
+.center-card {
+  min-height: 0;
+  height: min(calc(var(--vv-available-height) - 40px), 90vh);
+  max-height: min(90vh, calc(var(--vv-available-height) - 40px));
+}
+
+.editor-body { min-height: 0; }
+
+.bottom-sheet {
+  min-height: 0;
+  height: min(calc(var(--vv-available-height) - 16px), 90vh);
+  max-height: min(90vh, calc(var(--vv-available-height) - 16px));
+}
+
+@media (max-width: 480px) {
+  .page:not(.options-page) { padding-bottom: calc(60px + var(--safe-bottom)); }
+}
+
+@media (min-width: 900px) and (min-height: 560px) {
+  .page:not(.options-page) { padding-bottom: calc(24px + var(--safe-bottom)); }
+}
