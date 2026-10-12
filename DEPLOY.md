@@ -2,9 +2,9 @@
 
 本项目部署到 Vercel 前端与 Supabase Auth/Postgres。**认证必须配置 Supabase**；IndexedDB 继续承担业务唯一写入落点，暂时断网可使用已准备的缓存工作区。
 
-**2026-10-13 本地账密改造、自动验收与文档收口已完成；本次未执行生产迁移、W 账号准备、Vercel 环境更新或发布。** 线上域名为 `https://molly.lightwavecommunity.site`，现有线上提交和真实项目配置尚未验证。操作执行者先读 [本地实施与部署交接](docs/44-账密改造本地实施与部署交接.md)、[部署执行说明](docs/27-deploy-runbook-for-codex.md) 和 [账密改造详细执行文档](docs/43-账密改造详细执行文档.md)。
+**2026-10-13 本地账密改造、自动验收与文档收口已完成；目标 Supabase 项目已应用账号门禁迁移，但 W 账号准备、allowlist 写入、Vercel 环境更新和发布尚未完成。** 线上域名为 `https://molly.lightwavecommunity.site`，现有线上提交和真实项目配置尚未完整验证。操作执行者先读 [本地实施与部署交接](docs/44-账密改造本地实施与部署交接.md)、[部署执行说明](docs/27-deploy-runbook-for-codex.md) 和 [账密改造详细执行文档](docs/43-账密改造详细执行文档.md)。
 
-生产数据库迁移与 W 准备均未执行；Supabase 项目 ref、真实 W UID、Auth 配置未验证；Vercel Production 变量未更新、未验证；线上浏览器、账号链路和真机验收未验证。后文是待执行流程，不能据此判定生产已经完成。
+生产数据库迁移已应用账号门禁迁移；W 准备、真实 W UID、allowlist、完整结构权限核验、Auth 配置、Vercel Production 变量更新、线上浏览器、账号链路和真机验收仍未完成。后文是待执行流程，不能据此判定生产已经完成。
 
 ## 1. 发布前核实
 
