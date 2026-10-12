@@ -57,22 +57,29 @@ const TS = '2026-09-19T10:00:00.000Z'
 
 // ---------------------------------------------------------------- 1. 入队范围
 
-// 只有用户数据仓库进队列。`users` 是应用身份（不迁移本地密码），
-// `sync_outbox` / `sync_state` 是设备状态——任何一张混进来都会造成「自己同步自己」或
-// 「把本机队列推给云端」这类无解状态。
+// 只有用户数据仓库进队列。`users` 是 Supabase UID 的本地资料缓存，
+// 七张设备仓库是本机迁移、工作区与同步状态——任何一张混进来都会造成
+// 「自己同步自己」或「把本机队列推给云端」这类无解状态。
 const syncable = ALL_STORES.filter((store) => isSyncableStore(store))
 check('可入队的仓库正好是 10 张用户数据表', syncable, USER_DATA_STORES)
-check('users 不入队（本地账号是应用身份）', isSyncableStore('users'), false)
+check('users 不入队（仅作当前 Auth UID 的资料缓存）', isSyncableStore('users'), false)
 check('sync_outbox 不入队（否则自激循环）', isSyncableStore('sync_outbox'), false)
 check('sync_state 不入队', isSyncableStore('sync_state'), false)
-check('三分类合起来等于全部 13 张表', ALL_STORES.length, 13)
+check('七张设备状态表全部不入队', DEVICE_STORES.filter((store) => isSyncableStore(store)), [])
+check('设备仓库清单包含同步、隔离区和工作区状态',
+  [...DEVICE_STORES].sort(),
+  ['sync_outbox', 'sync_state', 'legacy_users', 'legacy_sync_state', 'legacy_outbox',
+    'workspace_state', 'workspace_migrations'].sort())
+check('三分类合起来等于全部 18 张表', ALL_STORES.length, 18)
 check('设备状态表不在备份仓库里', BACKUP_STORES.filter((store) => DEVICE_STORES.includes(store)), [])
+check('设备状态表不进备份也不进同步',
+  DEVICE_STORES.every((store) => !isSyncableStore(store) && !BACKUP_STORES.includes(store)), true)
 check(
   '备份仓库 = 用户数据 + 元数据（集合口径）',
   [...BACKUP_STORES].sort(),
   [...USER_DATA_STORES, ...META_STORES].sort(),
 )
-check('备份仓库仍是 11 张（S2 不改变备份内容）', BACKUP_STORE_COUNT, 11)
+check('备份仓库仍是 11 张（10 张业务表 + users 资料）', BACKUP_STORE_COUNT, 11)
 
 // ---------------------------------------------------------------- 2. 压缩规则
 
@@ -144,6 +151,7 @@ check('day_plans 在 L1', layerOf('day_plans'), 1)
 check('挂在计划下的记录在 L2', layerOf('routine_tasks'), 2)
 check('daily_meal_items 在 L3（唯一挂在三餐而非计划下的表）', layerOf('daily_meal_items'), 3)
 check('不在同步范围的仓库层级为 -1', [layerOf('users'), layerOf('sync_outbox'), layerOf('sync_state')], [-1, -1, -1])
+check('七张设备仓库都没有上传层级', DEVICE_STORES.map((store) => layerOf(store)), DEVICE_STORES.map(() => -1))
 
 // 写入按层级正序：父表先上，子表的外键才有得指。
 const upserts = [put('daily_meal_items', 'i1'), put('day_plans', 'p1'), put('food_options', 'f1')]
@@ -192,12 +200,12 @@ check('元数据仓库只有 users', BACKUP_META_STORES, ['users'])
 const backupFile = {
   app: 'happy-little-molly',
   format: 'local-backup',
-  version: 2,
+  version: 3,
   db_version: DB_VERSION,
   exported_at: TS,
-  source_user: { username: 'molly' },
+  source_user: { username: 'W' },
   counts: { users: 1 },
-  records: { users: [{ id: 'u1', username: 'molly', password_hash: '', created_at: TS }] },
+  records: { users: [{ id: 'u1', username: 'W', created_at: TS }] },
 }
 function rejects(file, label) {
   try {
@@ -221,6 +229,11 @@ check(
   ),
   true,
 )
+for (const store of DEVICE_STORES.filter((store) => !['sync_outbox', 'sync_state'].includes(store))) {
+  const message = rejects({ ...backupFile, records: { ...backupFile.records, [store]: [] } }, `含 ${store} 的备份`)
+  check(`备份里出现 ${store} 会被整份拒绝`,
+    message.includes(store === 'legacy_users' ? '不得包含任何身份凭据' : '不认识的仓库'), true)
+}
 check('正常的自洽备份仍可解析（对照）', rejects(backupFile, '对照备份').includes('没有任何数据'), true)
 
 // ---------------------------------------------------------------- 6. 两个新仓库的字段契约
@@ -265,9 +278,8 @@ check(
 )
 
 const stateRow = {
-  id: 'local-a',
+  id: '11111111-1111-4111-8111-111111111111',
   enabled: false,
-  cloud_user_id: null,
   cloud_email: null,
   device_id: 'device-1',
   bound_at: null,
@@ -277,9 +289,9 @@ const stateRow = {
   last_error_at: null,
   updated_at: TS,
 }
-// `id` 就是**本地账号 id**（v7 起一行一个本地账号）：契约只要求它是文本，
-// 语义上的约束在 `syncState.ts`（读只按当前账号取）与 v7 迁移里。
-check('sync_state 契约接受一条账号状态', validateRecord('sync_state', stateRow), [])
+// `id` 就是当前可信 Auth UID：契约要求它是文本，
+// 语义上的约束在 `syncState.ts`（读只按捕获的当前账号取）。
+check('sync_state 契约接受一条 Auth UID 状态', validateRecord('sync_state', stateRow), [])
 check(
   'sync_state 的 last_error 摊平成 message + at 两列',
   validateRecord('sync_state', { ...stateRow, last_error: { message: 'x', at: TS } }).includes(
@@ -287,30 +299,38 @@ check(
   ),
   true,
 )
-check(
-  'sync_state 契约要求全部字段齐备',
-  validateRecord('sync_state', { id: 'local-a' }).length >= 10,
-  true,
-)
+check('sync_state 不再存 cloud_user_id',
+  validateRecord('sync_state', { ...stateRow, cloud_user_id: null }).includes('出现未定义字段 cloud_user_id'), true)
+check('sync_state 契约要求全部字段齐备（缺少 9 个字段）',
+  validateRecord('sync_state', { id: stateRow.id }).length, 9)
 
 // ---------------------------------------------------------------- 7. 与数据库结构对齐
 
 check('每张仓库都有字段契约', [...SCHEMA_STORES].sort(), [...ALL_STORES].sort())
-check('数据库版本已升到 7', DB_VERSION, 7)
-check('LOCAL_SCHEMA 的仓库数也是 13', LOCAL_SCHEMA.stores.length, 13)
+check('数据库版本已升到 8', DB_VERSION, 8)
+check('LOCAL_SCHEMA 的仓库数也是 18', LOCAL_SCHEMA.stores.length, 18)
 // v7 不动结构，只把 `sync_state` 的归属从设备改成本地账号（见 check:local-data 的搬迁规则回归）。
 check('v7 不新增仓库', LOCAL_SCHEMA.migrations[7]?.stores ?? [], [])
 check('v7 带搬迁函数', typeof LOCAL_SCHEMA.migrations[7]?.migrate, 'function')
+check(
+  'v8 新建五张身份隔离与工作区仓库',
+  LOCAL_SCHEMA.migrations[8]?.stores ?? [],
+  ['legacy_users', 'legacy_sync_state', 'legacy_outbox', 'workspace_state', 'workspace_migrations'],
+)
+check('v8 带旧身份隔离函数', typeof LOCAL_SCHEMA.migrations[8]?.migrate, 'function')
 
 // ---------------------------------------------------------------- 7b. 队列条目的归属账号（S4 补丁 ②）
 
-// 这条规则守的是**跨账号串数据**：绑定是「本地账号 ↔ 云端账号」的关系，
-// 而队列是设备级的。换过账号之后若不加区分地推，A 的改动会被写进 B 绑定的云端账号里，
-// 而且界面上一点痕迹都没有——只能在这里钉死。
+// 这条规则守的是**跨 UID 串数据**：队列 owner 必须是写入时捕获的
+// Supabase Auth UID。换账号后若不加区分地推，旧 UID 的改动会被写进新 UID
+// 的云端账号里，而且界面上一点痕迹都没有——只能在这里钉死。
 const owner = (id, localUserId) => ({ ...entry(id, 0), local_user_id: localUserId })
 check(
-  '只取属于当前本地账号的条目',
-  entriesOfOwner([owner('a', 'local-a'), owner('b', 'local-b')], 'local-a').map((row) => row.id),
+  '只取属于当前 Auth UID 的条目',
+  entriesOfOwner([
+    owner('a', '11111111-1111-4111-8111-111111111111'),
+    owner('b', '22222222-2222-4222-8222-222222222222'),
+  ], '11111111-1111-4111-8111-111111111111').map((row) => row.id),
   ['a'],
 )
 check('没有登录会话时一条都不取（宁可什么都不推）', entriesOfOwner([owner('a', 'local-a')], null), [])
@@ -319,21 +339,24 @@ check(
   entriesOfOwner([owner('a', null), owner('b', 'local-a')], 'local-a').map((row) => row.id),
   ['b'],
 )
-check('空队列取出来还是空', entriesOfOwner([], 'local-a'), [])
+check('空队列取出来还是空', entriesOfOwner([], '11111111-1111-4111-8111-111111111111'), [])
 
 // ---------------------------------------------------------------- 7c. 同步状态的归属（S4 补丁 ②）
 
-// `sync_state` 的主键就是本地账号 id，所以「读到别人的绑定」在结构上不成立——
+// `sync_state` 的主键就是当前可信 Auth UID，所以「读到别人的绑定」在结构上不成立——
 // 这一条比任何运行期判断都可靠，因此直接对着模块本身断言。
 // 这些调用不碰 IndexedDB（没有会话时 `readSyncState` 在读库之前就返回 null），
 // 与上面那批纯函数断言一样是秒级的。
 const { currentLocalUserId, emptySyncState, readSyncState } = await import('../src/services/sync/syncState.ts')
 check('没有登录会话时没有归属人', currentLocalUserId(), null)
 check('没有登录会话时读不到同步状态（也就读不到别人的）', await readSyncState(), null)
-check('空白状态的主键就是本地账号 id', emptySyncState('local-a').id, 'local-a')
-check('空白状态默认未绑定（不存在「同步开着但没账号」）', emptySyncState('local-a').enabled, false)
+check('空白状态的主键就是可信 Auth UID',
+  emptySyncState('11111111-1111-4111-8111-111111111111').id,
+  '11111111-1111-4111-8111-111111111111')
+check('空白状态默认不上传（工作区准备完成前不能推送）', emptySyncState('local-a').enabled, false)
+check('空白状态不包含另一份云端身份', 'cloud_user_id' in emptySyncState('local-a'), false)
 
-// ---------------------------------------------------------------- 8. 绑定情形判定（S3）
+// ---------------------------------------------------------------- 8. 两侧数据的覆盖方向判定（S3 历史纯规则）
 
 // 这条规则**原本住在 `sync/accountLink.ts`**，第一次写回归时才发现 import 不了：
 // 那个模块拖着 `@supabase/supabase-js`，而它的子包 `@supabase/functions-js`
@@ -409,11 +432,10 @@ const { ROW_MAPPERS, USER_SCOPED_STORES, isUserScoped, toCloudRow } = await impo
   '../src/services/sync/mapper.ts'
 )
 
-const LOCAL_USER_ID = 'local-user-1'
-const CLOUD_USER_ID = 'cloud-user-1'
+const AUTH_UID = '11111111-1111-4111-8111-111111111111'
 const planRow = {
   id: 'p1',
-  user_id: LOCAL_USER_ID,
+  user_id: AUTH_UID,
   plan_date: '2026-09-20',
   mode: 'work',
   mode_override: false,
@@ -446,9 +468,9 @@ check(
   USER_DATA_STORES.map((store) => USER_SCOPED_STORES.includes(store)),
 )
 
-const mappedPlan = toCloudRow('day_plans', planRow, CLOUD_USER_ID)
-check('映射把 user_id 换成云端账号 id', mappedPlan.user_id, CLOUD_USER_ID)
-check('映射不沿用本地 user_id', mappedPlan.user_id === LOCAL_USER_ID, false)
+const mappedPlan = toCloudRow('day_plans', planRow, AUTH_UID)
+check('映射保留与当前可信 Auth UID 一致的 user_id', mappedPlan.user_id, AUTH_UID)
+check('映射沿用同一归属，不制造另一个账号 id', mappedPlan.user_id === planRow.user_id, true)
 // 这条是映射存在的头号理由：发出去等于把一份可能已经过期的副本又写回云端。
 check('映射剔除云端遗留列 exercise_content', 'exercise_content' in mappedPlan, false)
 check('映射保留本地形状里的字段', mappedPlan.morning_focus === '' && mappedPlan.plan_date === '2026-09-20', true)
@@ -461,15 +483,48 @@ const mealRow = {
   completed: false,
   plan_content: '旧的自由文本三餐内容',
 }
-const mappedMeal = toCloudRow('daily_meals', mealRow, CLOUD_USER_ID)
+const mappedMeal = toCloudRow('daily_meals', mealRow, AUTH_UID)
 check('映射剔除云端遗留列 plan_content', 'plan_content' in mappedMeal, false)
 // 子表不带 user_id（docs/01 不变量 2），凭空加一列会让 PostgREST 报「列不存在」。
 check('子表映射不凭空加 user_id', 'user_id' in mappedMeal, false)
 check('子表映射保留自己的字段', mappedMeal.note === '温牛奶' && mappedMeal.completed === false, true)
 
-// 纯函数：映射后本地那条记录不该被改动，否则同一份数据第二次推送会带着上一次的云端 id。
-toCloudRow('day_plans', planRow, CLOUD_USER_ID)
-check('映射不改动入参', planRow.user_id === LOCAL_USER_ID && 'exercise_content' in planRow, true)
+// 纯函数：映射只清洗字段，不改 owner，也不修改本地记录。
+toCloudRow('day_plans', planRow, AUTH_UID)
+check('映射不改动入参', planRow.user_id === AUTH_UID && 'exercise_content' in planRow, true)
+
+const optionRow = {
+  id: 'option1', user_id: AUTH_UID, name: '选项', active: true, sort_order: 0,
+  created_at: TS, updated_at: TS,
+}
+const ownerRows = {
+  day_plans: planRow,
+  food_options: optionRow,
+  exercise_options: optionRow,
+  supplement_templates: { ...optionRow, period: 'morning' },
+}
+function ownerRejection(store, row) {
+  try {
+    toCloudRow(store, row, AUTH_UID)
+    return ''
+  } catch (reason) {
+    return reason instanceof Error ? reason.message : String(reason)
+  }
+}
+for (const store of USER_SCOPED_STORES) {
+  const row = ownerRows[store]
+  check(`${store} 映射接受同一 Auth UID 并保持归属`, toCloudRow(store, row, AUTH_UID).user_id, AUTH_UID)
+  const wrongRows = [
+    ['旧随机本地 owner', { ...row, user_id: 'old-local-owner' }],
+    ['其他 Auth UID', { ...row, user_id: '22222222-2222-4222-8222-222222222222' }],
+    ['缺少 owner', Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'user_id'))],
+  ]
+  const before = JSON.stringify(wrongRows)
+  for (const [label, candidate] of wrongRows) {
+    check(`${store} 拒绝${label}，不改写成当前 UID`, ownerRejection(store, candidate).includes('不属于当前账号'), true)
+  }
+  check(`${store} 拒绝上传也不修改来源记录`, JSON.stringify(wrongRows), before)
+}
 
 // ---------------------------------------------------------------- 13. 整体替换的前置规则（S5）
 
@@ -520,13 +575,13 @@ const CLOUD_UID = '11111111-1111-4111-8111-111111111111'
 const SNAPSHOT_FIXTURE = {
   app: 'happy-little-molly',
   format: 'local-backup',
-  version: 2,
-  db_version: 1,
+  version: 3,
+  db_version: DB_VERSION,
   exported_at: '2026-09-20T04:15:45.462Z',
-  source_user: { username: 'a@molly.local' },
+  source_user: { username: 'W' },
   counts: { day_plans: 1 },
   records: {
-    users: [{ id: CLOUD_UID, username: 'a@molly.local', password_hash: '', created_at: '1970-01-01T00:00:00.000Z' }],
+    users: [{ id: CLOUD_UID, username: 'W', created_at: '1970-01-01T00:00:00.000Z' }],
     day_plans: [
       {
         id: '0d000000-0000-4000-8000-000000000001',
@@ -553,7 +608,11 @@ const SNAPSHOT_FIXTURE = {
 
 const snapshotParsed = parseBackup(JSON.stringify(SNAPSHOT_FIXTURE), DB_VERSION)
 check('云端快照能过 parseBackup', snapshotParsed.summary.total, 1)
-check('快照来源账号被读出来（用于界面展示）', snapshotParsed.summary.sourceUsername, 'a@molly.local')
+check('快照来源账号被读出来（用于界面展示）', snapshotParsed.summary.sourceUsername, 'W')
+check('当前快照格式为 v3', snapshotParsed.summary.formatVersion, 3)
+check('当前快照结构为 v8', snapshotParsed.summary.dbVersion, 8)
+check('当前快照 users 只包含同一 UID 的资料，无凭据',
+  Object.keys(snapshotParsed.records.users[0]).sort(), ['id', 'username', 'created_at'].sort())
 
 // 反证：去掉合成 users 行，`day_plans.user_id` 就找不到父记录，整份必须被拒。
 // 这一条钉住的是「`export_cloud_snapshot()` 必须额外输出一条 users 行」这个
@@ -566,7 +625,7 @@ try {
 } catch (cause) {
   usersRejection = String(cause?.message ?? cause)
 }
-check('缺合成 users 行的快照被拒', usersRejection.includes('父记录'), true)
+check('缺合成 users 行的快照被拒', usersRejection.includes('一个明确的来源账号'), true)
 
 // 反证二：快照里混进云端独有列（`to_jsonb(t)` 那种写法会这样），必须被拒。
 // 这条与 `check:cloud-parity` 第 10 组的静态断言是同一件事的两端。

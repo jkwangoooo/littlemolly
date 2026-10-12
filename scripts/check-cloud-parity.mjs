@@ -12,12 +12,12 @@
 // 但仍要求契约上的名字在 `cloud/` 下也有等价实现，用来守住那批适配器身上的字段映射。
 //
 // 现职责（S4-T7+）：那批 L6 适配器已整批删除——**云端不是后端，是上行通道**。
-// 「云端有没有等价实现」从此不是个有意义的问题。断言分成九组：
+// 「云端有没有等价实现」从此不是个有意义的问题。断言分成十一组：
 //
-//   1. 页面接口清单里的每个名字，本地实现与四个门面都真的导出；
+//   1. 认证门面暴露可信 Auth 契约；其余业务接口仍完整转发本地实现；
 //   2. 云端目录只剩同步传输层四个模块（L6 适配器不许悄悄长回来）；
 //   3. 页面不绕过门面直连 `services/local`；
-//   4. 门面**整份转发本地实现**，且 `@backend` 别名彻底消失；
+//   4. 业务门面整份转发本地，认证实现按需加载，`@backend` 别名彻底消失；
 //   5. Supabase 环境变量只有一处来源，旧 `backend.ts` 已删除；
 //   6. 引用 `services/cloud` 的只允许是 `services/sync/`，且同步门面必须是动态
 //      import（否则 supabase 会悄悄进主 chunk）；
@@ -30,6 +30,7 @@
 //  10. **双向整体替换的 SQL**（S5）：三个 RPC 都是 `security invoker`、
 //      三处历史日期豁免**写在日期比较之前**、豁免用 `set local` 打开、
 //      快照逐字段构造（不含云端独有列，否则 `parseBackup` 整份拒绝）。
+//  11. 当前有效的 UID 门禁、显式授权与 v3 无密码快照。
 //
 // 全部是静态检查，不需要浏览器、不需要构建产物。
 
@@ -71,14 +72,14 @@ const { LOCAL_SCHEMA } = await import('../src/services/local/localDb.ts')
 const { DEVICE_STORES, RECORD_SCHEMAS, SCHEMA_STORES, USER_DATA_STORES } = await import(
   '../src/services/local/recordSchemas.ts'
 )
-/** 数据库里的全部仓库（13 张），用来断言「三分类覆盖了每一张表」。 */
+/** 数据库里的全部仓库，用来断言「三分类覆盖了每一张表」。 */
 const allLocalStores = LOCAL_SCHEMA.stores.map((store) => store.name)
 
 /** 云端目录与同步目录的绝对路径，第 2 / 6 组都要用，所以在这里取一次。 */
 const cloudDir = join(PROJECT_ROOT, 'src/services/cloud')
 const syncDir = join(PROJECT_ROOT, 'src/services/sync')
 
-// ---- 1. 页面接口清单：每个名字本地实现与门面都必须真的导出 ----
+// ---- 1. 页面接口清单：认证走可信 Auth，其余业务接口仍转发本地 ----
 
 /**
  * 清单分组名 → 模块文件名。本地实现（`local/`）与门面（`api/`）同名，
@@ -96,6 +97,19 @@ const BACKENDS = {
 
 check('契约覆盖四个模块', Object.keys(CONTRACT_KEYS).sort(), Object.keys(BACKENDS).sort())
 
+function exportedNames(source) {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  const names = new Set([...code.matchAll(/export\s+(?:async\s+)?(?:function|const|let)\s+(\w+)/g)]
+    .map((match) => match[1]))
+  for (const match of code.matchAll(/export\s*\{([^}]+)\}/g)) {
+    for (const entry of match[1].split(',')) {
+      const name = entry.trim().split(/\s+as\s+/).at(-1)
+      if (name) names.add(name)
+    }
+  }
+  return names
+}
+
 for (const [group, file] of Object.entries(BACKENDS)) {
   const localPath = `src/services/local/${file}.ts`
   const facadePath = `src/services/api/${file}.ts`
@@ -104,6 +118,16 @@ for (const [group, file] of Object.entries(BACKENDS)) {
 
   const localSource = read(localPath)
   const facadeSource = read(facadePath)
+  if (group === 'auth') {
+    const facadeNames = exportedNames(facadeSource)
+    check('认证门面导出清单中的全部接口（含具名转发）',
+      CONTRACT_KEYS.auth.filter((name) => !facadeNames.has(name)), [])
+    check('本地认证模块只导出资料读取，不登录、注册或哈希密码',
+      [...exportedNames(localSource)].sort(), ['currentUser'])
+    check('本地资料读取不验证密码或建立认证会话',
+      /\b(?:password_hash|hashPassword|signInWithPassword|writeSession)\b/.test(localSource), false)
+    continue
+  }
   const missingInLocal = CONTRACT_KEYS[group].filter(
     (name) => !new RegExp(`export\\s+(async\\s+)?(function\\s+|const\\s+|let\\s+)?${name}\\b`).test(localSource),
   )
@@ -168,10 +192,20 @@ check('界面层没有绕过门面直连 services/local', bypass, [])
 // 「引用位置一变就指错」的问题一起消失。这里断言它真的没了，
 // 免得有人凭记忆又把别名加回去。
 
-for (const file of Object.values(BACKENDS)) {
+for (const [group, file] of Object.entries(BACKENDS)) {
   const facadePath = `src/services/api/${file}.ts`
   check(`门面 ${file} 存在`, existsSync(join(PROJECT_ROOT, facadePath)), true)
   const facadeSource = read(facadePath)
+  if (group === 'auth') {
+    const code = facadeSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    check('认证门面用 await import 按需加载 authSession',
+      /await\s+import\(['"]\.\.\/sync\/authSession['"]\)/.test(code), true)
+    check('认证门面没有静态加载认证实现或 SDK',
+      /(?:from\s+|import\s*)['"](?:\.\.\/sync\/authSession|@supabase\/|[^'"]*\/cloud\/)/.test(code), false)
+    check('认证门面没有公开注册接口',
+      [...exportedNames(code)].some((name) => /signUp|register/i.test(name)), false)
+    continue
+  }
   check(`门面 ${file} 直连本地实现`, new RegExp(`export \\* from '\\.\\./local/${file}'`).test(facadeSource), true)
   check(
     `门面 ${file} 同时放行值与类型导出`,
@@ -179,6 +213,28 @@ for (const file of Object.values(BACKENDS)) {
     true,
   )
 }
+
+const authSession = read('src/services/sync/authSession.ts')
+check('认证实现使用 Supabase 密码登录',
+  /\.auth\.signInWithPassword\(/.test(authSession), true)
+check('认证实现验证服务端用户身份',
+  /\.auth\.getUser\(/.test(authSession), true)
+check('认证实现核验 account_access 的允许标记与同一 UID',
+  /['"]account_access['"]/.test(authSession)
+    && /access\??\.allowed\s*!==\s*true/.test(authSession)
+    && /access\.uid\s*!==\s*user\.id/.test(authSession), true)
+check('认证实现没有公开创建云端身份',
+  /\.auth\.(?:signUp|admin\.createUser)\s*\(/.test(authSession), false)
+check('登录界面没有公开注册模式或入口',
+  /\bsignUp\b|\bregister\b|注册/.test(read('src/features/auth/AuthScreen.tsx')), false)
+check('设置界面没有补建云端身份或另绑账号入口',
+  /\b(?:signUp|provisionCloudAccount|autoBindCloudAccount|connectCloudAccount|bindCloudAccount)\b|补建|注册/.test(
+    read('src/features/preferences/components/SyncCard.tsx'),
+  ), false)
+check('同步门面不再开放双身份注册、绑定或断开接口',
+  [...exportedNames(read('src/services/api/syncService.ts'))].filter((name) =>
+    /^(?:provisionCloudAccount|autoBindCloudAccount|connectCloudAccount|bindCloudAccount|abandonCloudSession|disconnectCloudAccount)$/.test(name)), [])
+check('旧双身份 accountLink 模块已删除', existsSync(join(syncDir, 'accountLink.ts')), false)
 
 // 注释里提到 `@backend` 是允许的（门面注释解释了为什么去掉它），
 // 这里只挡真正的 import 说明符。
@@ -254,7 +310,7 @@ check(
 
 const migrationDir = join(PROJECT_ROOT, 'database/migrations')
 const migrationFiles = readdirSync(migrationDir).filter((name) => name.endsWith('.sql')).sort()
-check('迁移文件都以 12 位时间前缀命名', migrationFiles.filter((name) => !/^\d{12}_/.test(name)), [])
+check('迁移文件都以 12 或 14 位时间前缀命名', migrationFiles.filter((name) => !/^(?:\d{12}|\d{14})_/.test(name)), [])
 check('迁移文件不少于四批（stage1-stage4）', migrationFiles.length >= 4, true)
 const migrationSql = migrationFiles.map((name) => read(`database/migrations/${name}`)).join('\n')
 
@@ -263,9 +319,9 @@ const TABLE_OF_STORE = { users: 'profiles' }
 /**
  * 只有**用户数据 + 元数据**仓库需要在云端有表。
  * `sync_outbox` / `sync_state` 是本机状态（S2 新增），云端没有、也不该有对应表——
- * 待上传队列属于某台设备，同步状态属于「这台设备与哪个云端账号绑定」，
+ * 待上传队列属于某台设备，同步状态属于「这台设备上的当前 Auth UID」，
  * 两者上传云端都没有意义。所以这里用 `SCHEMA_STORES` 去掉设备仓库，
- * 而不是 `LOCAL_SCHEMA.stores`（那是数据库里的全部 13 张表）。
+ * 而不是 `LOCAL_SCHEMA.stores`（后者也含旧数据隔离与工作区状态）。
  */
 const stores = SCHEMA_STORES.filter((store) => !DEVICE_STORES.includes(store))
 check('本地有 10 张用户数据表 + 1 张元数据表', stores.length, 11)
@@ -429,8 +485,7 @@ check('引用选项的外键一律 on delete set null', optionFkRestrict.test(mi
 const examples = read('src/services/optionExamples.ts')
 const names = [...examples.matchAll(/'([^'\n]+)'/g)].map((match) => match[1]).filter((value) => /[\u4e00-\u9fa5]/.test(value))
 check('示例选项清单非空且可被扫描', names.length >= 10, true)
-// S4-T7 起只剩本地播种这一个消费者：播种发生在**本地**注册时，
-// 而云端账号是侧挂绑定（决策 D5：不迁密码、不搬身份），绑定流程不播种。
+// 示例选项仍在本地工作区播种，认证本身不负责播种。
 check('播种引用共享清单', read('src/services/local/optionSeed.ts').includes("from '../optionExamples'"), true)
 const duplicatedSeeds = ['src/services/local/optionSeed.ts'].filter((path) =>
   names.some((name) => read(path).includes(name)),
@@ -605,11 +660,11 @@ check(
  * 而紧跟着的 `daily_meal_items` 段**合法地**含有 `created_at`，
  * 一个宽窗口会把邻居的字段算进来，报出一条假失败。
  */
-function snapshotBlock(store) {
-  const start = stage6Code.indexOf(`'${store}', coalesce((`)
+function snapshotBlock(store, code = stage6Code) {
+  const start = code.indexOf(`'${store}', coalesce((`)
   if (start < 0) return ''
-  const end = stage6Code.indexOf("'[]'::jsonb)", start)
-  return stage6Code.slice(start, end < 0 ? stage6Code.length : end)
+  const end = code.indexOf("'[]'::jsonb)", start)
+  return code.slice(start, end < 0 ? code.length : end)
 }
 
 // 逐张表比对快照字段与本地契约。
@@ -635,6 +690,147 @@ for (const store of USER_DATA_STORES) {
   }
 }
 check('每张表的快照字段与本地契约完全一致', snapshotFieldProblems, [])
+
+// ---- 11. 当前有效认证门禁与 v3 快照（保留上面的历史迁移覆盖）----
+
+const IDENTITY_GATE = '20261011183805_account_identity_gate.sql'
+check('统一身份门禁迁移存在', existsSync(join(migrationDir, IDENTITY_GATE)), true)
+const identityCode = existsSync(join(migrationDir, IDENTITY_GATE))
+  ? read(`database/migrations/${IDENTITY_GATE}`).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--.*$/gm, '')
+  : ''
+const effectiveCode = migrationSql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--.*$/gm, '')
+
+/** 取完整美元引号函数定义；最后一次重定义才是迁移执行后的有效版本。 */
+function functionDefinition(code, schema, name) {
+  const pattern = new RegExp(
+    `create (?:or replace )?function ${schema}\\.${name}\\s*\\([\\s\\S]*?\\bas\\s+(\\$[\\w]*\\$)([\\s\\S]*?)\\1\\s*;`,
+    'gi',
+  )
+  const matches = [...code.matchAll(pattern)]
+  const definition = matches.at(-1)?.[0] ?? ''
+  const delimiter = matches.at(-1)?.[1] ?? '$$'
+  const headEnd = definition.indexOf(`as ${delimiter}`)
+  return {
+    definition,
+    head: headEnd < 0 ? '' : definition.slice(0, headEnd),
+    body: matches.at(-1)?.[2] ?? '',
+  }
+}
+
+check('允许名单只能保留一个可信 Auth UID',
+  /singleton\s+boolean\s+primary key[\s\S]*?check\s*\(\s*singleton\s*\)/.test(identityCode)
+    && /user_id\s+uuid\s+not null\s+unique\s+references\s+auth\.users\(id\)/.test(identityCode), true)
+check('允许名单启用 RLS 并收回全部应用角色权限',
+  /alter table private\.account_allowlist enable row level security/.test(identityCode)
+    && /revoke all on private\.account_allowlist from public, anon, authenticated, service_role/.test(identityCode), true)
+check('门禁迁移默认拒绝，不播种密码、Auth 身份或允许名单',
+  /(?:insert\s+into\s+(?:auth\.users|private\.account_allowlist)|(?:password_hash|encrypted_password))/.test(identityCode), false)
+
+const lookup = functionDefinition(effectiveCode, 'private', 'is_account_allowed')
+check('私有名单查询无调用方选择的 UID 参数',
+  /function private\.is_account_allowed\(\s*\)/.test(lookup.definition), true)
+check('私有名单查询限定 security definer 与空 search_path',
+  /security definer/.test(lookup.head) && /set search_path\s*=\s*''/.test(lookup.head), true)
+check('私有名单查询只验证 auth.uid 对应允许名单',
+  /a\.user_id\s*=\s*\(select auth\.uid\(\)\)/.test(lookup.body)
+    && /from private\.account_allowlist/.test(lookup.body)
+    && !/from public\./.test(lookup.body), true)
+check('门禁迁移只有私有名单查询使用 definer',
+  (identityCode.match(/\bsecurity definer\b/g) ?? []).length, 1)
+
+const access = functionDefinition(effectiveCode, 'public', 'account_access')
+check('account_access 使用 invoker、空 search_path 与可信 UID',
+  /security invoker/.test(access.head) && /set search_path\s*=\s*''/.test(access.head)
+    && /private\.is_account_allowed\(\)/.test(access.body)
+    && /'uid',\s*\(select auth\.uid\(\)\)/.test(access.body), true)
+check('account_access 仅返回 allowed 与 uid',
+  [...access.body.matchAll(/'([a-z_]+)',/g)].map((match) => match[1]).sort(), ['allowed', 'uid'])
+check('account_access 收回默认权限后只授权 authenticated',
+  /revoke all on function public\.account_access\(\) from public, anon, authenticated, service_role/.test(identityCode)
+    && /grant execute on function public\.account_access\(\) to authenticated/.test(identityCode), true)
+
+const gateLoop = identityCode.match(/foreach table_name in array array\[([\s\S]*?)\]\s*loop([\s\S]*?)end loop;/)
+const gatedTables = [...(gateLoop?.[1] ?? '').matchAll(/'(\w+)'/g)].map((match) => match[1]).sort()
+const gateBody = gateLoop?.[2] ?? ''
+check('限制性 UID 门禁覆盖 12 张公开表',
+  gatedTables, [...stores.map((store) => TABLE_OF_STORE[store] ?? store), 'sync_test_records'].sort())
+check('门禁同时用于 USING 与 WITH CHECK，限制所有 authenticated 操作',
+  /as restrictive for all to authenticated/.test(gateBody)
+    && /using\s*\(\(select private\.is_account_allowed\(\)\)\)/.test(gateBody)
+    && /with check\s*\(\(select private\.is_account_allowed\(\)\)\)/.test(gateBody), true)
+check('表访问先收回 PUBLIC/anon/authenticated 再显式授予应用权限',
+  /revoke all on public\.%I from public, anon, authenticated/.test(gateBody)
+    && /grant select, update on public\.%I to authenticated/.test(gateBody)
+    && /grant select, insert, update, delete on public\.%I to authenticated/.test(gateBody), true)
+
+const currentRpcProblems = []
+for (const name of REPLACE_FUNCS) {
+  const current = functionDefinition(effectiveCode, 'public', name)
+  if (!functionDefinition(identityCode, 'public', name).definition) currentRpcProblems.push(`${name}：缺少门禁重定义`)
+  if (!/security invoker/.test(current.head) || /security definer/.test(current.head)) {
+    currentRpcProblems.push(`${name}：不是显式 invoker`)
+  }
+  if (!/set search_path\s*=\s*''/.test(current.head)) currentRpcProblems.push(`${name}：未固定 search_path`)
+  const gateAt = current.body.indexOf('private.is_account_allowed()')
+  const firstDataAccess = /\b(?:from|into)\s+public\.\w+/i.exec(current.body)?.index ?? -1
+  if (!/if uid is null then raise exception/.test(current.body)
+      || gateAt < 0 || firstDataAccess < 0 || gateAt > firstDataAccess) {
+    currentRpcProblems.push(`${name}：读取或修改业务数据前未验证当前 UID 的门禁`)
+  }
+  if (!new RegExp(`revoke all on function public\\.${name}[^;]*from public, anon, authenticated, service_role`).test(identityCode)
+      || !new RegExp(`grant execute on function public\\.${name}[^;]*to authenticated`).test(identityCode)) {
+    currentRpcProblems.push(`${name}：执行权限未显式收回并授权`)
+  }
+}
+check('当前三个业务 RPC 以 invoker 在业务访问前核验 UID 门禁', currentRpcProblems, [])
+
+const currentSnapshot = functionDefinition(effectiveCode, 'public', 'export_cloud_snapshot').body
+check('当前云端快照输出格式 v3 与数据库 v8',
+  /'version',\s*3,\s*'db_version',\s*8/.test(currentSnapshot), true)
+check('当前云端快照输出 W 的单一资料行且不包含密码',
+  /'users',\s*jsonb_build_array\(jsonb_build_object\(\s*'id',\s*uid,\s*'username',\s*'W'/.test(currentSnapshot)
+    && /'created_at',/.test(currentSnapshot)
+    && !/password_hash|encrypted_password/.test(currentSnapshot), true)
+const currentProfile = currentSnapshot.slice(
+  currentSnapshot.indexOf("'users', jsonb_build_array("),
+  currentSnapshot.indexOf("'day_plans', coalesce(("),
+)
+check('当前快照资料行字段精确匹配 users 契约',
+  [...currentProfile.matchAll(/'([a-z_]+)',/g)].map((match) => match[1]).filter((name) => name !== 'users').sort(),
+  Object.keys(RECORD_SCHEMAS.users).sort())
+check('当前快照逐字段构造且无云端遗留列',
+  /to_jsonb\(\s*[a-z]\s*\)|exercise_content|plan_content/.test(currentSnapshot), false)
+const currentSnapshotProblems = []
+for (const store of USER_DATA_STORES) {
+  const block = snapshotBlock(store, currentSnapshot)
+  const actual = [...block.matchAll(/'([a-z_]+)',/g)].map((match) => match[1])
+    .filter((key) => key !== store).sort()
+  const expected = Object.keys(RECORD_SCHEMAS[store]).sort()
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) currentSnapshotProblems.push(store)
+}
+check('当前每张业务表快照字段精确匹配本地契约', currentSnapshotProblems, [])
+const currentImport = functionDefinition(effectiveCode, 'public', 'import_local_backup').body
+check('当前整体替换只用事务级历史日期豁免',
+  /set local molly\.allow_history\s*=\s*'on'/.test(currentImport)
+    && !/(^|[^l])\bset molly\.allow_history/.test(currentImport), true)
+check('当前整体替换兼容 v1/v2/v3，不能创建 Auth 身份',
+  /version not in\s*\(1,\s*2,\s*3\)/.test(currentImport)
+    && !/insert into (?:auth\.users|public\.profiles|private\.account_allowlist)/.test(currentImport), true)
+
+for (const [name, parent, option, item] of [
+  ['enforce_daily_meal_item_owner', 'meal_owner', 'food_options', 'daily_meal_items'],
+  ['enforce_daily_exercise_item_owner', 'plan_owner', 'exercise_options', 'daily_exercise_items'],
+]) {
+  const trigger = functionDefinition(effectiveCode, 'public', name)
+  check(`${item} 在写入边界核验父链与可选来源属于当前 UID`,
+    /security invoker/.test(trigger.head) && /set search_path\s*=\s*''/.test(trigger.head)
+      && new RegExp(`${parent}\\s*<>\\s*uid`).test(trigger.body)
+      && /option_owner\s*<>\s*uid/.test(trigger.body)
+      && new RegExp(`from public\\.${option}`).test(trigger.body)
+      && new RegExp(`create trigger ${item}_enforce_owner\\s+before insert or update on public\\.${item}`).test(identityCode), true)
+  check(`${item} 的触发器函数不开放 Data API 执行权限`,
+    new RegExp(`revoke all on function public\\.${name}\\(\\) from public, anon, authenticated, service_role`).test(identityCode), true)
+}
 
 console.log('')
 console.log(`结果：${passed}/${passed + failures.length} 通过`)

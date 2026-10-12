@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { App } from './app/App'
 import { MotionLabScreen } from './features/motion-lab/MotionLabScreen'
 import { startPushScheduler } from './services/api/syncService'
+import { initializeAuth } from './services/api/authService'
 import { cloudSyncConfigured } from './services/capabilities'
 import { UpdateNotice } from './shared/components/UpdateNotice'
 import { installViewportGuards } from './shared/appShell/viewportGuards'
@@ -41,12 +42,13 @@ if (!isMotionLab) {
   // 可能出现「第二次挂载刚拿到停止函数，就被第一次挂载的清理函数把监听器摘掉」——
   // 调度器静默失效，而界面一切正常，属于最难查的一类 bug。
   //
-  // 另外，队列里可能留着上次关页面时没推完的条目，登录页停留期间也应当继续补推。
+  // 队列只有在账号验证及工作区准备完成后才会继续上传。
   //
   // `cloudSyncConfigured` 这道判断**不能省**：`startPushScheduler` 是同步门面里
   // 唯一会加载 `sync/outbox` → `cloud/supabase`（约 222 kB）的入口，未配置云端时调它
   // 等于在启动阶段把 supabase 下载下来，「未配置时该 chunk 根本不下载」这条判据就破了。
   if (cloudSyncConfigured) void startPushScheduler()
+  void initializeAuth()
 }
 
 createRoot(document.getElementById('root')!).render(

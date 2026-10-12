@@ -1,5 +1,4 @@
 import type { BackupStore } from '../../services/api/backupFormat'
-import type { CloudBindingCase } from '../../services/api/syncService'
 import type { OptionKind } from '../../shared/types/options'
 
 /** 三个选项分区的标题，与 docs/02 选项页一致。 */
@@ -82,15 +81,12 @@ export const DELETE_CONFIRM = {
 export const ACCOUNT_TITLE = '账号与同步'
 
 /**
- * 后端说明文案。**不显示任何同步时间或同步状态**：
- * 说得出「上次同步时间」就等于暗示同步已经成功（docs/05 规则 6）。
- *
- * S1 起不再是「按后端二选一」的文案：数据落点恒为当前浏览器，
- * 云端同步是后续阶段才加的可选上行通道，加进来之前这里不该预告它。
+ * 统一账号与本机缓存说明。上传条数与时间由同步卡片单独展示，
+ * 离线使用仅限当前浏览器已经准备好的工作区。
  */
 export const ACCOUNT_TEXT = {
   mode: '统一账号',
-  body: '同一个账号同时对应本地数据与云端数据。本地写入优先保证响应速度，云端在后台上传；断网时仍可继续使用。',
+  body: '日程与选项归属于当前账号，编辑先保存在本机，再在账号联网验证后上传。断网时可继续使用当前浏览器已准备好的工作区缓存。',
 }
 
 // ---------------------------------------------------------------- 云端同步（S3 起，S4 补上传状态）
@@ -111,21 +107,8 @@ export const ACCOUNT_TEXT = {
 export const SYNC_TITLE = '云端同步'
 
 export const SYNC_UNAVAILABLE_TEXT = {
-  reason: '这个版本没有配置云端服务，云端同步不可用。',
-  body: '数据仍然保存在当前浏览器中，本地备份不受影响。',
-}
-
-export const SYNC_CONNECT_TEXT = {
-  unbound: '统一账号尚未连接云端',
-  body: '使用当前登录账号连接云端。连接后仍由本地数据库优先响应，变更会在后台等待上传。',
-  usernameLabel: '当前账号',
-  passwordLabel: '账号密码',
-  signInAction: '连接云端',
-  signUpAction: '补建云端身份',
-  confirmAction: '确认连接',
-  probing: '正在连接…',
-  /** 确认框里的关键一句：让用户知道点下去不会丢数据。 */
-  confirmNote: '连接只建立账号与数据的关系，不会改动任何一边的数据。',
+  reason: '这个版本没有配置账号认证服务，暂时无法登录。',
+  body: '登录和打开工作区需要完成账号认证；已有的本机数据不会因此清除。',
 }
 
 export const SYNC_BOUND_TEXT = {
@@ -137,7 +120,6 @@ export const SYNC_BOUND_TEXT = {
   lastErrorPrefix: '上传失败',
   neverPushed: '还没有上传过',
   unit: '条',
-  disconnectAction: '断开连接',
   /**
    * 待上传 > 0 时的说明。
    *
@@ -156,36 +138,8 @@ export const SYNC_BOUND_TEXT = {
   drainedNote: '本机没有待上传的变更。这不代表云端内容与本地完全一致。',
 }
 
-/**
- * 三种绑定情形的说明（`docs/18 §5.3`）。
- *
- * 只描述**现状**，不承诺动作：S3 还没有上传与恢复功能，
- * 这里若写成「将把本地数据上传到云端」，用户点完会发现什么也没发生。
- * 真正要执行替换的确认文案属于 S5。
- */
-export const SYNC_BINDING_CASE_TEXT: Record<CloudBindingCase, string> = {
-  'cloud-empty': '这个云端账号还没有数据。',
-  'both-sides': '云端账号已有数据，本地也有数据。',
-  'local-empty': '本地这个账号还没有数据，云端已有数据。',
-}
-
 export const SYNC_ERROR_TEXT = {
   statusFailed: '读取同步状态失败。',
-  connectFailed: '连接云端账号失败。',
-  disconnectFailed: '断开连接失败。',
-  noAccount: '请先登录本地账号。',
-}
-
-/**
- * 断开连接的确认文案。
- *
- * 必须把「丢的是队列、不是数据」说清楚：这一步既不动本地数据也不动云端数据，
- * 唯一消失的是「尚未上传的记录」——不说清楚，用户会以为断开等于删数据。
- */
-export const SYNC_DISCONNECT_CONFIRM = {
-  title: '断开云端账号？',
-  body: '本地数据与云端数据都不会被删除。但本机待上传的记录会被清空，断开期间的改动不会再上传。',
-  confirmLabel: '断开连接',
 }
 
 // ---------------------------------------------------------------- 整体替换（S5）
@@ -206,7 +160,7 @@ export const SYNC_DISCONNECT_CONFIRM = {
  */
 export const SYNC_REPLACE_TEXT = {
   sectionTitle: '整体替换',
-  body: '这两个操作会把一边的内容整体盖到另一边，用来换设备、搬家或灾难恢复。它们不会自动发生，只在下面点按钮时执行。',
+  body: '首次在当前浏览器登录，会自动读取云端内容并准备工作区。下面两个操作用于之后手动整体替换，被替换一侧的现有内容会被覆盖。',
 
   uploadAction: '上传本地数据到云端',
   restoreAction: '从云端恢复到本地',
@@ -217,12 +171,12 @@ export const SYNC_REPLACE_TEXT = {
 
   uploadConfirm: {
     title: '用本地数据替换云端？',
-    body: '云端账号里现有的全部数据会被删除，换成这份本地内容。云端原有的内容无法找回。本地数据不受影响。',
+    body: '此操作不可撤销。云端账号现有的全部业务数据会被删除，换成这份本地内容。云端原有的内容无法找回。',
     confirmLabel: '替换云端数据',
   },
   restoreConfirm: {
     title: '用云端数据替换本地？',
-    body: '本地这个账号现有的全部数据会被删除，换成云端的那份内容。本地原有的内容无法找回，除非你手上有导出的备份文件。云端数据不受影响。',
+    body: '此操作不可撤销。当前账号的本地业务数据和待上传编辑会被删除，换成云端内容。没有导出备份的本地编辑将无法找回。',
     confirmLabel: '替换本地数据',
   },
 
@@ -256,9 +210,9 @@ export const BACKUP_HINT =
 /**
  * 仓库中文名，用于把「共 N 条（日计划 3 · 常用食物 6）」翻译成人能读的摘要。
  *
- * 最后两项是设备状态表（S2）：它们**永远不会出现在备份摘要里**（备份不含设备仓库），
- * 但仓库名表要覆盖全部 13 张表，所以照样给它们一个说法，
- * 免得将来别处展示仓库名时出现英文表名。
+ * 设备状态表与认证改造新增的隔离仓库**永远不会出现在备份摘要里**
+ * （备份不含设备仓库），但仓库名表要覆盖 `LocalStore` 的全部成员，
+ * 所以照样给它们一个说法，免得将来别处展示仓库名时出现英文表名。
  */
 export const BACKUP_STORE_LABEL: Record<BackupStore, string> = {
   users: '账号',
@@ -274,6 +228,11 @@ export const BACKUP_STORE_LABEL: Record<BackupStore, string> = {
   routine_tasks: '家务',
   sync_outbox: '待上传队列',
   sync_state: '同步状态',
+  legacy_users: '旧账号隔离资料',
+  legacy_sync_state: '旧同步状态',
+  legacy_outbox: '旧待上传队列',
+  workspace_state: '工作区状态',
+  workspace_migrations: '工作区迁移记录',
 }
 
 export const BACKUP_EMPTY_NOTE = '当前账号还没有任何数据，导出的备份会没有内容可恢复。'
@@ -293,7 +252,7 @@ export const BACKUP_CLEAR_ACTION = '清空输入'
 /** 导入前确认：说清「替换」而不是「合并」，这是全流程里唯一会造成数据丢失的一步。 */
 export const BACKUP_IMPORT_CONFIRM = {
   title: '导入这份备份？',
-  body: '导入会用备份内容替换当前账号的全部数据，当前账号已有的计划与选项都会被清空，且无法撤销。其他本地账号不受影响。',
+  body: '导入会用备份内容替换当前账号的全部数据，当前账号已有的计划与选项都会被清空，且无法撤销。隔离的旧数据不受影响。',
   confirmLabel: '确认导入并替换',
 } as const
 

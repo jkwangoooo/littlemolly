@@ -55,11 +55,12 @@ const OUTBOX_OP: FieldRule = { type: 'string', oneOf: ['upsert', 'delete'] }
  * 并且 `check:local-data` 也会把设备状态当成业务数据去数。拆开之后两者互不干扰。
  *
  * - `user`：真正的用户数据。进备份、进同步队列。
- * - `meta`：`users`。只用于备份的外键自洽与来源账号展示；**不进同步**——
- *   本地账号是应用身份，云端账号是侧挂绑定，本地密码（djb2）不迁移（决策 D5）。
- * - `device`：`sync_outbox` / `sync_state`。纯粹的本机状态，不进备份、不同步。
+ * - `meta`：`users`。缓存当前 Auth UID 的资料，供工作区展示与备份外键自洽；
+ *   不保存密码、不建立身份，也不进同步队列。
+ * - `device`：同步队列、同步状态、旧数据隔离仓库及工作区准备/迁移记录；
+ *   只用于本机控制，不进备份、不上传。
  *
- * 这张表是**穷尽的**：`Record<LocalStore, ...>` 要求 13 张仓库一张不落，
+ * 这张表是**穷尽的**：`Record<LocalStore, ...>` 要求 18 张仓库一张不落，
  * 少写一张 TypeScript 直接报错，所以三分类永远不会与 `LocalStore` 走散。
  */
 const STORE_KIND: Record<LocalStore, 'user' | 'meta' | 'device'> = {
@@ -79,6 +80,11 @@ const STORE_KIND: Record<LocalStore, 'user' | 'meta' | 'device'> = {
   // ---- 设备状态：本机自己的账本 ----
   sync_outbox: 'device',
   sync_state: 'device',
+  legacy_users: 'device',
+  legacy_sync_state: 'device',
+  legacy_outbox: 'device',
+  workspace_state: 'device',
+  workspace_migrations: 'device',
 }
 
 function storesOfKind(kind: 'user' | 'meta' | 'device'): LocalStore[] {
@@ -91,7 +97,7 @@ export const USER_DATA_STORES: LocalStore[] = storesOfKind('user')
 export const META_STORES: LocalStore[] = storesOfKind('meta')
 /** 本机状态：不进备份、不进同步队列。 */
 export const DEVICE_STORES: LocalStore[] = storesOfKind('device')
-/** 全部仓库（13 张），顺序为「用户数据 → 元数据 → 设备状态」。 */
+/** 全部仓库（18 张），顺序为「用户数据 → 元数据 → 设备状态」。 */
 export const ALL_STORES: LocalStore[] = Object.keys(STORE_KIND) as LocalStore[]
 
 /** 同步队列里只可能出现用户数据仓库；元数据与设备状态永远不参与同步。 */
@@ -100,11 +106,11 @@ export function isSyncableStore(storeName: LocalStore): storeName is UserDataSto
 }
 
 /**
- * 13 张对象仓库的字段契约。
+ * 18 张对象仓库的字段契约。
  * 时间字段统一用 ISO 字符串；`note` / `morning_focus` 这类自由文本允许空串。
  */
 export const RECORD_SCHEMAS: Record<LocalStore, Record<string, FieldRule>> = {
-  users: { id: TEXT, username: TEXT, password_hash: TEXT, created_at: TIMESTAMP },
+  users: { id: TEXT, username: TEXT, created_at: TIMESTAMP },
 
   day_plans: {
     id: TEXT,
@@ -207,8 +213,8 @@ export const RECORD_SCHEMAS: Record<LocalStore, Record<string, FieldRule>> = {
     record_id: TEXT,
     op: OUTBOX_OP,
     /**
-     * 归属的本地账号 id（S4 补丁 ②）。推送时按它过滤（`outboxRules.entriesOfOwner`），
-     * 免得换过账号之后把上一个账号的改动推到这个账号绑定的云端。
+     * 归属的 Auth UID，字段名为兼容旧队列保留。推送按它过滤（`outboxRules.entriesOfOwner`），
+     * 防止把其他工作区的改动上传到当前账号。
      * `null` 表示写入时读不到会话（迁移期 / Node 脚本），这类条目永不被推送。
      */
     local_user_id: OPTIONAL_TEXT,
@@ -218,15 +224,33 @@ export const RECORD_SCHEMAS: Record<LocalStore, Record<string, FieldRule>> = {
   },
 
   /**
-   * 同步状态（**按本地账号一行**，`id` 就是本地账号 id，v7 起）。
+   * 同步状态按 Auth UID 一行，`id` 与业务 `user_id` 使用同一个 UID。
    *
-   * 早先是设备级单行（`id` 恒为 `singleton`），那样换本地账号后新账号会读到
-   * 上一任的云端绑定，把自己的数据推到别人的云端账号里——见 `localDb.ts` 的 v7 迁移。
+   * v8 将旧双身份状态隔离到 `legacy_sync_state`；现行状态不再另存 `cloud_user_id`。
+   * `cloud_email` 与 `bound_at` 只作资料和工作区准备时间，不能用于身份授权。
    *
    * `last_error` 在方案里是一个 `{ message, at }` 对象，这里**摊平成两列**：
    * 字段契约只支持标量，嵌套对象会让 `validateRecord` 无法表达。
    */
   sync_state: {
+    id: TEXT,
+    enabled: FLAG,
+    cloud_email: OPTIONAL_TEXT,
+    device_id: TEXT,
+    bound_at: OPTIONAL_TIMESTAMP,
+    last_push_at: OPTIONAL_TIMESTAMP,
+    last_restore_at: OPTIONAL_TIMESTAMP,
+    last_error_message: OPTIONAL_TEXT,
+    last_error_at: OPTIONAL_TIMESTAMP,
+    updated_at: TIMESTAMP,
+  },
+  legacy_users: {
+    id: TEXT,
+    username: TEXT,
+    created_at: TIMESTAMP,
+    isolated_at: TIMESTAMP,
+  },
+  legacy_sync_state: {
     id: TEXT,
     enabled: FLAG,
     cloud_user_id: OPTIONAL_TEXT,
@@ -238,6 +262,35 @@ export const RECORD_SCHEMAS: Record<LocalStore, Record<string, FieldRule>> = {
     last_error_message: OPTIONAL_TEXT,
     last_error_at: OPTIONAL_TIMESTAMP,
     updated_at: TIMESTAMP,
+    isolated_at: TIMESTAMP,
+  },
+  legacy_outbox: {
+    id: TEXT,
+    seq: ORDER,
+    store: { type: 'string', oneOf: USER_DATA_STORES },
+    record_id: TEXT,
+    op: OUTBOX_OP,
+    local_user_id: OPTIONAL_TEXT,
+    created_at: TIMESTAMP,
+    attempts: ORDER,
+    last_error: OPTIONAL_TEXT,
+    isolated_at: TIMESTAMP,
+  },
+  workspace_state: {
+    id: TEXT,
+    initialized: FLAG,
+    initialized_at: OPTIONAL_TIMESTAMP,
+    initialized_from: { type: 'string', nullable: true, oneOf: ['empty', 'cloud', 'legacy'] },
+    updated_at: TIMESTAMP,
+  },
+  workspace_migrations: {
+    id: TEXT,
+    source_owner: TEXT,
+    target_owner: TEXT,
+    status: { type: 'string', oneOf: ['completed'] },
+    record_count: ORDER,
+    started_at: TIMESTAMP,
+    completed_at: TIMESTAMP,
   },
 }
 
@@ -339,7 +392,7 @@ export function sanitizeRecord(
 /**
  * 契约覆盖的仓库清单，供回归脚本断言「不漏表」。
  *
- * 与 `ALL_STORES` 是同一个集合（13 张）——只是取值路径不同：这里从契约对象取键，
+ * 与 `ALL_STORES` 是同一个集合（18 张）——只是取值路径不同：这里从契约对象取键，
  * 那里从三分类表取键。两边都由 `Record<LocalStore, ...>` 兜底，
  * `check:sync` 再断言一次「两者相等」，避免将来有人只改了一边。
  */

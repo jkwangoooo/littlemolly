@@ -1,6 +1,58 @@
 # 幸福小Molly：开发交接
 
-## 当前交接摘要（2026-09-20）
+## 当前交接摘要（2026-10-13）
+
+**账密改造源码与本机自动验收已完成，本次尚未执行生产数据库迁移、W 账号准备、Vercel 环境更新或发布。** 现行认证方案以 [账密改造详细执行文档](docs/43-账密改造详细执行文档.md) 为准，实测结果见 [本地实施与部署交接](docs/44-账密改造本地实施与部署交接.md)，部署按 [部署执行说明](docs/27-deploy-runbook-for-codex.md) 操作。本页后续 S1-S6 与更早记录保留历史证据；其中本地注册、双身份绑定、换设备重新注册、Git 不可用和凭据缺失描述不再是当前规则。
+
+- Supabase Auth 是唯一认证来源。页面只有账号和密码，接受 `W` / `w`，内部标识为 `w@molly.local`；初始密码只在可信 Auth 管理入口设置，不进入源码、种子、前端环境变量或报告。
+- 资料、业务根表、同步状态和待上传项共用真实 Auth UID。IndexedDB 仍是业务唯一写入落点，`DATA_BACKEND` 恒为 `'local'`；界面只调用 `services/api/`，认证与同步编排动态加载，`cloud/` 保留四个传输模块。
+- 首次认证与新设备恢复需网络。未准备工作区先恢复该 UID 的云端数据，再开放业务和上传；恢复失败不当成云端为空。已准备工作区可临时离线编辑，联网身份重验后才补传。
+- 普通退出关闭本机工作区并保留本地业务、未上传队列；同账号重登打开原 UID 工作区。旧 localStorage 会话 JSON 不构成认证，旧异步结果不得写入新的工作区。
+- IndexedDB 升至 `DB_VERSION = 8`，共 18 张仓库。旧账号、旧同步状态和队列进入隔离范围；活动资料不保留密码认证信息。旧业务继续保全，不猜归属、不自动合并、不因清理账号级联删除。
+- 新业务备份为 v3，不含密码或 token；v1/v2 只读兼容，不从备份创建身份。导入按当前已验证 UID 检查完整关联、跨 owner ID 与同日期冲突。
+- 当前有 7 个追加 SQL 迁移，末项为 `20261011183805_account_identity_gate.sql`；目标为 12 张 public 表、四个应用 RPC、12 条 restrictive UID 门禁。生产必须核实实际迁移历史，已有库只执行缺失项，空库才使用完整合并 SQL。
+- PWA 安装预缓存本轮构建的认证与离线懒加载资源；首次登录后直接断网刷新和首次离线账号页已覆盖。更新安装失败时保留旧首页与旧资源，不因在线取得新首页破坏旧版本离线运行。
+- 本机四项部署凭据已存在，继续使用仓库外受保护配置，不重复索取、不输出值。真实 Supabase ref、W 的实际 UID、Auth 配置及现有线上提交尚未核验。
+
+### 当前基线
+
+下列是本轮已确认的实测结果，全部通过，最终命令退出码均为 0。
+
+| 命令 | 当前项数与状态 |
+| --- | --- |
+| `typecheck` / `lint` | 通过，退出码 0 |
+| `build:no-empty` | 通过，退出码 0 |
+| `check:dates` | 48/48 |
+| `check:local-data` | 75/75 |
+| `check:backup` | 96/96 |
+| `check:cloud-parity` | 114/114 |
+| `check:sync` | 149/149 |
+| `check:feedback` | 16/16 |
+| `node scripts/验证认证并发.mjs` | 12/12，退出码 0 |
+| `node scripts/验证旧工作区迁移.mjs` | 69/69（v6 19 项、v7 50 项） |
+| `node scripts/验证部署凭据护栏.mjs` | 20/20 |
+| `verify:local` | 172/172，退出码 0 |
+| `verify:pwa` | 64/64，退出码 0 |
+| `verify:sync` | 195/195，退出码 0 |
+| `verify:sql` | 87/87，退出码 0（本机临时 PostgreSQL 串行） |
+
+**项数变了要同步四处**：`README.md` 的命令清单、`scripts/launcher.mjs` 的 `note`、`docs/19-sync-execution-plan.md` §4 的当前基线表、本节当前基线。`verify:sql` 与浏览器验收串行执行，不放进启动器 `all`；反馈 16 项、认证并发 12 项、旧库迁移 69 项和部署凭据护栏 20 项也须交付前单独执行，命令见 `README.md`。本机 SQL 和隔离夹具通过不代表生产迁移、真实 Auth 或真机通过。
+
+### 当前待办
+
+1. 保留本机完整验收证据，完成文件差异与敏感内容复核并记录本地实施提交；将第 44 份文档和现行部署说明交给部署员。本地实现与验收已完成，生产操作仍按后续前置推进。
+2. 只读核实现有 Supabase/Vercel 项目、迁移历史、现网版本及旧业务数据。明确 W 的实际 Auth UID 与旧数据去向，完成备份和冲突预览后才处理 owner 迁移或旧身份清理。
+3. 通过可信 Auth 管理入口准备/核实 W、用户指定初始密码、确认状态、公开注册限制、所需身份入口与 URL 配置；密码策略拒绝则如实阻塞。实际用户存在后才写受保护的单行 UID allowlist。
+4. 核实表、RPC、RLS、GRANT 和旧 UID/JWT 门禁；数据库门禁默认拒绝。确认前置后写入 Vercel Production 构建变量并发布，不能将 `npm run deploy` 的有限成功输出当成全链路验收。
+5. 在真实 HTTPS 域名验证登录、退出重登、新设备恢复、断网重验、旧 JWT 门禁、首页、深链接、缓存头与真机 PWA。未上传且已被清除的编辑无法凭账号恢复。
+
+### Git 与发布状态
+
+`账密改造前版本^{}` 指向 `b646e6af9ea5bcacece0da90ef5e7532a619b261`，不移动或重建该保护标签。本轮开始时本地 HEAD 为 `0c28f32017dc57f150a1b551931c9e7ae90a6085`；本次实施提交与时间以最终 Git 记录为准，Git 当前可用。本轮不推送远端。Git 不包含浏览器数据库、Auth 用户和生产数据，源码回退不能代替数据恢复。
+
+现有正式域名为 `https://molly.lightwavecommunity.site`。本轮未执行生产操作，现网提交及所有真实认证/恢复/RLS/真机结果仍需验证。
+
+## 历史交接摘要（2026-09-20）
 
 - **两个缺陷已修复（2026-09-19）：并发建日计划撞唯一索引、换本地账号把数据推到别人的云端。** 完成报告见 `docs/24-two-defect-fixes-report.md`。这两项是 S4 收尾时标为「待用户裁决」的设计缺口，用户指示「直接完成，遇到问题查市面上相似软件的最佳实践」，于是按最佳实践定案并落地（**都改了业务行为**，不属于 S1–S6 任何一段）。
   - **① 读-改-写原子化**：`upsertDayPlan` 早先是「先全表找、找不到就 `put` 一条新的」，读与写隔着事务边界；两个并发调用会同时读到「不存在」，各建一条、各生成一个 id，第二条撞 `day_plans.user_date` 唯一索引，界面报 `Unable to add key to index 'user_date'`（休息日注册必然踩到：`useDayPlanData` 自动建 rest 计划与界面首次写入同时发生）。修法不是加锁，而是给 `localDb.ts` 新增 **`readModifyWrite`（事务内先读后写）**——IndexedDB 的事务在创建那一刻就开始，同一对象仓库上的两个 `readwrite` 事务**串行执行**，于是第二个调用读到的必然是第一个写好的结果。`upsertDayPlan` 改按 `user_date` 唯一索引读；同形状的 `setMealCompleted`（`daily_meals.plan_type` 也是唯一索引）一并改走它。
@@ -30,7 +82,7 @@
 - **推送已完成（2026-09-14）**：本机公钥已加入 GitHub，`git push -u origin main` 成功，分支跟踪已建立，远端 `main` 与本地 `HEAD` 一致、无未推送提交。后续提交按常规 `git push` 即可。
 - 下方阶段 1-3 的 Supabase 记录是历史证据，不代表现行本地模式，也不应改变当前 L0-L6 执行顺序。
 
-## 当前待办
+## 历史待办（2026-09-20）
 
 > **新窗口接手先读**：`docs/19-sync-execution-plan.md` §7（当前进度与各阶段报告索引）+ §4（验收基线，含 `verify:sql` 的口径）+ `docs/24-two-defect-fixes-report.md`（两处业务缺陷的定案）+ `docs/23-S4-completion-report.md`（S4 报告）。
 > **S5 已完成（2026-09-20）**，报告见 `docs/25-S5-completion-report.md`：六个迁移与三个 RPC 现在由 `npm run verify:sql` 在临时真库上验收，**不再只是静态检查**；那份报告的 §6「未验证项」就是剩下的全部工作（真实凭据 + 真机清单）。
@@ -54,13 +106,16 @@
    - 顺序建议：① 在真实项目按文件名顺序执行六个迁移并核对表 / 策略 / 触发器；② 关闭邮箱验证（或配好 SMTP），否则 `signUp` 拿不到会话（适配器会明确报错，不会假装登录成功）；③ 跑真实链路（注册 / 登录 / 刷新恢复 / 断网失败 / RLS 双账号）；④ 再验 S5 的两个整体替换（含历史日期触发器的受控豁免，方案见 `docs/13` §5）。
 4. L4/L5 遗留：真机软键盘顶起与 iOS 安全区（`env(safe-area-inset-bottom)`）待真机验收时人工确认/补齐。
 4. 每次阶段完成后运行 `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:dates`、`npm run check:local-data`、`npm run check:backup`、`npm run check:cloud-parity`、`npm run check:sync`，并运行 `npm run verify:local` 做真实浏览器闭环验收（桌面 1440x900 + 手机 390x844、无横向溢出、控制台无 error/warning、**未配置云端时整轮交互零跨域请求**）。**改动 PWA 外壳、manifest、图标或注册逻辑后另跑 `npm run verify:pwa`**（43 项，跑生产产物）；**改动同步引擎（`services/sync/`、`outboxRules.ts`、`localDb.ts` 的写入钩子、同步文案）后另跑 `npm run verify:sync`**（74 项，假云端 + CDP 拦截）；**改动 `database/migrations/` 或三个云端 RPC 后另跑 `npm run verify:sql`**（39 项，起临时 PostgreSQL 真跑迁移，需本机装 PostgreSQL 16+，可用 `MOLLY_PG_BIN` 指定 bin 目录；它**不放进 `all`**，因为 `all` 要能在任何开发机上跑完）。需要人工核对外观时加 `SHOT_DIR` 落盘截图。S1 起**不再有 `build:cloud`**：只有一个构建，也没有「两种产物互斥检索」这一步。
-   **当前基线**：`check:dates` 48 · `check:local-data` 62 · `check:backup` 62 · `check:cloud-parity` 78 · `check:sync` 113 · `verify:local` 125 · `verify:pwa` 49 · `verify:sync` 74 · `verify:sql` 39。
-   **项数变了要同步四处**：`README.md` 的命令清单、`scripts/launcher.mjs` 的 `note`、`docs/19` §4 的基线表、本行「当前基线」。
+   **历史基线（2026-09-20）**：`check:dates` 48 · `check:local-data` 62 · `check:backup` 62 · `check:cloud-parity` 78 · `check:sync` 113 · `verify:local` 125 · `verify:pwa` 49 · `verify:sync` 74 · `verify:sql` 39。
+   **历史计数记录保留不改**，当前项数与四处更新要求以本文件顶部为准。
 5. 新增对象仓库时按 `localDb.ts` 顶部四步走（`LocalStore` → `STORES` → `DB_VERSION` → `MIGRATIONS`），`check:local-data` 会强制这三处同时改；迁移只追加，不改写既有迁移。**同时必须在 `recordSchemas.ts` 的 `RECORD_SCHEMAS` 补该仓库字段契约**，否则 `put` 会在运行时抛「未定义字段」；`check:backup` 会比对仓库清单与契约同源。
 6. 改动 `localDb` 写入口径（`put` / `remove` / `runTransaction`）时注意：请求级错误必须经 `guardRequest` 上抛，只挂 `transaction.onerror` 会让「写失败」被当成成功。**S2 起这三个口还要多一个 `{ track }` 选项**，改它们之前先读 `docs/19` §5 的 S2 部分。
 7. R9 已在 L1 修复并纳入验收断言，不再挂账。
 
 ## 已有文档
+
+- `docs/43-账密改造详细执行文档.md`：现行账密改造方案，替代旧本地认证/云端绑定模型；包含身份、数据保全、首次恢复、验收与发布边界。
+- `docs/27-deploy-runbook-for-codex.md`：现行生产部署说明，包含真实项目核实、7 个迁移、可信 W 准备、UID 门禁、Vercel 发布和逐项真实验收。
 
 - `docs/00-product-scope.md`：功能边界和第一版验收。
 - `docs/01-architecture-data-contract.md`：模块边界、推荐技术基线、数据不变量。
@@ -80,8 +135,8 @@
 - `docs/15-next-session-handoff-and-prompt.md`：**新对话接手文档与实施提示词**（现状核对、验收基线、两条待办的完整可复制提示词与验收清单、已踩过的坑、本次交接产出）。
 - `docs/16-pwa-shell-completion-report.md`：PWA 外壳完成报告（manifest / 图标 / 手写 service worker / dev 不注册 / 保守更新 / 存储状态卡片；任务达成、验收证据、关键决策、缺陷与延后项、未验证项）。
 - `docs/17-options-page-ia-research.md`：**选项页信息架构调研 + 实施记录**（现状量化诊断、七条权威依据与出处、三个候选方案对比、推荐的「概览页 + 子屏」方案与落地约束；§8 记录已实施的结果与实测对比）。
-- `docs/18-sync-architecture-plan.md`：**数据架构升级方案**（本地优先 + 云端同步：现状盘点、四条能力拆解、明确不做的四件事、目标架构与五条核心原则、产物隔离判据的替换、本地/云端数据模型改动、同步引擎设计、服务层逐文件改造清单、Supabase/Vercel/Cloudflare 部署方案、S1–S6 阶段划分、风险与五个决策点）。**已定稿，五条决策已确认。**
-- `docs/19-sync-execution-plan.md`：**现行执行任务线 S1–S6**（已锁定决策、执行原则、各阶段任务表与验收门槛、项数基线、每步必须守住的东西）。**现行方向的唯一依据。**
+- `docs/18-sync-architecture-plan.md`：S1-S6 历史数据架构方案；本地写入与上传纪律继续有效，账号模型及首次恢复规则以第 43 份文档为准。
+- `docs/19-sync-execution-plan.md`：S1-S6 任务线与当前基线；本次认证改造的详细执行依据为第 43 份文档。
 - `docs/20-S1-completion-report.md`：S1 完成报告（架构切换与能力声明：任务达成、证据、关键决策、缺陷与延后项、未验证项）。
 - `docs/21-S2-completion-report.md`：S2 完成报告（本地变更追踪：两个设备状态仓库、仓库三分类、写入钩子、队列规则纯函数化、`check:sync`）。
 - `docs/22-S3-completion-report.md`：S3 完成报告（云端账号绑定与连接：绑定 ≠ 登录、三种绑定情形、探测不新增 SQL、状态聚合纯本地、懒加载是结构性的）。

@@ -25,9 +25,10 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync
 import { createServer } from 'node:http'
 import { createServer as createProbeServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { dirname, extname, join, normalize } from 'node:path'
+import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { findBrowser } from './lib/find-browser.mjs'
+import { createAuthFixture, FIXTURE_ENV, FIXTURE_PASSWORD } from './lib/auth-fixture.mjs'
 
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DIST_DIR = join(PROJECT_ROOT, 'dist')
@@ -112,8 +113,17 @@ ${items.map(([src, label]) => `  <li><img src="/${src}" width="96" height="96" a
 }
 
 function startStaticServer(root) {
+  const requestPaths = []
+  const failurePaths = new Set()
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+    requestPaths.push(url.pathname)
+
+    if (failurePaths.has(url.pathname)) {
+      response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
+      response.end('fixture asset unavailable')
+      return
+    }
 
     if (url.pathname === '/__icons-preview') {
       response.writeHead(200, { 'Content-Type': CONTENT_TYPES['.html'], 'Cache-Control': 'no-store' })
@@ -149,6 +159,8 @@ function startStaticServer(root) {
     })
     createReadStream(filePath).pipe(response)
   })
+  server.requestPaths = requestPaths
+  server.failurePaths = failurePaths
   return server
 }
 
@@ -178,13 +190,14 @@ async function listenWithRetry(server, port, attempts = 25) {
   return false
 }
 
-function runNpm(args, label) {
+function runNpm(args, label, buildEnv = FIXTURE_ENV) {
   return new Promise((resolve, reject) => {
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
     const child = spawn(npmCommand, args, {
       cwd: PROJECT_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
+      env: { ...process.env, ...buildEnv },
     })
     let output = ''
     child.stdout.on('data', (chunk) => {
@@ -210,6 +223,7 @@ async function startDevServer() {
   const child = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: PROJECT_ROOT,
     stdio: 'ignore',
+    env: { ...process.env, ...FIXTURE_ENV },
   })
   child.on('error', () => {})
 
@@ -279,6 +293,7 @@ class Cdp {
       }
     })
   }
+  on(method, handler) { this.handlers.set(method, handler) }
   send(method, params = {}) {
     const id = ++this.seq
     return new Promise((resolve, reject) => {
@@ -325,12 +340,15 @@ async function connect(port) {
  */
 const ENSURE_WORKDAY = `
   (async () => {
-    const label = (document.querySelector('.mode-card strong') || {}).textContent || '';
-    if (!label.includes('休息日')) return 'ALREADY_WORK:' + label;
+    const label = (document.querySelector('.bubble-page-heading') || {}).textContent || '';
+    if (label.includes('工作日')) return 'ALREADY_WORK:' + label;
+    if (!label.includes('休息日')) throw new Error('无法确定目标日模式：' + label);
     window.__p.clickContains('改为');
     await window.__p.wait(700);
     window.__p.clickText('确认切换');
     await window.__p.wait(1400);
+    const switchedLabel = (document.querySelector('.bubble-page-heading') || {}).textContent || '';
+    if (!switchedLabel.includes('工作日')) throw new Error('目标日未切换为工作日：' + switchedLabel);
     return 'SWITCHED';
   })()
 `
@@ -419,7 +437,7 @@ function scriptBuildParam(url) {
  *
  * 为什么另开一个浏览器实例：应用窗口必须换一个用户数据目录（同一个目录不能同时被两个
  * Chrome 实例占用），所以这是一个全新的存储分区——正好也顺带验证了「新设备 / 新分区
- * 首次打开独立窗口」的完整路径：注册 → 选项页 → 存储卡片。
+ * 首次打开独立窗口」的完整路径：认证 → 工作区准备 → 选项页 → 存储卡片。
  * 返回值里的 `card` 就是卡片读到的真实状态，`standalone` 是浏览器自己的回答。
  *
  * 截图必须用**这个窗口自己的** CDP 连接拍：主窗口的 `Page.captureScreenshot`
@@ -456,6 +474,7 @@ async function inspectStandaloneWindow(browserPath, appUrl, stamp) {
     if (!port) throw new Error('应用窗口的调试端口未就绪。')
 
     cdp = await connect(port)
+    await createAuthFixture().attach(cdp)
     await cdp.send('Runtime.enable')
     await cdp.send('Page.enable')
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
@@ -489,10 +508,10 @@ async function inspectStandaloneWindow(browserPath, appUrl, stamp) {
 
     await evaluate(`
       (async () => {
-        window.__p.fill('账号', ${JSON.stringify(`app${stamp}`)});
-        window.__p.fill('密码', 'verify123');
+        window.__p.fill('账号', 'W');
+        window.__p.fill('密码', ${JSON.stringify(FIXTURE_PASSWORD)});
         await window.__p.wait(200);
-        window.__p.clickText('注册');
+        window.__p.clickText('登录');
         await window.__p.wait(2400);
       })()
     `)
@@ -524,20 +543,20 @@ async function inspectStandaloneWindow(browserPath, appUrl, stamp) {
     }
     child.kill()
     await sleep(400)
-    rmSync(userDataDir, { recursive: true, force: true })
+    const cleanupPath = resolve(userDataDir)
+    if (!cleanupPath.startsWith(`${resolve(tmpdir())}${sep}molly-pwa-app-`)) throw new Error(`应用窗口清理路径越界：${cleanupPath}`)
+    rmSync(cleanupPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }
 }
 
 async function main() {
   const browserPath = findBrowser()
   const stamp = Date.now()
-  /** 账号（v5 起登录凭据是「账号 + 密码」）：3–20 位字母 / 数字 / 下划线。 */
-  const ACCOUNT = `pwa${stamp}`
-  const PASSWORD = 'verify123'
   const userDataDir = join(tmpdir(), `molly-pwa-${stamp}`)
   let child = null
   let devServer = null
   let server = null
+  let unconfiguredServer = null
   let port = null
 
   try {
@@ -671,10 +690,13 @@ async function main() {
     const launched = await launchBrowser(browserPath, userDataDir)
     child = launched.child
     const cdp = await connect(launched.port)
+    const fixture = createAuthFixture()
+    await fixture.attach(cdp)
     await cdp.send('Runtime.enable')
     await cdp.send('Log.enable')
     await cdp.send('Page.enable')
     await cdp.send('Network.enable')
+    await cdp.send('Network.setCacheDisabled', { cacheDisabled: true })
 
     const evaluate = async (expression) => {
       const outcome = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
@@ -727,7 +749,7 @@ async function main() {
     await navigate(devServer.url, 1500)
     // Vite dev 首次访问要预构建依赖，首屏可能比生产慢好几秒，因此轮询等文案出现，
     // 而不是赌一个固定等待时间——否则「dev 页面没起来」会被误读成「dev 注册了 SW」。
-    const devReady = await until(`document.body.innerText.includes('账号') && document.body.innerText.includes('注册')`, 30000)
+    const devReady = await until(`document.body.innerText.includes('账号') && !!document.querySelector('input[type=password]') && !document.body.innerText.includes('注册')`, 30000)
     const devState = await swState()
     record(
       'dev server 上渲染出登录页（确认 dev 页面确实跑起来了）',
@@ -750,7 +772,7 @@ async function main() {
     await shot('01-app-login')
 
     const loginText = await text()
-    record('生产构建首屏渲染登录页', loginText.includes('账号') && loginText.includes('注册'), firstLine(loginText, 60))
+    record('生产构建首屏仅渲染账号密码登录页', loginText.includes('账号') && loginText.includes('密码') && !loginText.includes('注册'), firstLine(loginText, 60))
 
     // manifest
     const manifest = JSON.parse(await evaluate(`fetch('/manifest.webmanifest').then((response) => response.text())`))
@@ -799,7 +821,7 @@ async function main() {
 
     // ---------------------------------------------------------------- 6 SW 注册与缓存
     const activated = await until(
-      `navigator.serviceWorker.ready.then((registration) => !!(registration.active && registration.active.state === 'activated'))`,
+      `navigator.serviceWorker.getRegistration().then((registration) => registration?.active?.state === 'activated')`,
       20000,
     )
     const registeredState = await swState()
@@ -809,10 +831,7 @@ async function main() {
       `active=${registeredState.active}, state=${registeredState.activeState}`,
     )
 
-    // 首次安装时页面还没被 SW 接管（刻意不 clients.claim），刷新一次才会进入受控状态。
-    await reload()
-    const controlledState = await swState()
-    record('刷新后页面由 service worker 接管', Boolean(controlledState.controller), String(controlledState.controller))
+    record('首次安装保持当前页面未受控，未静默接管', registeredState.controller === null)
 
     const report = await cacheReport()
     const cacheNames = Object.keys(report)
@@ -839,6 +858,18 @@ async function main() {
     const crossOrigin = shellEntries.filter((url) => new URL(url).origin !== origin)
     record('缓存里没有任何跨域条目（Supabase 之类一律不缓存）', crossOrigin.length === 0, crossOrigin.slice(0, 3).join(', ') || `${shellEntries.length} 条全部同源`)
 
+    const buildManifest = await evaluate(`fetch('/assets/shell-assets-${scriptBuildParam(registeredState.active)}.json').then(response => response.json())`)
+    const missingBuildAssets = buildManifest.authenticated.filter((name) =>
+      !shellEntries.includes(new URL(name, appUrl).href),
+    )
+    record(
+      '首次安装预缓存本轮构建的全部认证与离线懒加载资源',
+      buildManifest.build === scriptBuildParam(registeredState.active)
+        && missingBuildAssets.length === 0
+        && new URL(registeredState.active).searchParams.get('auth') === '1',
+      missingBuildAssets.length ? `缺少 ${missingBuildAssets.join(', ')}` : `${buildManifest.authenticated.length} 个本轮产物均已缓存`,
+    )
+
     const firstConsoleNoise = cdp.events.filter((event) => {
       if (event.method === 'Runtime.exceptionThrown') return true
       if (event.method === 'Log.entryAdded') return ['error', 'warning'].includes(event.params.entry.level)
@@ -851,33 +882,57 @@ async function main() {
       describeNoise(firstConsoleNoise),
     )
 
+    // Prepare a real SDK session and workspace before taking the app offline.
+    await evaluate(`window.__p.fill('账号','W');window.__p.fill('密码',${JSON.stringify(FIXTURE_PASSWORD)});window.__p.clickText('登录')`)
+    record('在线认证完成后开放当前账号工作区', await until(`!!document.querySelector('.bottom-nav')`, 20000) === true)
+    await evaluate(`window.__p.clickText('选项')`)
+    await sleep(800)
+    record('通过真实界面手动载入示例选项', await evaluate(`window.__p.clickText('载入示例选项')`) === 'OK')
+    await sleep(1000)
+    await evaluate(`document.querySelector('[data-option-entry=food]').click()`)
+    record('示例选项确实保存到当前本地工作区', await until(`document.body.innerText.includes('燕麦牛奶')`, 10000) === true)
+    await evaluate(`window.__p.clickText('返回日程')`)
+    record('首次在线登录及本地数据准备全程没有在线刷新', await until(`!!document.querySelector('.bottom-nav')`, 20000) === true && (await swState()).controller === null)
+
     // ---------------------------------------------------------------- 7 断网：模拟
+    fixture.offline = true
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+    console.log('首次登录后直接关闭静态服务器，验证没有第二次在线刷新。')
     await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 })
     await reload()
     const offlineEmulated = await text()
-    record('CDP 模拟断网后刷新仍渲染登录页', offlineEmulated.includes('账号') && offlineEmulated.includes('注册'), firstLine(offlineEmulated, 60))
+    record('首次安装登录后直接断网刷新，进入已准备工作区缓存', offlineEmulated.includes('执行今天') && !offlineEmulated.includes('注册'), firstLine(offlineEmulated, 60))
+    const controlledState = await swState()
+    record('首次刷新在离线状态由 service worker 接管', Boolean(controlledState.controller), String(controlledState.controller))
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
 
     // ---------------------------------------------------------------- 8 断网：真的关掉服务器
-    server.closeAllConnections?.()
-    await new Promise((resolve) => server.close(resolve))
-    console.log('已关闭静态服务器，验证真实断网。')
+    console.log('静态服务器保持关闭，验证真实断网。')
 
     await reload(3500)
     const offlineReal = await text()
-    record('关掉服务器后刷新仍渲染登录页（应用壳来自缓存）', offlineReal.includes('账号') && offlineReal.includes('注册'), firstLine(offlineReal, 60))
-
-    const registeredOffline = await evaluate(`
-      (async () => {
-        window.__p.fill('账号', ${JSON.stringify(ACCOUNT)});
-        window.__p.fill('密码', ${JSON.stringify(PASSWORD)});
-        await window.__p.wait(200);
-        window.__p.clickText('注册');
-        await window.__p.wait(2200);
-        return window.__p.text();
-      })()
-    `)
-    record('断网时仍能注册并进入日计划页（IndexedDB 离线可写）', registeredOffline.includes('执行今天'), firstLine(registeredOffline, 70))
+    record('关掉服务器后刷新仍打开当前缓存工作区（应用壳来自缓存）', offlineReal.includes('执行今天') && !offlineReal.includes('注册'), firstLine(offlineReal, 60))
+    await evaluate(`window.__p.clickText('选项')`)
+    if (await until(`!!document.querySelector('[data-option-entry="account"]')`, 5000) !== true) throw new Error('离线账号入口未出现')
+    await evaluate(`document.querySelector('[data-option-entry="account"]').click()`)
+    if (await until(`!!document.querySelector('.account-card [role="status"]')`, 5000) !== true) throw new Error('离线账号说明未出现')
+    const offlineNotice = await evaluate(`document.querySelector('.account-card [role="status"]').textContent`)
+    record('离线账号界面明确说明当前使用设备缓存', /无法验证账号/.test(offlineNotice) && /这台设备的缓存/.test(offlineNotice) && /联网验证后上传/.test(offlineNotice), firstLine(offlineNotice, 120))
+    const offlineCountsReady = await until(
+      `(() => {
+        const card = document.querySelector('.sync-card');
+        return !!card && /待上传\\s+\\d+\\s+条/.test(card.innerText)
+          && /本地共\\s+[1-9]\\d*\\s+条/.test(card.innerText)
+          && !card.querySelector('[role="alert"]')
+          && !card.innerText.includes('正在读取上传状态');
+      })()`,
+      7000,
+    )
+    const offlineSyncText = await evaluate(`document.querySelector('.sync-card')?.innerText ?? ''`)
+    record('首次离线打开账号页能读取本地与待上传条数，无读取失败或加载滞留', offlineCountsReady === true, firstLine(offlineSyncText, 220))
+    await evaluate(`document.querySelector('.topbar-back button').click()`)
+    if (await until(`!!document.querySelector('[data-option-entry="food"]')`, 5000) !== true) throw new Error('离线选项概览未恢复')
 
     // 概览只显示入口与数量，清单在各自的子屏里：进「常用食物」读一次，再进「固定补剂」读一次。
     const optionsOffline = JSON.parse(
@@ -909,6 +964,7 @@ async function main() {
     if (!(await listenWithRetry(server, port))) throw new Error(`静态服务器无法在 ${port} 上恢复。`)
     console.log(`静态服务器已恢复：${appUrl}`)
 
+    fixture.offline = false
     await reload()
     const backOnline = await text()
     record('恢复网络后刷新，会话与数据仍在（仍停在已登录状态）', backOnline.includes('执行今天') || backOnline.includes('选项'), firstLine(backOnline, 60))
@@ -1075,16 +1131,32 @@ async function main() {
     )
     await evaluate(`window.__p.clickText('返回日程')`)
     await sleep(900)
-    const scheduleSafeArea = JSON.parse(await evaluate(`JSON.stringify({ navPaddingBottom: parseFloat(getComputedStyle(document.querySelector('.bottom-nav')).paddingBottom) || 0, pagePaddingBottom: parseFloat(getComputedStyle(document.querySelector('.page')).paddingBottom) || 0 })`))
+    const scheduleSafeArea = JSON.parse(await evaluate(`
+      (() => {
+        const nav = document.querySelector('.bottom-nav');
+        const box = nav.getBoundingClientRect();
+        return JSON.stringify({
+          navBottomOffset: parseFloat(getComputedStyle(nav).bottom) || 0,
+          navTop: box.top,
+          navBottom: box.bottom,
+          controlsBottom: Math.max(...[...nav.querySelectorAll('button')].map(button => button.getBoundingClientRect().bottom)),
+          viewportBottom: window.innerHeight,
+          pagePaddingBottom: parseFloat(getComputedStyle(document.querySelector('.page')).paddingBottom) || 0,
+        });
+      })()
+    `))
     record(
       'iOS 安全区：选项页无底栏且自身为 Home 指示条让出空间',
       insetsApplied &&
         optionsSafeArea.viewport.includes('viewport-fit=cover') &&
         optionsSafeArea.hasBottomNav === false &&
         optionsSafeArea.pagePaddingBottom === 34 &&
-        scheduleSafeArea.navPaddingBottom === 34 &&
+        scheduleSafeArea.navBottomOffset === 42 &&
+        scheduleSafeArea.navTop >= 0 &&
+        scheduleSafeArea.navBottom <= scheduleSafeArea.viewportBottom - 34 &&
+        scheduleSafeArea.controlsBottom <= scheduleSafeArea.viewportBottom - 34 &&
         scheduleSafeArea.pagePaddingBottom === 94,
-      `viewport-fit=cover=${optionsSafeArea.viewport.includes('viewport-fit=cover')}, 选项底栏=${optionsSafeArea.hasBottomNav}, 选项页 padding-bottom=${optionsSafeArea.pagePaddingBottom}px, 日程导航 padding-bottom=${scheduleSafeArea.navPaddingBottom}px, 日程页 padding-bottom=${scheduleSafeArea.pagePaddingBottom}px（期望 选项无底栏 / 34，日程 34 / 94）`,
+      `viewport-fit=cover=${optionsSafeArea.viewport.includes('viewport-fit=cover')}, 选项底栏=${optionsSafeArea.hasBottomNav}, 选项页 padding-bottom=${optionsSafeArea.pagePaddingBottom}px, 日程导航 bottom=${scheduleSafeArea.navBottomOffset}px, 按钮底部=${scheduleSafeArea.controlsBottom}px ≤ 安全区起点${scheduleSafeArea.viewportBottom - 34}px, 日程页 padding-bottom=${scheduleSafeArea.pagePaddingBottom}px`,
     )
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }).catch(() => {})
 
@@ -1121,12 +1193,27 @@ async function main() {
         const dialog = document.querySelector(${JSON.stringify(selector)});
         const actions = dialog ? dialog.querySelector('.actions') : null;
         const body = dialog ? dialog.querySelector('.editor-body') : null;
+        const title = dialog ? dialog.querySelector('h2') : null;
+        let bodyScrollWorks = false;
+        if (body && body.clientHeight > 0) {
+          const previousScroll = body.scrollTop;
+          body.scrollTop = body.scrollHeight;
+          bodyScrollWorks = body.scrollTop >= body.scrollHeight - body.clientHeight - 1;
+          body.scrollTop = previousScroll;
+        }
         return JSON.stringify({
           found: Boolean(dialog),
           insetVar: document.documentElement.style.getPropertyValue('--vv-keyboard-inset'),
           heightVar: document.documentElement.style.getPropertyValue('--vv-height'),
           top: dialog ? Math.round(dialog.getBoundingClientRect().top) : null,
           bottom: dialog ? Math.round(dialog.getBoundingClientRect().bottom) : null,
+          titleTop: title ? Math.round(title.getBoundingClientRect().top) : null,
+          titleBottom: title ? Math.round(title.getBoundingClientRect().bottom) : null,
+          bodyTop: body ? Math.round(body.getBoundingClientRect().top) : null,
+          bodyBottom: body ? Math.round(body.getBoundingClientRect().bottom) : null,
+          bodyHeight: body ? body.clientHeight : 0,
+          bodyScrollWorks,
+          actionsTop: actions ? Math.round(actions.getBoundingClientRect().top) : null,
           actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom) : null,
           hasScrollableBody: Boolean(body) && getComputedStyle(body).overflowY === 'auto',
         });
@@ -1145,10 +1232,10 @@ async function main() {
 
     // ① 底部抽屉：用「准备明天 → 三餐」打开（三餐面板内容多，仍然走抽屉）。
     // 安全区检查结束后已经返回日程页；从「准备明天」打开三餐面板。
-    await evaluate(`window.__p.clickText('执行今天')`)
-    await sleep(1400)
-    await evaluate(`window.__p.clickText('准备明天')`)
-    await sleep(1800)
+    if (await evaluate(`window.__p.clickText('今天')`) !== 'OK') throw new Error('日程今天入口未出现')
+    if (await until(`!!document.querySelector('.bubble-stage[aria-label="执行今天"]')`, 5000) !== true) throw new Error('今天日程未渲染')
+    if (await evaluate(`window.__p.clickText('明天')`) !== 'OK') throw new Error('日程明天入口未出现')
+    if (await until(`!!document.querySelector('.bubble-stage[aria-label="准备明天"]')`, 5000) !== true) throw new Error('明天日程未渲染')
 
     // 目标日必须先确认为工作日，再往下走。
     //
@@ -1168,32 +1255,43 @@ async function main() {
 
     await evaluate(`(() => { const toggle = document.querySelector('[data-section-toggle=prepare]'); if (toggle && toggle.getAttribute('aria-expanded') === 'false') toggle.click(); return 'expanded'; })()`)
     await sleep(500)
-    await until(`document.querySelector('[aria-label=准备明天]') !== null`, 5000)
-    const mealsOpened = await evaluate(`(() => { const node = document.querySelector('[data-node-id=meal-breakfast]'); if (!node) return 'NOT_FOUND:meal-breakfast'; for (const type of ['pointerdown', 'pointerup']) node.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, isPrimary: true, button: 0, clientX: 10, clientY: 10 })); return 'OK'; })()`)
+    if (await until(`!!document.querySelector('.rhythm-bubble[data-node-id="meals_ready"]')`, 5000) !== true) throw new Error('未找到三餐准备气泡')
+    const mealPosition = await evaluate(`(()=>{const node=document.querySelector('.rhythm-bubble[data-node-id="meals_ready"]');node.scrollIntoView({block:'center'});const r=node.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`)
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...mealPosition })
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...mealPosition })
+    const mealsOpened = '真实鼠标点击'
     await sleep(500)
-    await evaluate(`(() => { const button = document.querySelector('[data-editor-open=meals]'); if (!button) return 'NOT_FOUND:meals-editor'; button.click(); return 'OK'; })()`)
+    await evaluate(`(() => { const button = [...document.querySelectorAll('.bubble-detail-sheet button')].find(item=>item.textContent.trim()==='编辑'); if (!button) return 'NOT_FOUND:meals-editor'; button.click(); return 'OK'; })()`)
     await sleep(1500)
     await sleep(1200)
     await until(`Boolean(document.querySelector('[data-editor-backdrop=bottom] .bottom-sheet'))`, 5000)
     const sheetKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('[data-editor-backdrop=bottom] .bottom-sheet')))
     record(
       '软键盘弹出（可视视口缩到 508）时底部抽屉整体让开键盘',
-      sheetKeyboard.found && sheetKeyboard.insetVar === '336px' && sheetKeyboard.bottom !== null && sheetKeyboard.bottom <= 508,
-      `打开三餐=${mealsOpened}, --vv-keyboard-inset=${sheetKeyboard.insetVar}, --vv-height=${sheetKeyboard.heightVar}, 抽屉 ${sheetKeyboard.top}→${sheetKeyboard.bottom}（可视区 0→508）`,
+      sheetKeyboard.found && sheetKeyboard.insetVar === '336px' &&
+        sheetKeyboard.top !== null && sheetKeyboard.top >= 0 &&
+        sheetKeyboard.bottom !== null && sheetKeyboard.bottom <= 508 &&
+        sheetKeyboard.titleTop !== null && sheetKeyboard.titleTop >= 0 &&
+        sheetKeyboard.titleBottom !== null && sheetKeyboard.titleBottom <= 508,
+      `打开三餐=${mealsOpened}, --vv-keyboard-inset=${sheetKeyboard.insetVar}, --vv-height=${sheetKeyboard.heightVar}, 抽屉 ${sheetKeyboard.top}→${sheetKeyboard.bottom}, 标题 ${sheetKeyboard.titleTop}→${sheetKeyboard.titleBottom}（可视区 0→508）`,
     )
     record(
       '底部抽屉的「保存 / 取消」仍在可见区域内，内容可独立滚动',
-      sheetKeyboard.actionsBottom !== null && sheetKeyboard.actionsBottom <= 508 && sheetKeyboard.hasScrollableBody === true,
-      `操作区底部=${sheetKeyboard.actionsBottom}（≤508 即可见）, 内容区可滚动=${sheetKeyboard.hasScrollableBody}`,
+      sheetKeyboard.actionsTop !== null && sheetKeyboard.actionsTop >= 0 &&
+        sheetKeyboard.actionsBottom !== null && sheetKeyboard.actionsBottom <= 508 &&
+        sheetKeyboard.bodyTop !== null && sheetKeyboard.bodyTop >= 0 &&
+        sheetKeyboard.bodyBottom !== null && sheetKeyboard.bodyBottom <= sheetKeyboard.actionsTop &&
+        sheetKeyboard.bodyHeight > 0 && sheetKeyboard.hasScrollableBody === true && sheetKeyboard.bodyScrollWorks,
+      `操作区 ${sheetKeyboard.actionsTop}→${sheetKeyboard.actionsBottom}（可视区 0→508）, 内容区 ${sheetKeyboard.bodyTop}→${sheetKeyboard.bodyBottom}, 独立滚动到底=${sheetKeyboard.bodyScrollWorks}`,
     )
     await evaluate(restoreVisualViewport)
     await evaluate(`window.__p.clickText('取消')`)
     await sleep(900)
 
     // ② 居中卡片：自定义事项改用的形态，同样要躲开键盘（否则卡片下半截被键盘盖住）。
-    await evaluate(`window.__p.clickText('执行今天')`)
-    await sleep(1400)
-    const taskEditorOpened = await evaluate(`(() => { const button = document.querySelector('[data-editor-open=task]'); if (!button) return 'NOT_FOUND:task-editor'; button.click(); return 'OK'; })()`)
+    if (await evaluate(`window.__p.clickText('今天')`) !== 'OK') throw new Error('日程今天入口未出现')
+    if (await until(`!!document.querySelector('.bubble-stage[aria-label="执行今天"]')`, 5000) !== true) throw new Error('今天日程未渲染')
+    const taskEditorOpened = await evaluate(`(() => { const button = document.querySelector('.bubble-add-task'); if (!button) return 'NOT_FOUND:task-editor'; button.click(); return 'OK'; })()`)
     if (taskEditorOpened !== 'OK') throw new Error(taskEditorOpened)
     await sleep(1400)
     await sleep(1200)
@@ -1202,13 +1300,21 @@ async function main() {
     const cardKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('[data-editor-backdrop=center] .center-card')))
     record(
       '软键盘弹出时居中卡片整体让开键盘（没有被顶到键盘下面）',
-      cardKeyboard.found && cardKeyboard.insetVar === '336px' && cardKeyboard.top >= 0 && cardKeyboard.bottom <= 508,
-      `--vv-keyboard-inset=${cardKeyboard.insetVar}, 卡片 ${cardKeyboard.top}→${cardKeyboard.bottom}（可视区 0→508）`,
+      cardKeyboard.found && cardKeyboard.insetVar === '336px' &&
+        cardKeyboard.top !== null && cardKeyboard.top >= 0 &&
+        cardKeyboard.bottom !== null && cardKeyboard.bottom <= 508 &&
+        cardKeyboard.titleTop !== null && cardKeyboard.titleTop >= 0 &&
+        cardKeyboard.titleBottom !== null && cardKeyboard.titleBottom <= 508,
+      `--vv-keyboard-inset=${cardKeyboard.insetVar}, 卡片 ${cardKeyboard.top}→${cardKeyboard.bottom}, 标题 ${cardKeyboard.titleTop}→${cardKeyboard.titleBottom}（可视区 0→508）`,
     )
     record(
       '居中卡片的「保存 / 取消」仍在可见区域内，内容可独立滚动',
-      cardKeyboard.actionsBottom !== null && cardKeyboard.actionsBottom <= 508 && cardKeyboard.hasScrollableBody === true,
-      `操作区底部=${cardKeyboard.actionsBottom}（≤508 即可见）, 内容区可滚动=${cardKeyboard.hasScrollableBody}`,
+      cardKeyboard.actionsTop !== null && cardKeyboard.actionsTop >= 0 &&
+        cardKeyboard.actionsBottom !== null && cardKeyboard.actionsBottom <= 508 &&
+        cardKeyboard.bodyTop !== null && cardKeyboard.bodyTop >= 0 &&
+        cardKeyboard.bodyBottom !== null && cardKeyboard.bodyBottom <= cardKeyboard.actionsTop &&
+        cardKeyboard.bodyHeight > 0 && cardKeyboard.hasScrollableBody === true && cardKeyboard.bodyScrollWorks,
+      `操作区 ${cardKeyboard.actionsTop}→${cardKeyboard.actionsBottom}（可视区 0→508）, 内容区 ${cardKeyboard.bodyTop}→${cardKeyboard.bodyBottom}, 独立滚动到底=${cardKeyboard.bodyScrollWorks}`,
     )
     await shot('08-task-card-mobile')
     await evaluate(restoreVisualViewport)
@@ -1254,7 +1360,7 @@ async function main() {
             freeSpace: last ? Math.round(regionBox.bottom - last.getBoundingClientRect().bottom) : null,
             regionBottom: Math.round(regionBox.bottom),
             navTop: Math.round(document.querySelector('.bottom-nav').getBoundingClientRect().top),
-            modeLabel: (document.querySelector('.mode-card strong') || {}).textContent || '',
+            modeLabel: (document.querySelector('.bubble-page-heading') || {}).textContent || '',
             breakdown: children.map((el) => Math.round(el.getBoundingClientRect().height) + ':' + String(el.className).split(' ')[0]).join(' '),
           });
         })()
@@ -1288,6 +1394,121 @@ async function main() {
       describeNoise(noisy),
     )
 
+    const verifiedIndex = await evaluate(`caches.open('molly-shell-${newStamp}').then(cache => cache.match('/index.html')).then(response => response.text())`)
+    const failedBuildOutput = await runNpm(['run', 'build:no-empty'], 'npm run build:no-empty（更新资源失败夹具）')
+    const failedManifestPath = failedBuildOutput.match(/assets\/shell-assets-\d+\.json/)?.[0]
+    if (!failedManifestPath) throw new Error('失败更新构建没有输出资源清单。')
+    const failedManifest = JSON.parse(readFileSync(join(DIST_DIR, failedManifestPath), 'utf8'))
+    const failedAsset = failedManifest.authenticated.find((name) => /\/status-[^/]+\.js$/.test(name))
+    if (!failedAsset) throw new Error('失败更新夹具没有找到账号页懒加载资源。')
+    const failedAssetPath = new URL(failedAsset, appUrl).pathname
+    const failureRequestStart = server.requestPaths.length
+    server.failurePaths.add(failedAssetPath)
+    await reload(3000)
+    const failureSettled = await until(
+      `navigator.serviceWorker.getRegistration().then(registration =>
+        !!registration?.active && registration.active.scriptURL.includes('build=${newStamp}&')
+        && !registration.waiting && !registration.installing)`,
+      20000,
+    )
+    record(
+      '必需离线资源失败时新版本拒绝安装，不提示已下载',
+      failureSettled === true && failedManifest.build !== newStamp
+        && server.requestPaths.slice(failureRequestStart).includes(failedAssetPath)
+        && await evaluate(`!document.querySelector('[data-update-notice]')`),
+      `拒绝资源=${failedAssetPath}，活动构建=${scriptBuildParam((await swState()).active)}`,
+    )
+    const retainedIndex = await evaluate(`caches.open('molly-shell-${newStamp}').then(cache => cache.match('/index.html')).then(response => response.text())`)
+    record(
+      '在线取得新首页且新安装失败后，旧版本离线首页保持完整',
+      retainedIndex === verifiedIndex && retainedIndex !== readFileSync(join(DIST_DIR, 'index.html'), 'utf8'),
+    )
+    fixture.offline = true
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+    await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 })
+    await reload()
+    record(
+      '更新失败后真实断网刷新仍使用完整旧工作区',
+      await until(`!!document.querySelector('.bottom-nav')`, 15000) === true
+        && scriptBuildParam((await swState()).active) === newStamp,
+      firstLine(await text(), 120),
+    )
+    await evaluate(`window.__p.clickText('选项')`)
+    if (await until(`!!document.querySelector('[data-option-entry="account"]')`, 5000) !== true) throw new Error('更新失败后离线账号入口未出现')
+    await evaluate(`document.querySelector('[data-option-entry="account"]').click()`)
+    record(
+      '更新失败后首次离线账号页仍可加载资源并读取本地条数',
+      await until(`(() => {
+        const card = document.querySelector('.sync-card');
+        return !!card && /本地共\\s+[1-9]\\d*\\s+条/.test(card.innerText)
+          && /待上传\\s+\\d+\\s+条/.test(card.innerText)
+          && !card.querySelector('[role="alert"]');
+      })()`, 7000) === true,
+      firstLine(await evaluate(`document.querySelector('.sync-card')?.innerText ?? ''`), 180),
+    )
+    await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
+    fixture.offline = false
+    server.failurePaths.clear()
+    if (!(await listenWithRetry(server, port))) throw new Error('更新失败验收后无法恢复静态服务器。')
+
+    // 缺配置的生产构建也安装真实 SW，检查服务器请求，包含 SW 自己发起的预缓存。
+    await runNpm(['run', 'build:no-empty'], 'npm run build:no-empty（未配置 Auth）', {
+      VITE_SUPABASE_URL: '',
+      VITE_SUPABASE_ANON_KEY: '',
+    })
+    const unconfiguredPort = await findFreePort()
+    unconfiguredServer = startStaticServer(DIST_DIR)
+    if (!(await listenWithRetry(unconfiguredServer, unconfiguredPort))) throw new Error('未配置构建服务器无法监听。')
+    const unconfiguredUrl = `http://127.0.0.1:${unconfiguredPort}/`
+    await cdp.send('Storage.clearDataForOrigin', {
+      origin: new URL(unconfiguredUrl).origin,
+      storageTypes: 'indexeddb,local_storage,cache_storage,service_workers',
+    })
+    const authBeforeUnconfigured = fixture.auth.length + fixture.rest.length
+    await navigate(unconfiguredUrl)
+    const unconfiguredReady = await until(`document.body.innerText.includes('未配置') && !!document.querySelector('input[type=password]')`, 10000)
+    record(
+      '未配置 Auth 的生产构建如实封闭业务并显示配置原因',
+      unconfiguredReady === true && await evaluate(`!document.querySelector('.bottom-nav')`),
+      firstLine(await text(), 120),
+    )
+    const unconfiguredInstalled = await until(
+      `navigator.serviceWorker.getRegistration().then(registration => registration?.active?.state === 'activated')`,
+      20000,
+    )
+    const unconfiguredState = await swState()
+    record(
+      '未配置 Auth 的生产构建安装独立离线资源清单',
+      unconfiguredInstalled === true && new URL(unconfiguredState.active).searchParams.get('auth') === '0',
+      String(unconfiguredState.active),
+    )
+    const unconfiguredManifest = await evaluate(`fetch('/assets/shell-assets-${scriptBuildParam(unconfiguredState.active)}.json').then(response => response.json())`)
+    const cloudOnlyPaths = unconfiguredManifest.authenticated
+      .filter((name) => !unconfiguredManifest.local.includes(name))
+      .map((name) => new URL(name, unconfiguredUrl).pathname)
+    const unconfiguredReport = await cacheReport()
+    const unconfiguredEntries = Object.values(unconfiguredReport).flat()
+    const cloudRequests = unconfiguredServer.requestPaths.filter((path) => cloudOnlyPaths.includes(path))
+    record(
+      '未配置时页面与 SW 预缓存均不请求 SDK，不缓存云端模块或访问 Auth',
+      cloudOnlyPaths.length > 0 && cloudRequests.length === 0
+        && !unconfiguredEntries.some((url) => cloudOnlyPaths.includes(new URL(url).pathname))
+        && fixture.auth.length + fixture.rest.length === authBeforeUnconfigured
+        && unconfiguredManifest.local.every((name) => unconfiguredEntries.includes(new URL(name, unconfiguredUrl).href)),
+      `云端产物 ${cloudOnlyPaths.length} 个，请求 ${cloudRequests.length} 次，本地资源 ${unconfiguredManifest.local.length} 个`,
+    )
+    unconfiguredServer.closeAllConnections?.()
+    await new Promise((resolve) => unconfiguredServer.close(resolve))
+    await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 })
+    await reload()
+    record(
+      '未配置构建首次离线刷新保持配置错误，不伪造本地登录',
+      await evaluate(`document.body.innerText.includes('未配置') && !!document.querySelector('input[type=password]') && !document.querySelector('.bottom-nav')`),
+      firstLine(await text(), 120),
+    )
+    await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
+
     const failed = results.filter((item) => !item.ok)
     console.log('')
     console.log(`结果：${results.length - failed.length}/${results.length} 通过`)
@@ -1303,8 +1524,14 @@ async function main() {
       server.closeAllConnections?.()
       server.close()
     }
+    if (unconfiguredServer) {
+      unconfiguredServer.closeAllConnections?.()
+      unconfiguredServer.close()
+    }
     await sleep(500)
-    rmSync(userDataDir, { recursive: true, force: true })
+    const cleanupPath = resolve(userDataDir)
+    if (!cleanupPath.startsWith(`${resolve(tmpdir())}${sep}molly-pwa-`)) throw new Error(`浏览器清理路径越界：${cleanupPath}`)
+    rmSync(cleanupPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }
 }
 

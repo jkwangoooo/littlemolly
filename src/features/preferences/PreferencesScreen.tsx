@@ -18,7 +18,7 @@ import { AccountCard } from './components/AccountCard'
 import { SyncCard } from './components/SyncCard'
 import { OptionEditor } from './components/OptionEditor'
 import { OptionListScreen, type OptionListGroup } from './components/OptionListScreen'
-import { OptionsOverview, type OptionsSection } from './components/OptionsOverview'
+import { OptionsOverview } from './components/OptionsOverview'
 import { StorageCard } from './components/StorageCard'
 import {
   ACCOUNT_TITLE,
@@ -52,22 +52,23 @@ type OptionsView = 'overview' | OptionKind | 'backup' | 'storage' | 'account'
 export function PreferencesScreen({ onBack }: {
   onBack: () => void
 }) {
-  const { lists, selectable, loading, loadError, reload } = useOptionLists()
-  const { status, saveError, canRetry, runSave, retryLastSave } = useSaveRunner()
-  const [username] = useState(() => currentUser()?.username ?? '')
   const [view, setView] = useState<OptionsView>('overview')
+  const { lists, selectable, loading, loadError, reload } = useOptionLists(view)
+  const { status, saveError, canRetry, runSave, retryLastSave, resetForDateChange } = useSaveRunner()
+  const [username] = useState(() => currentUser()?.username ?? '')
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [pendingDisable, setPendingDisable] = useState<OptionTarget | null>(null)
   const [pendingDelete, setPendingDelete] = useState<OptionTarget | null>(null)
 
   /** 所有写入都经这里：成功才 reload 并让调用方关闭弹层，失败保留弹层与输入。 */
   const mutate = useCallback(
-    async (action: () => Promise<unknown>): Promise<boolean> => {
+    async (action: (isCurrent: () => boolean) => Promise<unknown>): Promise<boolean> => {
       let ok = false
-      await runSave(async () => {
-        await action()
+      await runSave(async (isCurrent) => {
+        await action(isCurrent)
+        if (!isCurrent()) return
         await reload()
-        ok = true
+        ok = isCurrent()
       })
       return ok
     },
@@ -83,9 +84,10 @@ export function PreferencesScreen({ onBack }: {
    */
   const commitReorder = useCallback(
     async (kind: OptionKind, id: string, delta: number) => {
-      await mutate(async () => {
+      await mutate(async (isCurrent) => {
         const step = delta > 0 ? 1 : -1
         for (let index = 0; index < Math.abs(delta); index += 1) {
+          if (!isCurrent()) return
           const moved = await moveOption(kind, id, step)
           if (!moved) break
         }
@@ -101,7 +103,7 @@ export function PreferencesScreen({ onBack }: {
       target.mode === 'create'
         ? await mutate(() => createOption(target.kind, { name, period }))
         : await mutate(() => renameOption(target.kind, target.option?.id ?? '', name))
-    if (ok) setEditor(null)
+    if (ok) setEditor((current) => current === target ? null : current)
   }
 
   async function confirmDisableOption() {
@@ -157,8 +159,12 @@ export function PreferencesScreen({ onBack }: {
           ? ACCOUNT_TITLE
           : ''
 
-  function openSection(section: OptionsSection) {
-    setView(section)
+  function changeView(next: OptionsView) {
+    resetForDateChange()
+    setEditor(null)
+    setPendingDisable(null)
+    setPendingDelete(null)
+    setView(next)
   }
 
   return (
@@ -175,7 +181,7 @@ export function PreferencesScreen({ onBack }: {
               className="icon-button"
               type="button"
               aria-label={OPTIONS_BACK_LABEL}
-              onClick={() => setView('overview')}
+              onClick={() => changeView('overview')}
             >
               ‹
             </button>
@@ -185,7 +191,10 @@ export function PreferencesScreen({ onBack }: {
             </div>
           </div>
         )}
-        <button className="secondary" type="button" onClick={onBack}>返回日程</button>
+        <button className="secondary" type="button" onClick={() => {
+          resetForDateChange()
+          onBack()
+        }}>返回日程</button>
       </header>
 
       <section className="stack page-scroll page-content">
@@ -229,7 +238,7 @@ export function PreferencesScreen({ onBack }: {
                   total={totalOptions}
                   busy={busy}
                   username={username}
-                  onOpen={openSection}
+                  onOpen={changeView}
                   onSeed={() => void mutate(() => seedExampleOptionsForCurrentUser())}
                 />
               </>
@@ -251,7 +260,7 @@ export function PreferencesScreen({ onBack }: {
             ) : null}
 
             {view === 'backup' ? (
-              <BackupCard busy={busy} runSave={runSave} onImported={reload} />
+              <BackupCard busy={busy} runSave={runSave} onImported={reload} onInputChange={resetForDateChange} />
             ) : null}
 
             {view === 'storage' ? <StorageCard /> : null}

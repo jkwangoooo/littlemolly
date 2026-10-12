@@ -11,6 +11,7 @@ dist/
 *.log
 .DS_Store
 .local-supabase/
+supabase/.temp/
 
 .vercel
 .env*

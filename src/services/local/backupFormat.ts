@@ -15,10 +15,10 @@ import { DEVICE_STORES, META_STORES, RECORD_SCHEMAS, SCHEMA_STORES, validateReco
  * {
  *   "app": "happy-little-molly",
  *   "format": "local-backup",
- *   "version": 2,
- *   "db_version": 6,
+ *   "version": 3,
+ *   "db_version": 8,
  *   "exported_at": "2026-09-15T02:30:00.000Z",
- *   "source_user": { "username": "molly" },
+ *   "source_user": { "username": "W" },
  *   "counts": { "day_plans": 3, "food_options": 6 },
  *   "records": { "day_plans": [ ... ], "food_options": [ ... ] }
  * }
@@ -26,15 +26,16 @@ import { DEVICE_STORES, META_STORES, RECORD_SCHEMAS, SCHEMA_STORES, validateReco
  *
  * 格式版本 1 与 2 的差别只有一处：登录凭据从「邮箱」改成「账号」，
  * 因此 `source_user.email` 与 `records.users[].email` 都改名为 `username`。
- * v1 的文件仍然可以导入——见 `normalizeLegacyUserRows`。
+ * v3 移除 `users.password_hash`。v1/v2 只读兼容，旧凭据字段不会进入返回记录。
  */
 
 /**
  * 文件格式版本。`records` 的组织方式或字段名变了才提升；数据库结构版本另记 `db_version`。
  *
- * v1 → v2：登录名从 `email` 改名 `username`（`source_user` 与 `records.users` 两处）。
+ * v1 → v2：登录名从 `email` 改名 `username`。
+ * v2 → v3：`users` 只保留资料字段，备份不携带密码。
  */
-export const BACKUP_FORMAT_VERSION = 2
+export const BACKUP_FORMAT_VERSION = 3
 /** 文件标记，用来一眼认出「这不是随便一个 JSON」。 */
 export const BACKUP_FORMAT = 'local-backup'
 export const BACKUP_APP = 'happy-little-molly'
@@ -130,22 +131,26 @@ function readSourceUsername(source: unknown, legacy: boolean): string {
 }
 
 /**
- * 把格式版本 1 的 `users` 记录就地归一成 v2 形状（`email` → `username`）。
+ * 把 v1/v2 的 `users` 资料归一到 v3：v1 的 `email` 改为 `username`，并丢掉旧密码字段。
  *
  * 为什么必须做：`records.users` 也要逐条过字段契约，而契约里已经没有 `email` 了，
  * 旧备份会因为「多出未定义字段 email」+「缺少字段 username」被**整份拒绝**。
  * 手里只有一份旧备份的人，恰恰是最需要把它导进去的人（同 `sanitizeRecord` 那条理由）。
  *
- * 归一之后走的是与 v2 完全相同的校验与写入路径，不存在第二条导入分支——
- * 兼容性只体现为「读入时把字段名改对」，而不是「为老文件放宽校验」。
+ * 归一之后统一走 v3 的资料与业务校验，不存在第二条导入分支。
+ * 旧备份只恢复数据，不能创建账号、修改密码或建立登录会话。
  */
-function normalizeLegacyUserRows(records: Record<string, unknown>): void {
+function normalizeLegacyUserRows(records: Record<string, unknown>, version: number): void {
   const rows = records.users
   if (!Array.isArray(rows)) return
   records.users = rows.map((row) => {
     if (!isPlainObject(row)) return row
-    const next: Record<string, unknown> = { ...row, username: row.username ?? row.email }
-    delete next.email
+    const next: Record<string, unknown> = { ...row }
+    if (version < 2) {
+      next.username = row.username ?? row.email
+      delete next.email
+    }
+    delete next.password_hash
     return next
   })
 }
@@ -172,7 +177,7 @@ const FOREIGN_KEYS: Array<{ store: LocalStore; field: string; parent: LocalStore
 /**
  * 数一份记录集合的条数。
  *
- * S3 起导出：绑定云端账号时要判断「本地这个账号有多少条数据」，
+ * 同步状态和整体替换需要判断「当前 Auth UID 的本机或云端有多少条数据」，
  * 那个数字必须与备份摘要里的 `total` **是同一个口径**——
  * 否则会出现「界面说本地有 12 条，导出的备份却说 10 条」这种自相矛盾。
  * 元数据仓库（`users`）不计入，与 `BackupSummary.total` 的注释一致。
@@ -201,7 +206,11 @@ export function countRecords(records: Partial<Record<LocalStore, BackupRecord[]>
  * `currentDbVersion` 传入当前数据库结构版本（可选）。只在两边不一致时给一条提醒，
  * 不因此拒绝导入——记录本身已经逐条按当前契约校验过了。
  */
-export function parseBackup(text: string, currentDbVersion?: number): ValidatedBackup {
+export function parseBackup(
+  text: string,
+  currentDbVersion?: number,
+  options: { allowEmpty?: boolean } = {},
+): ValidatedBackup {
   if (typeof text !== 'string' || !text.trim()) fail('备份内容为空。')
 
   let raw: unknown
@@ -230,11 +239,14 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
   const sourceUsername = readSourceUsername(raw.source_user, legacy)
 
   if (!isPlainObject(raw.records)) fail('备份缺少 records 字段。')
-  if (legacy) normalizeLegacyUserRows(raw.records)
+  if (raw.version < 3) normalizeLegacyUserRows(raw.records, raw.version)
 
   const known = new Set<string>(BACKUP_STORES)
   for (const key of Object.keys(raw.records)) {
-    if (!known.has(key)) fail('备份里出现了当前版本不认识的仓库。', `未知仓库 ${key}`)
+    if (!known.has(key)) {
+      if (key === 'legacy_users') fail('新格式备份不得包含任何身份凭据。', 'legacy_users 不允许导入')
+      fail('备份里出现了当前版本不认识的仓库。', `未知仓库 ${key}`)
+    }
   }
 
   const records: Partial<Record<LocalStore, BackupRecord[]>> = {}
@@ -269,6 +281,9 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
   }
 
   const idsOf = (store: LocalStore): Set<string> => new Set((records[store] ?? []).map((row) => String(row.id)))
+  if ((records.users?.length ?? 0) !== 1) {
+    fail('备份必须属于一个明确的来源账号。', 'users 元数据必须恰好包含一条资料记录')
+  }
   for (const link of FOREIGN_KEYS) {
     const rows = records[link.store] ?? []
     if (!rows.length) continue
@@ -284,12 +299,35 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
     }
   }
 
+  // 选项引用与快照父链必须属于同一来源；缺失来源请显式使用 null。
+  const planOwners = new Map((records.day_plans ?? []).map((row) => [String(row.id), String(row.user_id)]))
+  const mealPlans = new Map((records.daily_meals ?? []).map((row) => [String(row.id), String(row.day_plan_id)]))
+  for (const link of [
+    { store: 'daily_meal_items', field: 'food_option_id', parent: 'food_options', meal: true },
+    { store: 'daily_exercise_items', field: 'exercise_option_id', parent: 'exercise_options', meal: false },
+  ] as const) {
+    const parents = new Map((records[link.parent] ?? []).map((row) => [String(row.id), row]))
+    for (const row of records[link.store] ?? []) {
+      const value = row[link.field]
+      if (value === null) continue
+      const parent = parents.get(String(value))
+      const planId = link.meal ? mealPlans.get(String(row.daily_meal_id)) : String(row.day_plan_id)
+      const owner = planId ? planOwners.get(planId) : undefined
+      if (!parent || !owner || parent.user_id !== owner) {
+        fail('备份里的选项引用无效或归属不一致。', `${link.store}.${link.field}：${String(value)}`)
+      }
+    }
+  }
+
   const { counts, total } = countRecords(records)
-  if (!total) fail('备份里没有任何数据。')
+  if (!total && !options.allowEmpty) fail('备份里没有任何数据。')
 
   const warnings: string[] = []
   if (legacy) {
     warnings.push('备份是旧版格式（登录名字段为 email），已按当前的账号格式读取，内容不受影响。')
+  }
+  if (raw.version < 3) {
+    warnings.push('旧备份中的密码字段已忽略；导入只恢复业务数据，不创建账号或登录会话。')
   }
   if (typeof currentDbVersion === 'number' && raw.db_version !== currentDbVersion) {
     warnings.push(`备份由结构版本 ${raw.db_version} 的数据库导出，当前是 ${currentDbVersion}，导入后按当前结构使用。`)

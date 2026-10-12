@@ -33,7 +33,9 @@ const MANIFEST_URL = new URL('manifest.webmanifest', SCOPE_URL).href
 
 /** 构建戳来自注册 URL；没有就是有人手动注册了裸的 /sw.js，退回一个固定名。 */
 const BUILD_STAMP = new URL(self.location.href).searchParams.get('build') || 'manual'
+const AUTH_CONFIGURED = new URL(self.location.href).searchParams.get('auth') === '1'
 const SHELL_CACHE = `${CACHE_PREFIX}${BUILD_STAMP}`
+const ASSET_MANIFEST_URL = new URL(`assets/shell-assets-${BUILD_STAMP}.json`, SCOPE_URL).href
 
 /** 网络优先的超时上限：超过它就先拿缓存把页面渲染出来，网络请求继续在后台跑。 */
 const NETWORK_FIRST_TIMEOUT_MS = 3000
@@ -49,30 +51,6 @@ const SHELL_ASSETS = [
   new URL('icons/icon-maskable-512.png', SCOPE_URL).href,
 ]
 
-/**
- * 从 index.html 里解析出构建产物地址。
- * 产物文件名带内容哈希（index-XXXX.js），没法在源码里写死，只能装的时候读一遍首页。
- * 顺带把首页本身也存下来：断网时的导航请求就是靠它渲染的。
- */
-function extractAssetUrls(html) {
-  const urls = new Set()
-  const patterns = [
-    /<script[^>]+src="([^"]+)"/g,
-    /<link[^>]+rel="(?:stylesheet|icon|apple-touch-icon|manifest)"[^>]*href="([^"]+)"/g,
-  ]
-  for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
-      try {
-        const url = new URL(match[1], SCOPE_URL)
-        if (url.origin === SCOPE_URL.origin) urls.add(url.href)
-      } catch {
-        // 地址写坏了就跳过：宁可少缓存一个资源，也不能让 install 整个失败。
-      }
-    }
-  }
-  return [...urls]
-}
-
 /** 单个资源取不到时不能让 install 失败——少一个图标也要能装上。 */
 async function precacheOne(cache, url) {
   try {
@@ -83,22 +61,49 @@ async function precacheOne(cache, url) {
   }
 }
 
+function indexMatchesAssets(html, urls) {
+  const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)]
+  const styles = [...html.matchAll(/<link[^>]+rel="(?:stylesheet|modulepreload)"[^>]*href="([^"]+)"/g)]
+  return scripts.length > 0 && [...scripts, ...styles].every((match) =>
+    urls.has(new URL(match[1], SCOPE_URL).href),
+  )
+}
+
 async function precacheShell() {
   const cache = await caches.open(SHELL_CACHE)
-  const urls = new Set(SHELL_ASSETS)
-
-  try {
-    const response = await fetch(INDEX_URL, { cache: 'no-cache' })
-    if (response.ok) {
-      const html = await response.clone().text()
-      await cache.put(INDEX_URL, response)
-      for (const url of extractAssetUrls(html)) urls.add(url)
-    }
-  } catch {
-    // 装的时候恰好断网：下面的 precacheOne 会逐个失败，缓存为空但 SW 仍然可用。
+  const manifestResponse = await fetch(ASSET_MANIFEST_URL, { cache: 'no-cache' })
+  if (!manifestResponse.ok) throw new Error('offline asset manifest unavailable')
+  const manifest = await manifestResponse.clone().json()
+  const files = AUTH_CONFIGURED ? manifest.authenticated : manifest.local
+  if (manifest.build !== BUILD_STAMP || !Array.isArray(files) || files.length === 0) {
+    throw new Error('offline asset manifest does not match this build')
   }
 
-  await Promise.all([...urls].map((url) => precacheOne(cache, url)))
+  const urls = new Set([INDEX_URL])
+  for (const file of files) {
+    if (typeof file !== 'string' || !file || /^(?:[/\\]|[a-z]+:)/i.test(file)) {
+      throw new Error('invalid offline asset path')
+    }
+    const url = new URL(file, SCOPE_URL)
+    if (url.origin !== SCOPE_URL.origin || !url.pathname.startsWith(SCOPE_URL.pathname)
+      || url.search || url.hash || url.pathname.endsWith('/sw.js')) {
+      throw new Error('offline asset path outside application scope')
+    }
+    urls.add(url.href)
+  }
+
+  // 首次页面尚未受 SW 控制；安装必须直接取得懒加载资源，不能依赖页面请求填缓存。
+  // 必需资源缺失则安装失败，避免把一个无法离线运行的更新宣称为已下载。
+  await Promise.all([...urls].map(async (url) => {
+    const response = await fetch(url, { cache: 'no-cache' })
+    if (!response.ok) throw new Error('offline application asset unavailable')
+    if (url === INDEX_URL && !indexMatchesAssets(await response.clone().text(), urls)) {
+      throw new Error('application entry does not match this build')
+    }
+    await cache.put(url, response)
+  }))
+  await cache.put(ASSET_MANIFEST_URL, manifestResponse)
+  await Promise.all(SHELL_ASSETS.filter((url) => !urls.has(url)).map((url) => precacheOne(cache, url)))
 }
 
 self.addEventListener('install', (event) => {
@@ -175,7 +180,8 @@ async function networkFirst(request) {
   }
 
   if (response && response.ok) {
-    if (key) {
+    // 首页只在安装时与本构建资源核验后写入，不能用新部署的 HTML 覆盖旧离线入口。
+    if (key && new URL(key).pathname !== INDEX_PATH) {
       const copy = response.clone()
       // 缓存写入失败不该影响这次响应，因此单独 catch。
       void cache.put(key, copy).catch(() => {})

@@ -2,8 +2,9 @@
  * 本地上传云端：整体替换（S5）。
  *
  * ```
- * 读本地全量 → 前置检查 → RPC import_local_backup（云端单事务替换）
- *   → 成功：清空本账号队列 + 记一次上传时间
+ * 捕获认证上下文 → 读本地全量 → 前置检查
+ *   → RPC import_local_backup（云端单事务替换）
+ *   → 成功：只退役本次快照捕获的队列 + 记一次上传时间
  * ```
  *
  * ## 为什么复用 `exportBackup()` 而不是自己取数
@@ -22,19 +23,25 @@
  * 而界面上看起来像成功了。`import_local_backup` 是一个事务，
  * 要么整体替换完，要么一条都没动——失败时如实抛错，不伪装成功。
  *
- * ## 清空队列的时机
+ * ## 队列退役的时机
  *
- * **上传成功之后**才清。顺序反了的话，一旦上传失败，
+ * **上传成功之后**才退役。顺序反了的话，一旦上传失败，
  * 队列里那批「相对云端关系算出来的增量」就凭空消失了，
  * 而云端还是旧的——用户以为传上去了，实际什么都没有。
+ *
+ * 整体替换与增量推送共用 `withSyncLock`。上传期间新产生的编辑
+ * 不属于本次快照，不能被成功回调无条件清掉。
  */
 
-import { callRpc } from '../cloud/rpc'
+import { callRpc, readCloudSummary, type CloudSummary } from '../cloud/rpc'
+import { BACKUP_META_STORES, BACKUP_STORES } from '../local/backupFormat'
 import { exportBackup } from '../local/backupService'
 import type { LocalStore } from '../local/localDb'
-import { clearOwnOutbox } from './outbox'
+import { assertAuthContextCurrent, captureAuthContext } from '../session'
+import {
+  assertVerifiedCloudContext, invalidateRejectedCloudContext, retireOwnOutbox, withSyncLock,
+} from './outbox'
 import { nonUuidValues, replaceCloudProblem } from './replaceRules'
-import { writeSyncState } from './syncState'
 
 /** 云端 `import_local_backup` 的返回值。 */
 export type ImportCloudResult = {
@@ -64,6 +71,76 @@ export type ReplaceCounts = {
 
 export type UploadResult = ReplaceCounts
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** 页面只经同步门面读摘要；请求前后仍固定 UID、认证代次与服务端授权。 */
+export async function readVerifiedCloudSummary(): Promise<CloudSummary> {
+  const context = captureAuthContext()
+  try {
+    await assertVerifiedCloudContext(context)
+    const summary = await readCloudSummary()
+    await assertVerifiedCloudContext(context)
+    const known = new Set<string>(BACKUP_STORES.filter((store) => !BACKUP_META_STORES.includes(store)))
+    if (!isRecord(summary.counts) || !Number.isInteger(summary.total) || summary.total < 0) {
+      throw new Error('云端没有返回有效的条数摘要，无法确认替换范围。')
+    }
+    let counted = 0
+    for (const [store, count] of Object.entries(summary.counts)) {
+      if (!known.has(store) || typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
+        throw new Error('云端条数摘要包含无效的仓库或计数，无法确认替换范围。')
+      }
+      counted += count
+    }
+    if (counted !== summary.total) {
+      throw new Error('云端条数摘要的合计不一致，无法确认替换范围。')
+    }
+    return summary
+  } catch (reason) {
+    invalidateRejectedCloudContext(context, reason)
+    throw reason
+  }
+}
+
+/**
+ * RPC 的条数摘要是这次替换能否「确认成功」的唯一依据。
+ *
+ * 不能只看 `total` 是不是数字：如果服务端漏插了一张表，
+ * 仍然把队列退役会把本地数据与云端数据永久拉开。这里同时校验
+ * 分表计数、总数和本地快照的预期值。
+ */
+function assertImportResult(
+  value: unknown,
+  expected: { counts: Partial<Record<LocalStore, number>>; total: number },
+): asserts value is ImportCloudResult {
+  if (
+    !isRecord(value)
+    || !isRecord(value.imported)
+    || typeof value.total !== 'number'
+    || !Number.isInteger(value.total)
+    || value.total < 0
+  ) {
+    throw new Error('云端没有返回有效的写入摘要，无法确认这次上传的结果。请刷新后重新查看同步状态。')
+  }
+
+  const imported = value.imported
+  const total = value.total
+  let counted = 0
+  const stores = new Set([...Object.keys(expected.counts), ...Object.keys(imported)])
+  for (const store of stores) {
+    const actual = imported[store]
+    const wanted = expected.counts[store as LocalStore] ?? 0
+    if (typeof actual !== 'number' || !Number.isInteger(actual) || actual < 0 || actual !== wanted) {
+      throw new Error(`云端写入条数与本地快照不一致（${store}：本地 ${wanted}，云端 ${String(actual)}）。本次上传未确认成功。`)
+    }
+    counted += actual
+  }
+  if (counted !== total || total !== expected.total) {
+    throw new Error(`云端写入总数与本地快照不一致（本地 ${expected.total}，云端 ${total}）。本次上传未确认成功。`)
+  }
+}
+
 /**
  * 用本地当前账号的数据整体替换云端账号的数据。
  *
@@ -71,42 +148,48 @@ export type UploadResult = ReplaceCounts
  * 云端账号原有的全部业务数据会被删掉。本地数据不受影响。
  */
 export async function uploadLocalToCloud(): Promise<UploadResult> {
-  // 1. 读本地全量。没有登录会话会在这里抛「请先登录。」。
-  const { file, summary } = await exportBackup()
+  const context = captureAuthContext()
+  return withSyncLock(async () => {
+    // 只允许已经完成 Supabase 会话验证的账号上传。
+    await assertVerifiedCloudContext(context)
 
-  // 2. 前置检查。放在发请求之前，为的是把「必然失败的请求」变成一句能照着做的说明。
-  const problem = replaceCloudProblem({
-    localTotal: summary.total,
-    badIds: nonUuidValues(file.records),
+    // 1. 在同一认证代次下读取业务快照与队列条目。
+    const { file, summary, outboxIds } = await exportBackup({
+      owner: context.owner,
+      guard: () => assertAuthContextCurrent(context),
+    })
+
+    // 2. 前置检查。放在发请求之前，为的是把「必然失败的请求」变成一句能照着做的说明。
+    const problem = replaceCloudProblem({
+      localTotal: summary.total,
+      badIds: nonUuidValues(file.records),
+    })
+    if (problem) throw new Error(problem)
+
+    // 3. 云端单事务替换。RPC 前后都确认 UID 和认证代次没有变化。
+    await assertVerifiedCloudContext(context)
+    let result: unknown
+    try {
+      result = await callRpc<unknown>('import_local_backup', { payload: file })
+    } catch (reason) {
+      invalidateRejectedCloudContext(context, reason)
+      throw reason
+    }
+    await assertVerifiedCloudContext(context)
+    assertAuthContextCurrent(context)
+    assertImportResult(result, summary)
+
+    // 4. 只退役本轮快照捕获的队列项。上传期间产生的新编辑仍须保留并继续推送。
+    await retireOwnOutbox(context, outboxIds, {
+      last_push_at: new Date().toISOString(),
+      last_error_message: null,
+      last_error_at: null,
+    })
+
+    return {
+      counts: result.imported,
+      total: result.total,
+      sourceTotal: summary.total,
+    }
   })
-  if (problem) throw new Error(problem)
-
-  // 3. 云端单事务替换。`payload` 就是那个备份对象——服务端只认形状，不认来源。
-  //
-  // 这里不再包一层 try/catch：`callRpc` 已经把任何 PostgREST 返回标准化成
-  // `DataError` 再抛（`cloud/rpc.ts` + `cloud/errors.ts`），
-  // 再包一次只是把同一个对象换个壳，反而多出一处需要维护的分支。
-  const result = await callRpc<ImportCloudResult>('import_local_backup', { payload: file })
-
-  if (!result || typeof result.total !== 'number') {
-    // 传输层刻意不替调用方判断「本该有返回值却是 null」（见 `cloud/rpc.ts`），
-    // 到了这里就是本模块的语义判断：没有条数摘要，就不能说这次替换成功了。
-    // 这一条防的是「RPC 成功返回但形状不对」——此时**不能**去清队列，
-    // 否则两边是否对齐就成了一个没有依据的断言。
-    throw new Error('云端没有返回写入摘要，无法确认这次上传的结果。请刷新后重新查看同步状态。')
-  }
-
-  // 4. 两边已经对齐（本地就是云端现在的全部内容），队列里那批增量不再成立。
-  await clearOwnOutbox()
-  await writeSyncState({
-    last_push_at: new Date().toISOString(),
-    last_error_message: null,
-    last_error_at: null,
-  })
-
-  return {
-    counts: result.imported ?? {},
-    total: result.total,
-    sourceTotal: summary.total,
-  }
 }

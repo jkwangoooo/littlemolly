@@ -12,11 +12,9 @@
  *    这里必须**不发**——发了就等于把一份可能已经过期的副本又写回云端。
  *    实现上直接借 `sanitizeRecord`：它按字段契约清洗，契约里没有的字段自动丢弃。
  *
- * 2. **`user_id` 重写**。四张表带 `user_id`（`day_plans` / `food_options` /
- *    `supplement_templates` / `exercise_options`），推送时要换成 `cloud_user_id`
- *    （即云端账号的 `auth.uid()`）。**不能沿用本地的 `user_id`**——那是本地账号的 id，
- *    与云端账号毫无关系；RLS 的 `with check (auth.uid() = user_id)` 会直接拒绝。
- *    子表不带 `user_id`（归属沿父记录推导），云端策略也是这么写的。
+ * 2. **`user_id` 验证**。四张根表的 owner 必须已经是当前 Supabase UID。
+ *    旧随机本地身份不能通过上传时改写 owner 混入新账号。
+ *    子表不带 `user_id`，由上传器验证父链，云端仍由 RLS 检查。
  *
  * 3. **只发本地形状里存在的字段**。云端某些列本地没有（`created_at` / `updated_at`
  *    在 `day_plans` 上有、在三张子表上没有；`exercise_content` 反过来）。
@@ -43,7 +41,7 @@ type RowMapper = (record: CloudRow, cloudUserId: string) => CloudRow
  *
  * 其余六张（`daily_meals` / `daily_meal_items` / `daily_supplements` /
  * `daily_exercise_items` / `custom_tasks` / `routine_tasks`）都不带 `user_id`，
- * 云端 RLS 沿父记录推导归属。所以「要不要重写 user_id」这件事是**表级**的，
+ * 云端 RLS 沿父记录推导归属。所以「要不要验证 user_id」这件事是**表级**的，
  * 不是「有就改」——多改一张表会让 PostgREST 报「列不存在」。
  */
 export const USER_SCOPED_STORES: readonly UserDataStore[] = [
@@ -53,9 +51,12 @@ export const USER_SCOPED_STORES: readonly UserDataStore[] = [
   'supplement_templates',
 ]
 
-/** 把 `user_id` 换成云端账号 id。 */
-function rewriteUser(record: CloudRow, cloudUserId: string): CloudRow {
-  return { ...record, user_id: cloudUserId }
+/** 所有权不一致时拒绝；映射不会替记录制造新归属。 */
+function verifyUser(record: CloudRow, owner: string): CloudRow {
+  if (record.user_id !== owner) {
+    throw new Error('记录不属于当前账号，已停止上传。请先核对旧数据的归属。')
+  }
+  return { ...record }
 }
 
 /** 不带 `user_id` 的表：原样发。 */
@@ -72,10 +73,10 @@ function passthrough(record: CloudRow): CloudRow {
  * 后者只能从这里读。类型已经保证穷尽，导出只是把它变成可被机器看见的事实。
  */
 export const ROW_MAPPERS: Record<UserDataStore, RowMapper> = {
-  day_plans: rewriteUser,
-  food_options: rewriteUser,
-  exercise_options: rewriteUser,
-  supplement_templates: rewriteUser,
+  day_plans: verifyUser,
+  food_options: verifyUser,
+  exercise_options: verifyUser,
+  supplement_templates: verifyUser,
   daily_meals: passthrough,
   daily_meal_items: passthrough,
   custom_tasks: passthrough,
@@ -84,7 +85,7 @@ export const ROW_MAPPERS: Record<UserDataStore, RowMapper> = {
   routine_tasks: passthrough,
 }
 
-/** 某张表是否需要把 `user_id` 换成云端账号 id。 */
+/** 某张表是否直接记录账号归属。 */
 export function isUserScoped(store: UserDataStore): boolean {
   return USER_SCOPED_STORES.includes(store)
 }
@@ -92,9 +93,7 @@ export function isUserScoped(store: UserDataStore): boolean {
 /**
  * 本地记录 → 云端行。
  *
- * `cloudUserId` 是**云端账号**的 id（`sync_state.cloud_user_id`），不是本地账号的。
- * 调用方必须已经从 `sync_state` 取到它——本函数不自己去读，因为它是纯函数，
- * 而「有没有绑定云端账号」是调用方的判断（未绑定时压根不该走到这里）。
+ * owner 来自本轮捕获的可信认证上下文，不能从队列或本地会话 JSON 推断。
  */
 export function toCloudRow(store: UserDataStore, record: CloudRow, cloudUserId: string): CloudRow {
   // 清洗：按字段契约去掉契约里没有的字段（含 `exercise_content` / `plan_content`），

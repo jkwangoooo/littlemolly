@@ -24,11 +24,10 @@ export type OutboxEntry = {
   record_id: string
   op: OutboxOp
   /**
-   * 这条变更属于哪个**本地账号**（S4 补丁 ②）。写入那一刻由会话决定。
+   * 这条变更所属的 Supabase Auth UID，在写入时由认证上下文确定。
    *
-   * 为什么队列条目要记归属：绑定是「本地账号 ↔ 云端账号」的关系。
-   * 换本地账号之后，队列里可能还留着上一个账号的条目，若不加区分地推上去，
-   * 就会把 A 的数据写进 B 绑定的云端账号。过滤见 `entriesOfOwner`。
+   * 字段名 `local_user_id` 为兼容现有队列而保留，值与业务 `user_id` 使用同一个 Auth UID。
+   * 上传按 UID 过滤，防止把其他工作区的改动写进当前账号。过滤见 `entriesOfOwner`。
    *
    * `null` = 写入时读不到会话（迁移期、Node 脚本里会发生），这类条目**永不被推送**。
    */
@@ -39,7 +38,7 @@ export type OutboxEntry = {
 }
 
 /**
- * 队列里属于某个本地账号的条目。
+ * 队列里属于指定 Auth UID 的条目。
  *
  * 抽成纯函数是为了能被 `scripts/check-sync.mjs` 直接回归：这条规则错了的后果
  * 是**跨账号串数据**，而它在界面上完全没有痕迹，只能靠这里钉住。

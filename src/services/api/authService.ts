@@ -1,66 +1,92 @@
-// 服务门面：页面只认这一层，不关心底下是谁。
-//
-// S1 起门面**直接指向本地实现**，不再经 `@backend` 别名按构建模式切换。
-// 原因见 `services/capabilities.ts`：本地 IndexedDB 是唯一的写入落点，
-// 云端退化为可选的上行通道（`services/sync/`），不再参与页面读写路径。
-// 既然只有一条路径，就没有分支，也不需要分支。
-//
-// 保留门面这一层、而不是让页面直接 import `services/local/*`：
-// 这条边界是「页面不认识数据层」这句话的落点，`check:cloud-parity` 会静态守住它。
-//
-// 两行分别放行**值导出**与**类型导出**：值导出给运行时用，
-// 类型导出让 `MealInput` 这类类型仍然可以从服务路径导入。
-
-export * from '../local/authService'
-export type * from '../local/authService'
-
+import { passwordProblem, usernameProblem } from '../../shared/authRules'
 import { cloudSyncConfigured } from '../capabilities'
-import { signIn as localSignIn, signUp as localSignUp } from '../local/authService'
-import { autoBindCloudAccount, provisionCloudAccount } from './syncService'
+import { describeDataError } from '../../shared/errors'
+import { beginAuthTransition, getAuthState, lockAuthRestore, publishAuthState, readAuthLock } from '../session'
 
-export type AuthCloudStatus = 'connected' | 'unavailable' | 'failed'
+export { currentUser } from '../local/authService'
+export {
+  captureAuthContext, getAuthState, isAuthContextCurrent, subscribeAuth,
+} from '../session'
+export type { AuthContext, AuthState } from '../session'
 
-export type AuthResult = {
-  /** 本地会话已经建立；这是业务能否继续使用的唯一必要条件。 */
-  local: 'ready'
-  /** 云端绑定的真实结果，避免把本地成功说成云端成功。 */
-  cloud: AuthCloudStatus
-}
+const configurationError = '账号服务未配置，请配置 Supabase 后重新构建应用。'
 
-/** 本地会话建立后，登录页会立即卸载；用事件把云端结果交给应用首屏展示。 */
-export const AUTH_RESULT_EVENT = 'molly-auth-result'
-
-function finishAuth(cloud: AuthCloudStatus): AuthResult {
-  const result: AuthResult = { local: 'ready', cloud }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent<AuthResult>(AUTH_RESULT_EVENT, { detail: result }))
+/** Tokens stay in the SDK; the facade exposes only application state. */
+export async function initializeAuth(): Promise<void> {
+  if (!cloudSyncConfigured) {
+    publishAuthState({ ...getAuthState(), phase: 'error', error: configurationError })
+    return
   }
-  return result
-}
-
-/** 统一账号登录：先完成本地登录，再尽力绑定云端。 */
-export async function signIn(username: string, password: string): Promise<AuthResult> {
-  await localSignIn(username, password)
-  if (!cloudSyncConfigured) return finishAuth('unavailable')
+  const generation = getAuthState().generation
   try {
-    const bound = await autoBindCloudAccount(username, password)
-    return finishAuth(bound ? 'connected' : 'failed')
-  } catch {
-    // 本地登录已经完成；用户可在设置页重试云端连接。
-    return finishAuth('failed')
+    const module = await import('../sync/authSession')
+    return await module.initializeAuth()
+  } catch (reason) {
+    if (getAuthState().generation !== generation) return
+    publishAuthState({
+      phase: 'error', session: null, generation, verified: false, error: describeDataError(reason),
+    })
   }
 }
 
-/** 统一账号注册：先落本地镜像，再尽力创建并绑定云端身份。 */
-export async function signUp(username: string, password: string): Promise<AuthResult> {
-  await localSignUp(username, password)
-  if (!cloudSyncConfigured) return finishAuth('unavailable')
+export async function retryAuth(): Promise<void> {
+  if (!cloudSyncConfigured) throw new Error(configurationError)
+  if (readAuthLock()) throw new Error('请重新输入账号和密码登录。')
+  const state = getAuthState()
+  const sameWorkspace = state.session !== null
+    && (state.phase === 'ready' || state.phase === 'offline-cached')
+  const generation = sameWorkspace ? state.generation : beginAuthTransition('checking')
+  if (sameWorkspace) publishAuthState({ ...state, verified: false, error: null })
   try {
-    await provisionCloudAccount(username, password)
-    const bound = await autoBindCloudAccount(username, password)
-    return finishAuth(bound ? 'connected' : 'failed')
-  } catch {
-    // 本地账号已经完成；设置页可以重试云端连接，不阻断离线使用。
-    return finishAuth('failed')
+    const module = await import('../sync/authSession')
+    await module.retryAuth(generation)
+  } catch (reason) {
+    if (getAuthState().generation === generation && getAuthState().phase === 'checking' && !readAuthLock()) {
+      publishAuthState({
+        phase: 'error', session: null, generation, verified: false, error: describeDataError(reason),
+      })
+    }
+    throw reason
+  }
+}
+
+export async function signIn(username: string, password: string): Promise<void> {
+  const problem = usernameProblem(username) ?? passwordProblem(password)
+  if (problem) throw new Error(problem)
+  if (!cloudSyncConfigured) throw new Error(configurationError)
+  const expectedLock = readAuthLock()
+  const generation = beginAuthTransition('preparing')
+  try {
+    const module = await import('../sync/authSession')
+    await module.signIn(username, password, generation, expectedLock)
+  } catch (reason) {
+    if (getAuthState().generation === generation && getAuthState().phase === 'preparing') {
+      publishAuthState({
+        phase: 'error', session: null, generation, verified: false, error: describeDataError(reason),
+      })
+    }
+    throw reason
+  }
+}
+
+/** Close the workspace immediately, including before lazy code has loaded. */
+export async function signOut(): Promise<void> {
+  const generation = beginAuthTransition('signed-out')
+  let markerError: unknown
+  try { lockAuthRestore() } catch (reason) { markerError = reason }
+  try {
+    if (cloudSyncConfigured) {
+      const module = await import('../sync/authSession')
+      await module.signOut(generation)
+    }
+    if (markerError) throw markerError
+  } catch (reason) {
+    if (getAuthState().generation === generation) {
+      publishAuthState({
+        phase: 'signed-out', session: null, generation, verified: false,
+        error: `本机工作区已关闭，退出请求未完成：${describeDataError(reason)}`,
+      })
+    }
+    throw reason
   }
 }

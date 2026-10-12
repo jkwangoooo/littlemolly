@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// 本地数据结构回归：迁移表「只追加」、仓库定义与迁移表一一对应、13 张仓库的三分类不交叉、
-// 写入钩子挂在三个写入口上、示例选项不写死在界面层。
+// 本地数据结构回归：迁移表「只追加」、仓库定义与迁移表一一对应、仓库三分类不交叉、
+// 写入口共享原子校验与入队、旧身份隔离保留业务记录、示例选项不写死在界面层。
 //
 // 用法：npm run check:local-data
 //
@@ -64,6 +64,11 @@ check('v6 只新增两张设备状态表（同步队列与同步状态）', [...
 // v7 不动结构：`sync_state` 的 `keyPath` 一直是 `id`、本来就没有索引，只是**含义**从
 // 「设备级单行」变成了「本地账号 id」。所以这一版只有搬迁函数，没有新仓库。
 check('v7 不新增仓库（只把 sync_state 的归属从设备改成本地账号）', [...storesOf(7)].sort(), [])
+check(
+  'v8 只新增五张旧身份隔离与工作区状态仓库',
+  [...storesOf(8)].sort(),
+  ['legacy_outbox', 'legacy_sync_state', 'legacy_users', 'workspace_migrations', 'workspace_state'],
+)
 
 // ---- 已有数据的版本必须带搬迁函数：只建表不搬数据，老用户的自由文本会被静默丢掉 ----
 check('v3 迁移带数据搬迁函数', typeof migrations[3].migrate, 'function')
@@ -74,6 +79,7 @@ check('v5 迁移带数据搬迁函数', typeof migrations[5].migrate, 'function'
 // 老用户升级后不该凭空多出待上传项——历史数据要上云必须由人点「本地上传云端」。
 check('v6 只建表、不做数据搬迁', migrations[6].migrate ?? null, null)
 check('v7 迁移带数据搬迁函数（sync_state 重新归属）', typeof migrations[7].migrate, 'function')
+check('v8 迁移带旧身份隔离函数', typeof migrations[8].migrate, 'function')
 
 // ---- v7 搬迁规则本身（纯函数，S4 补丁 ②）----
 // 为什么要在这里逐条钉死：这条规则错了的症状是「换个账号登录就看到别人的云端绑定」，
@@ -96,13 +102,72 @@ check(
 )
 check('v7 空表搬迁是空操作', rekeySyncStateRows([], 'local-a'), { put: [], remove: [] })
 
+// ---- v8 真正调用搬迁函数：归档旧身份与上传意图，不接触业务 owner ----
+const migrationTime = '2026-10-11T00:00:00.000Z'
+const oldUser = { id: 'local-a', username: 'old-name', password_hash: 'old-hash', created_at: migrationTime }
+const oldState = { id: 'local-a', enabled: true, cloud_user_id: 'old-cloud', device_id: 'old-device', updated_at: migrationTime }
+const oldOutbox = { id: 'outbox-a', seq: 1, store: 'day_plans', record_id: 'plan-a', op: 'upsert', local_user_id: 'local-a', created_at: migrationTime, attempts: 0, last_error: null }
+const migrationData = new Map([
+  ['users', [{ ...oldUser }]],
+  ['sync_state', [{ ...oldState }]],
+  ['sync_outbox', [{ ...oldOutbox }]],
+  ['legacy_users', []],
+  ['legacy_sync_state', []],
+  ['legacy_outbox', []],
+])
+const migrationRequests = []
+const migrationStoresRead = new Set()
+const deletedUserIndexes = []
+const clearedStores = []
+migrations[8].migrate({
+  objectStore(name) {
+    migrationStoresRead.add(name)
+    return {
+      indexNames: { contains: (index) => name === 'users' && ['username', 'email'].includes(index) },
+      deleteIndex: (index) => deletedUserIndexes.push(index),
+      getAll() {
+        const request = { result: migrationData.get(name).map((row) => ({ ...row })), onsuccess: null }
+        migrationRequests.push(request)
+        return request
+      },
+      put: (row) => migrationData.get(name).push(row),
+      clear() {
+        clearedStores.push(name)
+        migrationData.set(name, [])
+      },
+    }
+  },
+})
+for (const request of migrationRequests) request.onsuccess()
+check('v8 删除 users 的两种旧登录索引', deletedUserIndexes.sort(), ['email', 'username'])
+check('v8 清空三个活跃旧身份与上传状态仓库', clearedStores.sort(), ['sync_outbox', 'sync_state', 'users'])
+const archivedUser = migrationData.get('legacy_users')[0]
+check('v8 旧账号资料已归档且保留旧 owner', [archivedUser.id, archivedUser.username, archivedUser.created_at], [oldUser.id, oldUser.username, oldUser.created_at])
+check('v8 旧账号归档不保留密码字段', Object.keys(archivedUser).sort(), ['created_at', 'id', 'isolated_at', 'username'])
+check('v8 旧云端绑定与队列归属仅进入隔离仓库', [
+  migrationData.get('legacy_sync_state')[0].cloud_user_id,
+  migrationData.get('legacy_outbox')[0].local_user_id,
+], ['old-cloud', 'local-a'])
+check('v8 三种归档共用有效隔离时间', [
+  archivedUser.isolated_at,
+  migrationData.get('legacy_sync_state')[0].isolated_at,
+  migrationData.get('legacy_outbox')[0].isolated_at,
+].every((value) => value === archivedUser.isolated_at && Number.isFinite(Date.parse(value))), true)
+check(
+  'v8 搬迁不访问业务数据或自动归属工作区',
+  [...migrationStoresRead].sort(),
+  ['legacy_outbox', 'legacy_sync_state', 'legacy_users', 'sync_outbox', 'sync_state', 'users'],
+)
+
 // ---- 仓库三分类（S2）：用户数据 / 元数据 / 设备状态，三者互不交叉且合起来就是全部仓库 ----
 // 拆开的动机是 `sync_outbox` / `sync_state` 不能混进备份与同步队列；漏分类一张表，
 // 要么它悄悄进了备份文件，要么它悄悄进了推送队列，两种都是数据事故。
-check('数据库共 13 张对象仓库', storeNames.length, 13)
+check('数据库共 18 张对象仓库', storeNames.length, 18)
 check('用户数据仓库 10 张（进备份、进同步）', USER_DATA_STORES.length, 10)
 check('元数据仓库只有 users', META_STORES, ['users'])
-check('设备状态仓库两张', [...DEVICE_STORES].sort(), ['sync_outbox', 'sync_state'])
+check('设备状态仓库七张', [...DEVICE_STORES].sort(), [
+  'legacy_outbox', 'legacy_sync_state', 'legacy_users', 'sync_outbox', 'sync_state', 'workspace_migrations', 'workspace_state',
+])
 check(
   '三分类互不交叉',
   [
@@ -133,7 +198,7 @@ check(
   ['store', 'record_id'],
 )
 check(
-  'sync_state 按本地账号分行（主键 id，无索引）',
+  'sync_state 按统一 Auth UID 分行（主键 id，无索引）',
   [stores.find((store) => store.name === 'sync_state')?.keyPath, (stores.find((store) => store.name === 'sync_state')?.indexes ?? []).length],
   ['id', 0],
 )
@@ -143,10 +208,9 @@ check('迁移表覆盖的仓库与 STORES 清单完全一致', [...new Set(migra
 check('每个仓库只在一个版本里引入', migratedNames.length, new Set(migratedNames).size)
 check('所有仓库的主键都是 id', [...new Set(stores.map((store) => store.keyPath))], ['id'])
 
-// ---- 登录凭据是「账号 + 密码」：users 的唯一索引必须是 username，不能还留着 email ----
-// 索引换名与字段改名必须同进同退，只做一半的库要么打不开、要么老账号登不进去（见 localDb.ts 的 v5 迁移）。
+// ---- users 只存经 Auth 验证的资料，不再有本地登录名索引 ----
 const usersStore = stores.find((store) => store.name === 'users')
-check('users 的唯一索引是 username', usersStore?.indexes, [{ name: 'username', keyPath: 'username', unique: true }])
+check('users 不再保留 email / username 登录索引', usersStore?.indexes ?? [], [])
 
 // ---- 按 user_id 隔离的三张选项表必须带 user_id 索引，否则靠 getAll 全表扫 ----
 for (const name of storesOf(2)) {
@@ -169,35 +233,33 @@ for (const [name, index] of [
 
 // ---- 写入必须先过字段契约（L5 加固）：绕过 localDb 的 put / runTransaction，坏数据就再也拦不住 ----
 const localDbSource = readFileSync(join(PROJECT_ROOT, 'src/services/local/localDb.ts'), 'utf8')
+function functionBody(source, name) {
+  const declaration = new RegExp(`(?:^|\\n)(?:export )?(?:async )?function ${name}\\b`)
+  const match = declaration.exec(source)
+  if (!match) return ''
+  const start = match.index + (source[match.index] === '\n' ? 1 : 0)
+  const rest = source.slice(start)
+  const next = /\n(?:export )?(?:async )?function \w+\b/.exec(rest)
+  return next ? rest.slice(0, next.index) : rest
+}
+const atomicBody = functionBody(localDbSource, 'atomicReadWrite')
 check(
-  'put 在任何写入请求之前调用 assertRecord',
-  /export async function put[\s\S]{0,240}?\n\s*assertRecord\(/.test(localDbSource),
+  'put 将单条记录交给共享事务入口校验',
+  /await runTransaction\(\{ put: \[\{ store: storeName, value \}\] \}, options\)/.test(functionBody(localDbSource, 'put')),
   true,
 )
 check(
-  'runTransaction 对每条待写记录先 assertRecord',
-  /export async function runTransaction[\s\S]{0,1400}?for \(const item of work\.put \?\? \[\]\) assertRecord\(/.test(localDbSource),
+  '共享原子事务对每条待写记录先 assertRecord',
+  /for \(const item of work\.put \?\? \[\]\) assertRecord\(item\.store, item\.value\)/.test(atomicBody),
   true,
 )
 
 // ---- 写入钩子（S2）：三个写入口都必须把变更记进 outbox ----
-// 逐函数取函数体再判断，而不是在整份源码里数出现次数——后者在「某个入口漏挂钩子、
-// 另一个入口多挂一次」时会刚好抵消，恰好漏掉要抓的那种错。
-function functionBody(source, name) {
-  const start = source.indexOf(`export async function ${name}`)
-  if (start < 0) return ''
-  const next = source.indexOf('\nexport ', start + 1)
-  return source.slice(start, next < 0 ? undefined : next)
-}
-const hookedEntries = ['put', 'remove', 'runTransaction', 'readModifyWrite'].filter((name) =>
-  functionBody(localDbSource, name).includes('writeOutbox('),
-)
-check('四个写入口都在同一事务里入队（put / remove / runTransaction / readModifyWrite）', hookedEntries, [
-  'put',
-  'remove',
-  'runTransaction',
-  'readModifyWrite',
-])
+// 四个入口经共享 atomicReadWrite 入队；分别检查委托链，避免仅数 writeOutbox 字符串。
+check('remove 将单条删除交给共享事务入口', /await runTransaction\(\{ remove: \[\{ store: storeName, id \}\] \}, options\)/.test(functionBody(localDbSource, 'remove')), true)
+check('runTransaction 经 atomicReadWrite 保留完整事务工作', /await atomicReadWrite\(\{[\s\S]*read: async \(\) => work,[\s\S]*build: \(snapshot\) => snapshot/.test(functionBody(localDbSource, 'runTransaction')), true)
+check('readModifyWrite 经 atomicReadWrite 返回同一记录写入', /await atomicReadWrite\(\{[\s\S]*stores: \[\.\.\.input\.stores, input\.writeStore\][\s\S]*const next = input\.build\(existing\)[\s\S]*return \{ put: \[\{ store: input\.writeStore, value: next \}\] \}/.test(functionBody(localDbSource, 'readModifyWrite')), true)
+check('共享 readwrite 事务包含队列仓库并将同一事务传给 writeOutbox', atomicBody.includes("'sync_outbox'") && atomicBody.includes("db.transaction(names, 'readwrite')") && atomicBody.includes('writeOutbox(transaction, entries, input.guard)'), true)
 // 校验必须发生在**写入请求发出之前**：事务中途抛错时事务会照常提交，
 // 结果就是「数据写了、队列没记」——正是这个钩子要防的事。
 // （S4 补丁 ① 之前这里写的是「事务外」；`readModifyWrite` 的读必须与写在同一个事务里，
@@ -217,9 +279,7 @@ check(
 // 云端永远收不到这批删除（本地表空了、队列里一条都没有），所以要求显式 track:false。
 check(
   '清空用户数据仓库时必须显式 track:false（不静默漏记一批删除）',
-  /for \(const storeName of work\.clear \?\? \[\]\) \{\s*if \(isSyncableStore\(storeName\)\) \{\s*throw new Error\(/.test(
-    localDbSource,
-  ),
+  /if \(input\.track \?\? true\) \{[\s\S]*for \(const store of work\.clear \?\? \[\]\) \{\s*if \(isSyncableStore\(store\)\) throw new Error\(/.test(atomicBody),
   true,
 )
 
@@ -229,8 +289,8 @@ check('v5 迁移原样沿用老邮箱作为账号', localDbSource.includes("user
 check('v5 迁移删掉旧的 email 唯一索引', localDbSource.includes("deleteIndex('email')"), true)
 check('v5 迁移建立 username 唯一索引', localDbSource.includes("createIndex('username', 'username', { unique: true })"), true)
 check(
-  'v7 迁移把「当前登录的本地账号」当作归属人（在搬迁那一刻读会话）',
-  /function rekeySyncStateByLocalUser[\s\S]{0,600}?rekeySyncStateRows\([\s\S]{0,200}?readSession\(\)\?\.user\.id \?\? null/.test(
+  'v7 历史迁移从旧会话读取归属，不误读新 Auth 会话',
+  /function rekeySyncStateByLocalUser[\s\S]{0,600}?rekeySyncStateRows\([\s\S]{0,200}?readLegacySession\(\)\?\.user\.id \?\? null/.test(
     localDbSource,
   ),
   true,
@@ -242,12 +302,11 @@ check(
 // 第二条撞唯一索引。修法不是加锁，而是把读和写放进同一个 readwrite 事务——
 // IndexedDB 会让同一对象仓库上的两个 readwrite 事务串行执行。
 check(
-  'readModifyWrite 先读、再算、再校验，最后才发写入请求',
-  /export async function readModifyWrite[\s\S]*?const existing = await input\.read\(reader\)[\s\S]{0,200}?const next = input\.build\(existing\)[\s\S]{0,200}?assertRecord\(input\.writeStore, next\)[\s\S]{0,300}?\.put\(next\)/.test(
-    localDbSource,
-  ),
+  '共享事务先读、再算、再校验业务与队列，最后才发写入请求',
+  /snapshot = await input\.read\(transactionReader\(transaction, input\.guard\)\)[\s\S]*const work = input\.build\(snapshot\)[\s\S]*assertRecord\(item\.store, item\.value\)[\s\S]*const entries = buildOutboxEntries\(tracked, owner\)[\s\S]*transaction\.objectStore\(store\)\.clear\(\)[\s\S]*transaction\.objectStore\(item\.store\)\.delete\(item\.id\)[\s\S]*transaction\.objectStore\(item\.store\)\.put\(item\.value\)[\s\S]*writeOutbox\(transaction, entries, input\.guard\)/.test(atomicBody),
   true,
 )
+check('共享事务的校验、身份或请求失败会显式 abort', /const abort = \(reason: unknown\) => \{[\s\S]*transaction\.abort\(\)/.test(atomicBody) && /\}\)\(\)\.catch\(abort\)/.test(atomicBody), true)
 const dayPlanSource = readFileSync(join(PROJECT_ROOT, 'src/services/local/dayPlanService.ts'), 'utf8')
 const upsertBody = functionBody(dayPlanSource, 'upsertDayPlan')
 check('upsertDayPlan 的读-改-写走 readModifyWrite（同一个事务）', /readModifyWrite<DayPlan>\(\{/.test(upsertBody), true)
@@ -260,17 +319,17 @@ check(
 // 同一形状的第二个落点：`daily_meals` 的 `plan_type` 也是唯一索引，
 // 「勾一下吃没吃」同样是读-改-写。只修一处等于把同一个坑留在隔壁。
 check(
-  'setMealCompleted 同样走 readModifyWrite（plan_type 唯一索引）',
-  /readModifyWrite<DailyMeal>\(\{/.test(functionBody(dayPlanSource, 'setMealCompleted')),
+  'setMealCompleted 在 mutateDayPlan 的同一事务里读取餐次并复用已有主键',
+  /return mutateDayPlan\(planDate, \['daily_meals'\], async \(reader, plan\) => \{[\s\S]*await mealsForPlan\(reader, plan\.id\)[\s\S]*const existing = rows\.find[\s\S]*id: existing\?\.id \?\? newId\(\)/.test(functionBody(dayPlanSource, 'setMealCompleted'))
+    && /await atomicReadWrite\(\{[\s\S]*read: async \(reader\) => \{[\s\S]*await prepare\(reader, plan, context\.owner\)/.test(functionBody(dayPlanSource, 'mutateDayPlan')),
   true,
 )
 
 // ---- 账号规则只写一遍：服务层必须从共享模块取校验，不能各自手写一份 ----
-// S4-T7 前这里比的是「本地与云端两侧」，云端适配器删掉之后只剩本地一处消费者；
-// 断言保留，守的是「本地实现别把规则抄一遍再慢慢改歪」。
-const ruleSources = ['src/services/local/authService.ts']
+// 门面与 Auth 会话都用同一套账号规则；本地资料服务不再参与认证。
+const ruleSources = ['src/services/api/authService.ts', 'src/services/sync/authSession.ts']
 check(
-  '本地认证使用共享账号规则',
+  '认证门面与 Auth 会话使用共享账号规则',
   ruleSources.filter((file) => readFileSync(join(PROJECT_ROOT, file), 'utf8').includes('shared/authRules')).length,
   ruleSources.length,
 )

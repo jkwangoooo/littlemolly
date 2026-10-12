@@ -13,12 +13,15 @@ import type {
   SupplementInput,
 } from '../../shared/types/dayPlan'
 import { MEAL_TYPES, ROUTINE_ORDER, ROUTINE_TITLES } from '../../shared/types/dayPlan'
-import type { SupplementPeriod } from '../../shared/types/options'
+import type { SupplementPeriod, SupplementTemplate } from '../../shared/types/options'
 import { SUPPLEMENT_PERIODS } from '../../shared/types/options'
 import { addDays, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
-import { currentUser } from './authService'
-import { getAll, newId, put, readModifyWrite, remove } from './localDb'
-import { listSelectableOptions } from './optionService'
+import { assertAuthContextCurrent, captureAuthContext, type AuthContext } from '../session'
+import {
+  atomicReadWrite, newId, readModifyWrite, readTransaction,
+  type LocalStore, type TransactionReader, type TransactionWork, type UserDataStore,
+} from './localDb'
+import { requireOwnedRecord } from './workspaceRecords'
 
 /**
  * 单日计划的读写（本地后端）。
@@ -33,10 +36,8 @@ import { listSelectableOptions } from './optionService'
 
 export type { ExerciseInput, MealInput, SupplementInput }
 
-function userId(): string {
-  const user = currentUser()
-  if (!user) throw new Error('请先登录。')
-  return user.id
+function ownedWrite(context: AuthContext) {
+  return { owner: context.owner, guard: () => assertAuthContextCurrent(context) }
 }
 
 function now(): string {
@@ -116,48 +117,99 @@ function sortMealItems(list: DailyMealItem[]): DailyMealItem[] {
   return sortByOrder(list, (item) => item.food_name_snapshot)
 }
 
-async function plansForUser(uid: string): Promise<DayPlan[]> {
-  return (await getAll<DayPlan>('day_plans')).filter((plan) => plan.user_id === uid)
+async function plansForUser(reader: TransactionReader, uid: string): Promise<DayPlan[]> {
+  return (await reader.getAll<DayPlan>('day_plans')).filter((plan) => plan.user_id === uid)
 }
 
-async function mealsForPlan(id: string): Promise<DailyMeal[]> {
-  return (await getAll<DailyMeal>('daily_meals')).filter((meal) => meal.day_plan_id === id)
+async function mealsForPlan(reader: TransactionReader, id: string): Promise<DailyMeal[]> {
+  return (await reader.getAll<DailyMeal>('daily_meals')).filter((meal) => meal.day_plan_id === id)
 }
 
-async function mealItemsFor(dailyMealIds: Set<string>): Promise<DailyMealItem[]> {
-  return (await getAll<DailyMealItem>('daily_meal_items')).filter((item) => dailyMealIds.has(item.daily_meal_id))
+async function mealItemsFor(reader: TransactionReader, dailyMealIds: Set<string>): Promise<DailyMealItem[]> {
+  return (await reader.getAll<DailyMealItem>('daily_meal_items')).filter((item) => dailyMealIds.has(item.daily_meal_id))
 }
 
-async function supplementsForPlan(id: string): Promise<DailySupplement[]> {
-  return sortSupplements((await getAll<DailySupplement>('daily_supplements')).filter((row) => row.day_plan_id === id))
+async function childrenFor<T extends { day_plan_id: string }>(
+  reader: TransactionReader, store: UserDataStore, id: string,
+): Promise<T[]> {
+  return (await reader.getAll<T>(store)).filter((row) => row.day_plan_id === id)
 }
 
-async function exerciseItemsForPlan(id: string): Promise<DailyExerciseItem[]> {
-  return sortItems((await getAll<DailyExerciseItem>('daily_exercise_items')).filter((row) => row.day_plan_id === id))
+async function readPlanChildren<T extends { day_plan_id: string }>(
+  store: UserDataStore, id: string,
+): Promise<T[]> {
+  const context = captureAuthContext()
+  return readTransaction({
+    stores: ['day_plans', store],
+    guard: () => assertAuthContextCurrent(context),
+    read: async (reader) => {
+      await requireOwnedRecord<DayPlan>(reader, 'day_plans', id, context.owner)
+      return childrenFor<T>(reader, store, id)
+    },
+  })
 }
 
-async function tasksForPlan(id: string): Promise<CustomTask[]> {
-  return (await getAll<CustomTask>('custom_tasks')).filter((task) => task.day_plan_id === id)
+async function planForDate(reader: TransactionReader, planDate: string, owner: string): Promise<DayPlan | null> {
+  return reader.getByIndex<DayPlan>('day_plans', 'user_date', [owner, planDate])
 }
 
-async function routinesForPlan(id: string): Promise<RoutineTask[]> {
-  return (await getAll<RoutineTask>('routine_tasks')).filter((row) => row.day_plan_id === id)
+/** 日计划、内容和队列一次提交；回调只能读取同一事务的数据。 */
+async function mutateDayPlan<T>(
+  planDate: string,
+  stores: LocalStore[],
+  prepare: (reader: TransactionReader, plan: DayPlan, owner: string) => Promise<{ result: T; work: TransactionWork }>,
+  missing?: () => T,
+): Promise<T> {
+  assertWritableDate(planDate)
+  const context = captureAuthContext()
+  const snapshot = await atomicReadWrite({
+    stores: ['day_plans', ...stores],
+    ...ownedWrite(context),
+    read: async (reader) => {
+      const existing = await planForDate(reader, planDate, context.owner)
+      if (!existing && missing) return { result: missing(), work: {} }
+      const plan = existing ?? emptyPlan(planDate, context.owner)
+      const next = await prepare(reader, plan, context.owner)
+      if (!existing && !next.work.put?.some((row) => row.store === 'day_plans' && row.value.id === plan.id)) {
+        next.work.put = [{ store: 'day_plans', value: plan }, ...(next.work.put ?? [])]
+      }
+      return next
+    },
+    build: ({ work }) => work,
+  })
+  return snapshot.result
 }
 
-async function dropMealItems(dailyMealIds: Set<string>): Promise<void> {
-  for (const item of await mealItemsFor(dailyMealIds)) await remove('daily_meal_items', item.id)
+/** 删除过的来源可变为空引用，存在的来源必须属于当前 UID。 */
+async function sourceOptionId(
+  reader: TransactionReader, store: 'food_options' | 'exercise_options', id: string | null, owner: string,
+): Promise<string | null> {
+  if (id === null) return null
+  const option = await reader.get<{ id: string; user_id: string }>(store, id)
+  if (!option) return null
+  if (option.user_id !== owner) throw new Error('来源选项不属于当前账号。')
+  return option.id
 }
 
 export async function getDayPlan(planDate: string): Promise<DayPlan | null> {
-  const uid = userId()
-  return (await plansForUser(uid)).find((plan) => plan.plan_date === planDate) ?? null
+  const context = captureAuthContext()
+  return readTransaction({
+    stores: ['day_plans'],
+    guard: () => assertAuthContextCurrent(context),
+    read: (reader) => planForDate(reader, planDate, context.owner),
+  })
 }
 
 export async function listDayPlans(planDates: string[]): Promise<DayPlan[]> {
+  const context = captureAuthContext()
   const wanted = new Set(planDates)
-  return (await plansForUser(userId()))
-    .filter((plan) => wanted.has(plan.plan_date))
-    .sort((a, b) => a.plan_date.localeCompare(b.plan_date))
+  return readTransaction({
+    stores: ['day_plans'],
+    guard: () => assertAuthContextCurrent(context),
+    read: async (reader) => (await plansForUser(reader, context.owner))
+      .filter((plan) => wanted.has(plan.plan_date))
+      .sort((a, b) => a.plan_date.localeCompare(b.plan_date)),
+  })
 }
 
 /**
@@ -183,10 +235,12 @@ export async function upsertDayPlan(
   patch: Partial<DayPlan> & { mode?: DayMode; mode_override?: boolean } = {},
 ): Promise<DayPlan> {
   assertWritableDate(planDate)
-  const uid = userId()
+  const context = captureAuthContext()
+  const uid = context.owner
   const timestamp = now()
   return readModifyWrite<DayPlan>({
     stores: ['day_plans'],
+    ...ownedWrite(context),
     writeStore: 'day_plans',
     read: (tx) => tx.getByIndex<DayPlan>('day_plans', 'user_date', [uid, planDate]),
     build: (existing) => ({
@@ -207,14 +261,21 @@ export async function restoreDefaultDayPlan(planDate: string, defaultMode: DayMo
 // ---------------------------------------------------------------- 三餐
 
 export async function listMeals(dayPlanId: string): Promise<DailyMeal[]> {
-  return sortMeals(await mealsForPlan(dayPlanId))
+  return sortMeals(await readPlanChildren<DailyMeal>('daily_meals', dayPlanId))
 }
 
 /** 该天全部餐次的内容项。 */
 export async function listMealItems(dayPlanId: string): Promise<DailyMealItem[]> {
-  const meals = await mealsForPlan(dayPlanId)
-  const items = await mealItemsFor(new Set(meals.map((meal) => meal.id)))
-  return sortMealItems(items)
+  const context = captureAuthContext()
+  return readTransaction({
+    stores: ['day_plans', 'daily_meals', 'daily_meal_items'],
+    guard: () => assertAuthContextCurrent(context),
+    read: async (reader) => {
+      await requireOwnedRecord<DayPlan>(reader, 'day_plans', dayPlanId, context.owner)
+      const meals = await mealsForPlan(reader, dayPlanId)
+      return sortMealItems(await mealItemsFor(reader, new Set(meals.map((meal) => meal.id))))
+    },
+  })
 }
 
 /**
@@ -225,41 +286,40 @@ export async function saveMeals(
   planDate: string,
   meals: MealInput[],
 ): Promise<{ meals: DailyMeal[]; items: DailyMealItem[] }> {
-  assertWritableDate(planDate)
-  const plan = (await getDayPlan(planDate)) ?? (await upsertDayPlan(planDate))
-  const existingMeals = await mealsForPlan(plan.id)
-  const timestamp = now()
-  const savedMeals: DailyMeal[] = []
-  const savedItems: DailyMealItem[] = []
-
-  for (const input of meals) {
-    const kept = existingMeals.find((meal) => meal.meal_type === input.meal_type)
-    const meal: DailyMeal = {
-      id: kept?.id ?? newId(),
-      day_plan_id: plan.id,
-      meal_type: input.meal_type,
-      note: input.note,
-      completed: kept?.completed ?? false,
-    }
-    await put('daily_meals', meal)
-    savedMeals.push(meal)
-
-    await dropMealItems(new Set([meal.id]))
-    for (const [index, item] of input.items.entries()) {
-      const record: DailyMealItem = {
-        id: newId(),
-        daily_meal_id: meal.id,
-        food_option_id: item.optionId,
-        food_name_snapshot: item.name,
-        sort_order: index,
-        created_at: timestamp,
+  if (new Set(meals.map((meal) => meal.meal_type)).size !== meals.length) throw new Error('餐次不能重复。')
+  return mutateDayPlan(planDate, ['daily_meals', 'daily_meal_items', 'food_options'], async (reader, plan, owner) => {
+    const existingMeals = await mealsForPlan(reader, plan.id)
+    const replacedIds = new Set(existingMeals.filter((meal) => meals.some((input) => input.meal_type === meal.meal_type)).map((meal) => meal.id))
+    const existingItems = await mealItemsFor(reader, replacedIds)
+    const timestamp = now()
+    const savedMeals: DailyMeal[] = []
+    const savedItems: DailyMealItem[] = []
+    for (const input of meals) {
+      const kept = existingMeals.find((meal) => meal.meal_type === input.meal_type)
+      const meal: DailyMeal = {
+        id: kept?.id ?? newId(), day_plan_id: plan.id, meal_type: input.meal_type,
+        note: input.note, completed: kept?.completed ?? false,
       }
-      await put('daily_meal_items', record)
-      savedItems.push(record)
+      savedMeals.push(meal)
+      for (const [index, item] of input.items.entries()) {
+        savedItems.push({
+          id: newId(), daily_meal_id: meal.id,
+          food_option_id: await sourceOptionId(reader, 'food_options', item.optionId, owner),
+          food_name_snapshot: item.name, sort_order: index, created_at: timestamp,
+        })
+      }
     }
-  }
-
-  return { meals: sortMeals(savedMeals), items: sortMealItems(savedItems) }
+    return {
+      result: { meals: sortMeals(savedMeals), items: sortMealItems(savedItems) },
+      work: {
+        remove: existingItems.map((row) => ({ store: 'daily_meal_items', id: row.id })),
+        put: [
+          ...savedMeals.map((value) => ({ store: 'daily_meals' as LocalStore, value })),
+          ...savedItems.map((value) => ({ store: 'daily_meal_items' as LocalStore, value })),
+        ],
+      },
+    }
+  })
 }
 
 /**
@@ -277,22 +337,18 @@ export async function setMealCompleted(
   mealType: MealType,
   completed: boolean,
 ): Promise<DailyMeal[]> {
-  assertWritableDate(planDate)
-  const plan = (await getDayPlan(planDate)) ?? (await upsertDayPlan(planDate))
-
-  await readModifyWrite<DailyMeal>({
-    stores: ['daily_meals'],
-    writeStore: 'daily_meals',
-    read: (tx) => tx.getByIndex<DailyMeal>('daily_meals', 'plan_type', [plan.id, mealType]),
-    build: (existing) => ({
-      id: existing?.id ?? newId(),
-      day_plan_id: plan.id,
-      meal_type: mealType,
-      note: existing?.note ?? '',
-      completed,
-    }),
+  return mutateDayPlan(planDate, ['daily_meals'], async (reader, plan) => {
+    const rows = await mealsForPlan(reader, plan.id)
+    const existing = rows.find((row) => row.meal_type === mealType)
+    const next: DailyMeal = {
+      id: existing?.id ?? newId(), day_plan_id: plan.id, meal_type: mealType,
+      note: existing?.note ?? '', completed,
+    }
+    return {
+      result: sortMeals([...rows.filter((row) => row.id !== next.id), next]),
+      work: { put: [{ store: 'daily_meals', value: next }] },
+    }
   })
-  return sortMeals(await mealsForPlan(plan.id))
 }
 
 // ---------------------------------------------------------------- 补剂
@@ -306,41 +362,44 @@ export async function setMealCompleted(
  * - 去重键是「时段 + 名称快照」，所以用户手工加的同名项不会被重复补。
  */
 export async function ensureDaySupplements(planDate: string): Promise<DailySupplement[]> {
-  const plan = await getDayPlan(planDate)
-  if (!plan) return []
-  const existing = await supplementsForPlan(plan.id)
-  if (isHistory(planDate)) return existing
-
-  const templates = await listSelectableOptions('supplement')
-  const seen = new Set(existing.map((row) => `${row.period}:${row.name_snapshot}`))
-  const timestamp = now()
-  let nextOrder = existing.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1
-  let changed = false
-
-  for (const template of templates) {
-    const key = `${template.period}:${template.name}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    await put<DailySupplement>('daily_supplements', {
-      id: newId(),
-      day_plan_id: plan.id,
-      name_snapshot: template.name,
-      period: template.period,
-      planned: true,
-      completed: false,
-      sort_order: nextOrder,
-      created_at: timestamp,
-      updated_at: timestamp,
-    })
-    nextOrder += 1
-    changed = true
-  }
-
-  return changed ? supplementsForPlan(plan.id) : existing
+  const context = captureAuthContext()
+  const snapshot = await atomicReadWrite({
+    stores: ['day_plans', 'daily_supplements', 'supplement_templates'],
+    ...ownedWrite(context),
+    read: async (reader) => {
+      const plan = await planForDate(reader, planDate, context.owner)
+      const additions: DailySupplement[] = []
+      if (!plan) return { rows: additions, additions }
+      const existing = await childrenFor<DailySupplement>(reader, 'daily_supplements', plan.id)
+      if (isHistory(planDate)) return { rows: sortSupplements(existing), additions }
+      const templates = (await reader.getAll<SupplementTemplate>('supplement_templates'))
+        .filter((row) => row.user_id === context.owner && row.active)
+        .sort((left, right) => periodIndex(left.period) - periodIndex(right.period)
+          || left.sort_order - right.sort_order || left.name.localeCompare(right.name, 'zh-Hans-CN'))
+      const seen = new Set(existing.map((row) => `${row.period}:${row.name_snapshot}`))
+      const timestamp = now()
+      let nextOrder = existing.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1
+      for (const template of templates) {
+        const key = `${template.period}:${template.name}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        additions.push({
+          id: newId(), day_plan_id: plan.id, name_snapshot: template.name, period: template.period,
+          planned: true, completed: false, sort_order: nextOrder++,
+          created_at: timestamp, updated_at: timestamp,
+        })
+      }
+      return { rows: sortSupplements([...existing, ...additions]), additions }
+    },
+    build: ({ additions }) => ({
+      put: additions.map((value) => ({ store: 'daily_supplements', value })),
+    }),
+  })
+  return snapshot.rows
 }
 
 export async function listDaySupplements(dayPlanId: string): Promise<DailySupplement[]> {
-  return supplementsForPlan(dayPlanId)
+  return sortSupplements(await readPlanChildren<DailySupplement>('daily_supplements', dayPlanId))
 }
 
 /**
@@ -352,14 +411,7 @@ export async function listDaySupplements(dayPlanId: string): Promise<DailySupple
  * 补齐逻辑下次又会认定「缺一条」而反复追加。
  */
 export async function saveDaySupplements(planDate: string, rows: SupplementInput[]): Promise<DailySupplement[]> {
-  assertWritableDate(planDate)
-  const plan = (await getDayPlan(planDate)) ?? (await upsertDayPlan(planDate))
-  const existing = await supplementsForPlan(plan.id)
-  const timestamp = now()
-  const saved: DailySupplement[] = []
-  const keptIds = new Set<string>()
   const seenKeys = new Set<string>()
-
   const cleaned = rows
     .map((row) => ({ ...row, name: row.name.trim() }))
     .filter((row) => {
@@ -370,29 +422,27 @@ export async function saveDaySupplements(planDate: string, rows: SupplementInput
       return true
     })
 
-  for (const [index, row] of cleaned.entries()) {
-    const kept = row.id ? existing.find((item) => item.id === row.id) : undefined
-    const record: DailySupplement = {
-      id: kept?.id ?? newId(),
-      day_plan_id: plan.id,
-      name_snapshot: row.name,
-      period: row.period,
-      planned: row.planned,
-      completed: row.completed,
-      sort_order: index,
-      created_at: kept?.created_at ?? timestamp,
-      updated_at: timestamp,
+  return mutateDayPlan(planDate, ['daily_supplements'], async (reader, plan) => {
+    const existing = await childrenFor<DailySupplement>(reader, 'daily_supplements', plan.id)
+    const timestamp = now()
+    const saved = cleaned.map((row, index): DailySupplement => {
+      const kept = row.id ? existing.find((item) => item.id === row.id) : undefined
+      if (row.id && !kept) throw new Error('补剂记录不属于这个日期，或已经不存在。')
+      return {
+        id: kept?.id ?? newId(), day_plan_id: plan.id, name_snapshot: row.name,
+        period: row.period, planned: row.planned, completed: row.completed, sort_order: index,
+        created_at: kept?.created_at ?? timestamp, updated_at: timestamp,
+      }
+    })
+    const keptIds = new Set(saved.map((row) => row.id))
+    return {
+      result: sortSupplements(saved),
+      work: {
+        put: saved.map((value) => ({ store: 'daily_supplements', value })),
+        remove: existing.filter((row) => !keptIds.has(row.id)).map((row) => ({ store: 'daily_supplements', id: row.id })),
+      },
     }
-    await put('daily_supplements', record)
-    saved.push(record)
-    keptIds.add(record.id)
-  }
-
-  for (const row of existing) {
-    if (!keptIds.has(row.id)) await remove('daily_supplements', row.id)
-  }
-
-  return sortSupplements(saved)
+  })
 }
 
 /** 只翻某一条补剂的「今天吃没吃」，内容与顺序都不动。 */
@@ -401,19 +451,21 @@ export async function setSupplementCompleted(
   id: string,
   completed: boolean,
 ): Promise<DailySupplement[]> {
-  assertWritableDate(planDate)
-  const plan = await getDayPlan(planDate)
-  if (!plan) return []
-
-  const row = (await supplementsForPlan(plan.id)).find((item) => item.id === id)
-  if (row) await put<DailySupplement>('daily_supplements', { ...row, completed, updated_at: now() })
-  return supplementsForPlan(plan.id)
+  return mutateDayPlan(planDate, ['daily_supplements'], async (reader, plan) => {
+    const existing = await childrenFor<DailySupplement>(reader, 'daily_supplements', plan.id)
+    const row = existing.find((item) => item.id === id)
+    const next = row ? { ...row, completed, updated_at: now() } : null
+    return {
+      result: sortSupplements(existing.map((item) => item.id === id && next ? next : item)),
+      work: { put: next ? [{ store: 'daily_supplements', value: next }] : [] },
+    }
+  }, () => [])
 }
 
 // ---------------------------------------------------------------- 健身
 
 export async function listExerciseItems(dayPlanId: string): Promise<DailyExerciseItem[]> {
-  return exerciseItemsForPlan(dayPlanId)
+  return sortItems(await readPlanChildren<DailyExerciseItem>('daily_exercise_items', dayPlanId))
 }
 
 /**
@@ -425,63 +477,63 @@ export async function saveExercise(
   planDate: string,
   input: ExerciseInput,
 ): Promise<{ plan: DayPlan; items: DailyExerciseItem[] }> {
-  assertWritableDate(planDate)
-  const plan = (await getDayPlan(planDate)) ?? (await upsertDayPlan(planDate))
-  const next = await upsertDayPlan(planDate, {
-    exercise_decision: input.decision,
-    exercise_note: input.note,
-  })
-
-  for (const row of await exerciseItemsForPlan(plan.id)) await remove('daily_exercise_items', row.id)
-
-  const timestamp = now()
-  const items: DailyExerciseItem[] = []
-  for (const [index, item] of input.items.entries()) {
-    const record: DailyExerciseItem = {
-      id: newId(),
-      day_plan_id: next.id,
-      exercise_option_id: item.optionId,
-      name_snapshot: item.name,
-      sort_order: index,
-      created_at: timestamp,
+  return mutateDayPlan(planDate, ['daily_exercise_items', 'exercise_options'], async (reader, plan, owner) => {
+    const existing = await childrenFor<DailyExerciseItem>(reader, 'daily_exercise_items', plan.id)
+    const next = { ...plan, exercise_decision: input.decision, exercise_note: input.note, updated_at: now() }
+    const timestamp = now()
+    const items: DailyExerciseItem[] = []
+    for (const [index, item] of input.items.entries()) {
+      items.push({
+        id: newId(), day_plan_id: plan.id,
+        exercise_option_id: await sourceOptionId(reader, 'exercise_options', item.optionId, owner),
+        name_snapshot: item.name, sort_order: index, created_at: timestamp,
+      })
     }
-    await put('daily_exercise_items', record)
-    items.push(record)
-  }
-
-  return { plan: next, items: sortItems(items) }
+    return {
+      result: { plan: next, items: sortItems(items) },
+      work: {
+        remove: existing.map((row) => ({ store: 'daily_exercise_items', id: row.id })),
+        put: [
+          { store: 'day_plans', value: next },
+          ...items.map((value) => ({ store: 'daily_exercise_items' as LocalStore, value })),
+        ],
+      },
+    }
+  })
 }
 
 // ---------------------------------------------------------------- 自定义事项
 
 export async function listCustomTasks(dayPlanId: string): Promise<CustomTask[]> {
-  return (await tasksForPlan(dayPlanId)).sort((a, b) => a.task_time.localeCompare(b.task_time))
+  return (await readPlanChildren<CustomTask>('custom_tasks', dayPlanId))
+    .sort((a, b) => a.task_time.localeCompare(b.task_time))
 }
 
 export async function saveCustomTask(
   planDate: string,
   task: Partial<CustomTask> & { task_time: string; title: string; note: string; completed: boolean },
 ): Promise<CustomTask> {
-  assertWritableDate(planDate)
-  const plan = (await getDayPlan(planDate)) ?? (await upsertDayPlan(planDate))
-  const next: CustomTask = {
-    id: task.id ?? newId(),
-    day_plan_id: plan.id,
-    task_time: task.task_time,
-    title: task.title,
-    note: task.note,
-    completed: task.completed,
-  }
-  await put('custom_tasks', next)
-  return next
+  return mutateDayPlan(planDate, ['custom_tasks'], async (reader, plan, owner) => {
+    if (task.id) {
+      const existing = await requireOwnedRecord<CustomTask>(reader, 'custom_tasks', task.id, owner)
+      if (existing.day_plan_id !== plan.id) throw new Error('事项不属于这个日期。')
+    }
+    const next: CustomTask = {
+      id: task.id ?? newId(), day_plan_id: plan.id, task_time: task.task_time,
+      title: task.title, note: task.note, completed: task.completed,
+    }
+    return { result: next, work: { put: [{ store: 'custom_tasks', value: next }] } }
+  })
 }
 
 export async function deleteCustomTask(planDate: string, id: string): Promise<void> {
-  assertWritableDate(planDate)
-  const plan = await getDayPlan(planDate)
-  if (!plan) return
-  const task = (await tasksForPlan(plan.id)).find((item) => item.id === id)
-  if (task) await remove('custom_tasks', id)
+  return mutateDayPlan(planDate, ['custom_tasks'], async (reader, plan, owner) => {
+    const row = await reader.get<CustomTask>('custom_tasks', id)
+    if (!row) return { result: undefined, work: {} }
+    const task = await requireOwnedRecord<CustomTask>(reader, 'custom_tasks', id, owner)
+    if (task.day_plan_id !== plan.id) throw new Error('事项不属于这个日期。')
+    return { result: undefined, work: { remove: [{ store: 'custom_tasks', id }] } }
+  }, () => undefined)
 }
 
 // ---------------------------------------------------------------- 休息日家务
@@ -491,7 +543,7 @@ function sortRoutines(list: RoutineTask[]): RoutineTask[] {
 }
 
 export async function listRoutineTasks(dayPlanId: string): Promise<RoutineTask[]> {
-  return sortRoutines(await routinesForPlan(dayPlanId))
+  return sortRoutines(await readPlanChildren<RoutineTask>('routine_tasks', dayPlanId))
 }
 
 /**
@@ -504,26 +556,32 @@ export async function listRoutineTasks(dayPlanId: string): Promise<RoutineTask[]
  * - 只补缺失，不删除、不改写已有实例。
  */
 export async function ensureRestDayRoutines(planDate: string): Promise<RoutineTask[]> {
-  const plan = await getDayPlan(planDate)
-  if (!plan) return []
-  const existing = await routinesForPlan(plan.id)
-  if (isHistory(planDate)) return existing
-  if (plan.mode !== 'rest' || plan.mode_override) return existing
-
-  const seen = new Set(existing.map((row) => row.kind))
-  let changed = false
-  for (const kind of ROUTINE_ORDER) {
-    if (seen.has(kind)) continue
-    await put<RoutineTask>('routine_tasks', {
-      id: newId(),
-      day_plan_id: plan.id,
-      kind,
-      title: ROUTINE_TITLES[kind],
-      completed: false,
-    })
-    changed = true
-  }
-  return changed ? sortRoutines(await routinesForPlan(plan.id)) : sortRoutines(existing)
+  const context = captureAuthContext()
+  const snapshot = await atomicReadWrite({
+    stores: ['day_plans', 'routine_tasks'],
+    ...ownedWrite(context),
+    read: async (reader) => {
+      const additions: RoutineTask[] = []
+      const plan = await planForDate(reader, planDate, context.owner)
+      if (!plan) return { rows: additions, additions }
+      const existing = await childrenFor<RoutineTask>(reader, 'routine_tasks', plan.id)
+      if (isHistory(planDate) || plan.mode !== 'rest' || plan.mode_override) {
+        return { rows: sortRoutines(existing), additions }
+      }
+      const seen = new Set(existing.map((row) => row.kind))
+      for (const kind of ROUTINE_ORDER) {
+        if (seen.has(kind)) continue
+        additions.push({
+          id: newId(), day_plan_id: plan.id, kind, title: ROUTINE_TITLES[kind], completed: false,
+        })
+      }
+      return { rows: sortRoutines([...existing, ...additions]), additions }
+    },
+    build: ({ additions }) => ({
+      put: additions.map((value) => ({ store: 'routine_tasks', value })),
+    }),
+  })
+  return snapshot.rows
 }
 
 /** 只翻某一条家务的「做没做」，内容与顺序都不动。 */
@@ -532,13 +590,15 @@ export async function setRoutineCompleted(
   id: string,
   completed: boolean,
 ): Promise<RoutineTask[]> {
-  assertWritableDate(planDate)
-  const plan = await getDayPlan(planDate)
-  if (!plan) return []
-
-  const row = (await routinesForPlan(plan.id)).find((item) => item.id === id)
-  if (row) await put<RoutineTask>('routine_tasks', { ...row, completed })
-  return sortRoutines(await routinesForPlan(plan.id))
+  return mutateDayPlan(planDate, ['routine_tasks'], async (reader, plan) => {
+    const rows = await childrenFor<RoutineTask>(reader, 'routine_tasks', plan.id)
+    const row = rows.find((item) => item.id === id)
+    const next = row ? { ...row, completed } : null
+    return {
+      result: sortRoutines(rows.map((item) => item.id === id && next ? next : item)),
+      work: { put: next ? [{ store: 'routine_tasks', value: next }] : [] },
+    }
+  }, () => [])
 }
 
 // ---------------------------------------------------------------- 复制
@@ -555,76 +615,79 @@ export async function setRoutineCompleted(
  * 由 `ensureRestDayRoutines` 独立管理；复制既不带走来源日的家务，也不动目标日已有的家务。
  */
 export async function copyYesterday(planDate: string): Promise<DayPlan> {
-  assertWritableDate(planDate)
-  const uid = userId()
-  const source = (await plansForUser(uid)).find((plan) => plan.plan_date === addDays(planDate, -1))
-  if (!source) throw new Error('昨天没有可复制的计划。')
-
-  const existingTarget = (await plansForUser(uid)).find((plan) => plan.plan_date === planDate)
-  const target: DayPlan = {
-    ...(existingTarget ?? emptyPlan(planDate, uid)),
-    id: existingTarget?.id ?? newId(),
-    user_id: uid,
-    plan_date: planDate,
-    morning_focus: source.morning_focus,
-    exercise_decision: source.exercise_decision,
-    exercise_note: source.exercise_note,
-    outfit_ready: false,
-    meals_ready: false,
-    supplements_ready: false,
-    morning_ready: false,
-    exercise_ready: false,
-    morning_completed: false,
-    exercise_completed: false,
-    updated_at: now(),
-  }
-  await put('day_plans', target)
-
-  // 三餐：先清空目标日，再按来源日重建（含每餐的内容项）
-  const sourceMeals = await mealsForPlan(source.id)
-  const targetMeals = await mealsForPlan(target.id)
-  await dropMealItems(new Set(targetMeals.map((meal) => meal.id)))
-  for (const meal of targetMeals) await remove('daily_meals', meal.id)
-
-  const sourceItems = await mealItemsFor(new Set(sourceMeals.map((meal) => meal.id)))
-  for (const meal of sourceMeals) {
-    const copiedMeal: DailyMeal = {
-      id: newId(),
-      day_plan_id: target.id,
-      meal_type: meal.meal_type,
-      note: meal.note,
-      completed: false,
+  return mutateDayPlan(planDate, [
+    'daily_meals', 'daily_meal_items', 'daily_supplements', 'daily_exercise_items',
+    'custom_tasks', 'food_options', 'exercise_options',
+  ], async (reader, existingTarget, owner) => {
+    const source = await planForDate(reader, addDays(planDate, -1), owner)
+    if (!source) throw new Error('昨天没有可复制的计划。')
+    const timestamp = now()
+    const target: DayPlan = {
+      ...existingTarget,
+      morning_focus: source.morning_focus, exercise_decision: source.exercise_decision,
+      exercise_note: source.exercise_note, outfit_ready: false, meals_ready: false,
+      supplements_ready: false, morning_ready: false, exercise_ready: false,
+      morning_completed: false, exercise_completed: false, updated_at: timestamp,
     }
-    await put('daily_meals', copiedMeal)
-    for (const item of sourceItems.filter((row) => row.daily_meal_id === meal.id)) {
-      await put<DailyMealItem>('daily_meal_items', { ...item, id: newId(), daily_meal_id: copiedMeal.id })
+    const [sourceMeals, targetMeals, sourceSupplements, targetSupplements, sourceExercises,
+      targetExercises, sourceTasks, targetTasks] = await Promise.all([
+      mealsForPlan(reader, source.id),
+      mealsForPlan(reader, target.id),
+      childrenFor<DailySupplement>(reader, 'daily_supplements', source.id),
+      childrenFor<DailySupplement>(reader, 'daily_supplements', target.id),
+      childrenFor<DailyExerciseItem>(reader, 'daily_exercise_items', source.id),
+      childrenFor<DailyExerciseItem>(reader, 'daily_exercise_items', target.id),
+      childrenFor<CustomTask>(reader, 'custom_tasks', source.id),
+      childrenFor<CustomTask>(reader, 'custom_tasks', target.id),
+    ])
+    const [sourceItems, targetItems] = await Promise.all([
+      mealItemsFor(reader, new Set(sourceMeals.map((meal) => meal.id))),
+      mealItemsFor(reader, new Set(targetMeals.map((meal) => meal.id))),
+    ])
+    const puts: NonNullable<TransactionWork['put']> = [{ store: 'day_plans', value: target }]
+    for (const meal of sourceMeals) {
+      const copied: DailyMeal = {
+        id: newId(), day_plan_id: target.id, meal_type: meal.meal_type,
+        note: meal.note, completed: false,
+      }
+      puts.push({ store: 'daily_meals', value: copied })
+      for (const item of sourceItems.filter((row) => row.daily_meal_id === meal.id)) {
+        const copiedItem: DailyMealItem = {
+          ...item, id: newId(), daily_meal_id: copied.id,
+          food_option_id: await sourceOptionId(reader, 'food_options', item.food_option_id, owner),
+        }
+        puts.push({ store: 'daily_meal_items', value: copiedItem })
+      }
     }
-  }
-
-  // 补剂：内容照抄（含 planned），完成状态归零
-  const timestamp = now()
-  for (const row of await supplementsForPlan(target.id)) await remove('daily_supplements', row.id)
-  for (const row of await supplementsForPlan(source.id)) {
-    await put<DailySupplement>('daily_supplements', {
-      ...row,
-      id: newId(),
-      day_plan_id: target.id,
-      completed: false,
-      updated_at: timestamp,
-    })
-  }
-
-  // 健身项：内容照抄
-  for (const row of await exerciseItemsForPlan(target.id)) await remove('daily_exercise_items', row.id)
-  for (const row of await exerciseItemsForPlan(source.id)) {
-    await put<DailyExerciseItem>('daily_exercise_items', { ...row, id: newId(), day_plan_id: target.id })
-  }
-
-  // 自定义事项：内容照抄，完成状态归零
-  for (const task of await tasksForPlan(target.id)) await remove('custom_tasks', task.id)
-  for (const task of await tasksForPlan(source.id)) {
-    await put<CustomTask>('custom_tasks', { ...task, id: newId(), day_plan_id: target.id, completed: false })
-  }
-
-  return target
+    for (const row of sourceSupplements) {
+      const copied: DailySupplement = {
+        ...row, id: newId(), day_plan_id: target.id, completed: false, updated_at: timestamp,
+      }
+      puts.push({ store: 'daily_supplements', value: copied })
+    }
+    for (const row of sourceExercises) {
+      const copied: DailyExerciseItem = {
+        ...row, id: newId(), day_plan_id: target.id,
+        exercise_option_id: await sourceOptionId(reader, 'exercise_options', row.exercise_option_id, owner),
+      }
+      puts.push({ store: 'daily_exercise_items', value: copied })
+    }
+    for (const row of sourceTasks) {
+      const copied: CustomTask = { ...row, id: newId(), day_plan_id: target.id, completed: false }
+      puts.push({ store: 'custom_tasks', value: copied })
+    }
+    return {
+      result: target,
+      work: {
+        put: puts,
+        remove: [
+          ...targetItems.map((row) => ({ store: 'daily_meal_items' as LocalStore, id: row.id })),
+          ...targetMeals.map((row) => ({ store: 'daily_meals' as LocalStore, id: row.id })),
+          ...targetSupplements.map((row) => ({ store: 'daily_supplements' as LocalStore, id: row.id })),
+          ...targetExercises.map((row) => ({ store: 'daily_exercise_items' as LocalStore, id: row.id })),
+          ...targetTasks.map((row) => ({ store: 'custom_tasks' as LocalStore, id: row.id })),
+        ],
+      },
+    }
+  })
 }

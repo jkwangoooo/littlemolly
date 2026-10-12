@@ -1,4 +1,4 @@
-import { readSession } from '../session'
+import { readLegacySession, readSession, subscribeAuth } from '../session'
 import {
   compactionVictims,
   createSeqGenerator,
@@ -11,7 +11,7 @@ import { assertRecord, isSyncableStore } from './recordSchemas'
 
 const DB_NAME = 'happy-little-molly-local'
 /** 当前结构版本。备份文件里会记下它，便于以后判断「这份备份是哪一代的库导出的」。 */
-export const DB_VERSION = 7
+export const DB_VERSION = 8
 
 /**
  * 本地对象仓库契约。新增仓库时必须同时做五件事，缺一不可：
@@ -38,18 +38,33 @@ export type LocalStore =
   | 'routine_tasks'
   | 'sync_outbox'
   | 'sync_state'
+  | 'legacy_users'
+  | 'legacy_sync_state'
+  | 'legacy_outbox'
+  | 'workspace_state'
+  | 'workspace_migrations'
 
 /**
  * 进同步队列的仓库：只有用户数据。
- * `users` 是应用身份（决策 D5：不迁移本地密码），`sync_*` 是本机状态，都不进队列。
+ * `users` 是 Auth UID 的资料缓存；同步状态、旧数据隔离与工作区控制仓库都不进队列。
  */
-export type UserDataStore = Exclude<LocalStore, 'users' | 'sync_outbox' | 'sync_state'>
+export type UserDataStore = Exclude<
+  LocalStore,
+  | 'users'
+  | 'sync_outbox'
+  | 'sync_state'
+  | 'legacy_users'
+  | 'legacy_sync_state'
+  | 'legacy_outbox'
+  | 'workspace_state'
+  | 'workspace_migrations'
+>
 
 type IndexDefinition = { name: string; keyPath: string | string[]; unique?: boolean }
 type StoreDefinition = { name: LocalStore; keyPath: string; indexes?: IndexDefinition[] }
 
 const STORES: StoreDefinition[] = [
-  { name: 'users', keyPath: 'id', indexes: [{ name: 'username', keyPath: 'username', unique: true }] },
+  { name: 'users', keyPath: 'id' },
   {
     name: 'day_plans',
     keyPath: 'id',
@@ -89,9 +104,22 @@ const STORES: StoreDefinition[] = [
       { name: 'store_record', keyPath: ['store', 'record_id'] },
     ],
   },
-  // 按**本地账号**分行：`id` 就是本地账号 id（v7 起，见 MIGRATIONS[7]）。
+  // 按 Auth UID 分行：`id` 与业务 user_id 使用同一个 UID；v8 隔离旧双身份状态。
   // 字段见 recordSchemas.ts 的 sync_state 契约。
   { name: 'sync_state', keyPath: 'id' },
+  { name: 'legacy_users', keyPath: 'id' },
+  { name: 'legacy_sync_state', keyPath: 'id' },
+  {
+    name: 'legacy_outbox',
+    keyPath: 'id',
+    indexes: [{ name: 'local_user_id', keyPath: 'local_user_id' }],
+  },
+  { name: 'workspace_state', keyPath: 'id' },
+  {
+    name: 'workspace_migrations',
+    keyPath: 'id',
+    indexes: [{ name: 'source_owner', keyPath: 'source_owner', unique: true }],
+  },
 ]
 
 /**
@@ -239,10 +267,67 @@ function rekeySyncStateByLocalUser(tx: IDBTransaction): void {
     // 会话在**搬迁那一刻**读：这正是「这次升级是谁在登录」的唯一答案。
     const plan = rekeySyncStateRows(
       existing.result as Array<Record<string, unknown> & { id: string }>,
-      readSession()?.user.id ?? null,
+      readLegacySession()?.user.id ?? null,
     )
     for (const row of plan.put) store.put(row)
     for (const id of plan.remove) store.delete(id)
+  }
+}
+
+/**
+ * v8 只隔离旧身份与上传意图；业务记录不改 owner、不删除。
+ * Auth UID 经验证并获得明确的迁移选择后，才由工作区服务搬迁。
+ */
+function isolateLegacyIdentity(tx: IDBTransaction): void {
+  const isolatedAt = new Date().toISOString()
+  const users = tx.objectStore('users')
+  if (users.indexNames.contains('username')) users.deleteIndex('username')
+  if (users.indexNames.contains('email')) users.deleteIndex('email')
+
+  const existingUsers = users.getAll()
+  existingUsers.onsuccess = () => {
+    const archive = tx.objectStore('legacy_users')
+    for (const row of existingUsers.result as Array<Record<string, unknown>>) {
+      archive.put({
+        id: String(row.id),
+        username: typeof row.username === 'string'
+          ? row.username
+          : typeof row.email === 'string' ? row.email : '',
+        created_at: typeof row.created_at === 'string' ? row.created_at : new Date(0).toISOString(),
+        isolated_at: isolatedAt,
+      })
+    }
+    users.clear()
+  }
+
+  const state = tx.objectStore('sync_state')
+  const existingState = state.getAll()
+  existingState.onsuccess = () => {
+    const archive = tx.objectStore('legacy_sync_state')
+    for (const row of existingState.result as Array<Record<string, unknown>>) {
+      const clean: Record<string, unknown> = {}
+      for (const key of [
+        'id', 'enabled', 'cloud_user_id', 'cloud_email', 'device_id', 'bound_at',
+        'last_push_at', 'last_restore_at', 'last_error_message', 'last_error_at', 'updated_at',
+      ]) clean[key] = row[key] ?? null
+      archive.put({ ...clean, isolated_at: isolatedAt })
+    }
+    state.clear()
+  }
+
+  const outbox = tx.objectStore('sync_outbox')
+  const existingOutbox = outbox.getAll()
+  existingOutbox.onsuccess = () => {
+    const archive = tx.objectStore('legacy_outbox')
+    for (const row of existingOutbox.result as Array<Record<string, unknown>>) {
+      const clean: Record<string, unknown> = {}
+      for (const key of [
+        'id', 'seq', 'store', 'record_id', 'op', 'local_user_id',
+        'created_at', 'attempts', 'last_error',
+      ]) clean[key] = row[key] ?? null
+      archive.put({ ...clean, isolated_at: isolatedAt })
+    }
+    outbox.clear()
   }
 }
 
@@ -276,6 +361,10 @@ const MIGRATIONS: Record<number, Migration> = {
    * 这里不删它们，是因为「删」是不可逆的，而「不推」已经足够安全。
    */
   7: { migrate: rekeySyncStateByLocalUser },
+  8: {
+    stores: ['legacy_users', 'legacy_sync_state', 'legacy_outbox', 'workspace_state', 'workspace_migrations'],
+    migrate: isolateLegacyIdentity,
+  },
 }
 
 /**
@@ -373,10 +462,17 @@ export function newId(): string {
  * 若没人接，浏览器不会把它传给事务，事务照样 complete——「写失败却被当成成功」。
  * 这里把请求错误转成 reject，让调用方看到真实原因。
  */
-function guardRequest(request: IDBRequest, fallback: string): Promise<void> {
+function guardRequest(request: IDBRequest, fallback: string, guard?: () => void): Promise<void> {
   return new Promise((resolve, reject) => {
     request.onerror = () => reject(request.error ?? new Error(fallback))
-    request.onsuccess = () => resolve()
+    request.onsuccess = () => {
+      try {
+        guard?.()
+        resolve()
+      } catch (reason) {
+        reject(reason)
+      }
+    }
   })
 }
 
@@ -393,30 +489,29 @@ function guardRequest(request: IDBRequest, fallback: string): Promise<void> {
  * 2. **云端恢复到本地**的整体替换（数据本来就是从云端来的，回推没有意义）；
  * 3. 迁移搬迁（`MIGRATIONS[n].migrate`）——历史数据不该被当成新变更。
  *
- * `owner` 是入队条目的归属本地账号，默认取**当前会话**。
- * 只有一种正当用途：写入发生在会话建立**之前**——注册时播种示例选项正是这样，
- * 那时调用方明确知道这批数据属于谁，必须显式传进来；
- * 不传的话条目会变成「无归属」，永远不会被推送（见 `outboxRules.entriesOfOwner`）。
+ * `owner` 是入队条目的 Auth UID，默认取当前已准备的会话。
+ * 认证准备、首次恢复及旧工作区迁移可在发布业务会话前显式传入经过验证的 UID，
+ * 并用 `guard` 约束身份代次。无归属条目不会上传（见 `outboxRules.entriesOfOwner`）。
  */
-export type WriteOptions = { track?: boolean; owner?: string }
+export type WriteOptions = {
+  track?: boolean
+  owner?: string
+  guard?: () => void
+  /** 仅跳过由云端外键同样自动完成的变更；业务操作本身仍入队。 */
+  trackChange?: (change: OutboxChange) => boolean
+}
 
 const nextSeq = createSeqGenerator()
 
 /** 事务要开哪几个仓库：有队列记录时把 `sync_outbox` 一起带上，两者才能原子。 */
-function storeNamesFor(storeName: LocalStore, entries: OutboxEntry[]): LocalStore[] {
-  return entries.length ? [storeName, 'sync_outbox'] : [storeName]
-}
-
 /**
- * 组出要写的队列记录（**在事务外调用**）。
+ * 组出要写的队列记录，在业务写入请求发出前校验字段契约。
  *
- * 校验必须发生在开事务之前：`assertRecord` 若在事务中途抛出，业务写入的请求已经发出去、
- * 事务照样会提交，结果就是「数据写了、队列没记」——恰好是这个钩子要防的事。
- * 放在事务外，校验失败时连事务都不会开。
+ * `atomicReadWrite` 在同一事务内生成队列；字段校验或身份守卫失败会显式中止事务，
+ * 因此业务与队列要么一起提交，要么一起回滚。
  *
- * `owner` 由调用方给：默认是当前会话的本地账号 id，注册播种那种「还没有会话」的写入
- * 由调用方显式指定。读不到任何归属时记 `null`——这类条目永不被推送
- * （见 `outboxRules.entriesOfOwner`），因此它只可能是安全的。
+ * `owner` 使用当前认证上下文的 Auth UID，或由认证准备流程显式传入。
+ * 读不到归属时记 `null`，这类条目永不被推送（见 `outboxRules.entriesOfOwner`）。
  */
 function buildOutboxEntries(changes: OutboxChange[], owner: string | null): OutboxEntry[] {
   return changes.map((change) => {
@@ -439,8 +534,8 @@ function buildOutboxEntries(changes: OutboxChange[], owner: string | null): Outb
 /**
  * 队列条目的归属人：显式指定优先，否则取当前会话。
  *
- * 归属在**写入那一刻**确定：一条队列条目只在「它所属的本地账号」当前绑定的云端账号下
- * 才会被推送（过滤在 `outboxRules.entriesOfOwner`，`sync/outbox.ts` 用它）。
+ * 归属在写入时确定：条目 UID 必须与当前认证上下文一致才能上传，
+ * 上传前还会重新验证 SDK 身份与服务端门禁（见 `sync/outbox.ts`）。
  */
 function outboxOwner(options: WriteOptions): string | null {
   return options.owner ?? readSession()?.user.id ?? null
@@ -454,25 +549,29 @@ function outboxOwner(options: WriteOptions): string | null {
  *
  * `attempts > 0` 的旧行不动（见 `outboxRules.ts` 的 `compactionVictims`）。
  */
-function writeOutbox(
+async function writeOutbox(
   transaction: IDBTransaction,
   entries: OutboxEntry[],
-  onError: (reason: unknown) => void,
-): void {
+  guard?: () => void,
+): Promise<void> {
   if (!entries.length) return
   const outbox = transaction.objectStore('sync_outbox')
   const byKey = outbox.index('store_record')
-
-  for (const entry of entries) {
-    const existing = byKey.getAll([entry.store, entry.record_id])
-    existing.onerror = () => onError(existing.error ?? new Error('读取本地待上传队列失败。'))
-    existing.onsuccess = () => {
-      for (const id of compactionVictims(existing.result as OutboxEntry[])) {
-        void guardRequest(outbox.delete(id), '清理本地待上传队列失败。').catch(onError)
-      }
-      void guardRequest(outbox.put(entry), '写入本地待上传队列失败。').catch(onError)
-    }
-  }
+  await Promise.all(entries.map(async (entry) => {
+    const existing = await requestResult<OutboxEntry[]>(
+      byKey.getAll([entry.store, entry.record_id]),
+      '读取本地待上传队列失败。',
+      guard,
+    )
+    guard?.()
+    const victims = compactionVictims(
+      existing.filter((row) => row.local_user_id === entry.local_user_id),
+    )
+    await Promise.all([
+      ...victims.map((id) => guardRequest(outbox.delete(id), '清理本地待上传队列失败。', guard)),
+      guardRequest(outbox.put(entry), '写入本地待上传队列失败。', guard),
+    ])
+  }))
 }
 
 /**
@@ -523,9 +622,8 @@ export async function getOne<T>(storeName: LocalStore, id: string): Promise<T | 
 /**
  * 数一张表的行数（S3）。
  *
- * 与 `getAll(...).length` 的区别是**不把数据搬进内存**：绑定云端账号时要回答
- * 「本地这个账号有多少条数据」，队列里也可能积压成百上千条，
- * 而这个问题只需要一个数字。用 IDB 自带的 `count()` 由存储层直接数。
+ * 与 `getAll(...).length` 的区别是不把记录搬进内存，用 IDB 的 `count()` 直接计数。
+ * 这里是整张表的条数；当前 UID 的工作区计数另由 `collectUserRecords` 的归属筛选提供。
  */
 export async function count(storeName: LocalStore): Promise<number> {
   const db = await database()
@@ -547,29 +645,8 @@ export async function put<T extends { id: string }>(
   value: T,
   options: WriteOptions = {},
 ): Promise<T> {
-  assertRecord(storeName, value)
-  const entries = buildOutboxEntries(
-    (options.track ?? true) && isSyncableStore(storeName)
-      ? [{ store: storeName, record_id: value.id, op: 'upsert' }]
-      : [],
-    outboxOwner(options),
-  )
-
-  const db = await database()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(storeNamesFor(storeName, entries), 'readwrite')
-    const failure = (reason: unknown) =>
-      reject(reason instanceof Error ? reason : new Error('写入本地数据库失败。'))
-    transaction.onerror = () => reject(transaction.error ?? new Error('写入本地数据库失败。'))
-    transaction.onabort = () => reject(transaction.error ?? new Error('写入本地数据库被中止。'))
-    void guardRequest(transaction.objectStore(storeName).put(value), '写入本地数据库失败。').catch(reject)
-    writeOutbox(transaction, entries, failure)
-    transaction.oncomplete = () => {
-      resolve(value)
-      // 只在真的记了队列时才广播：`track: false` 与设备仓库的写入不该唤醒推送。
-      if (entries.length) notifyOutboxChange()
-    }
-  })
+  await runTransaction({ put: [{ store: storeName, value }] }, options)
+  return value
 }
 
 /** 删除一条记录；用户数据的删除同样会进队列（`op: 'delete'`）。 */
@@ -578,27 +655,7 @@ export async function remove(
   id: string,
   options: WriteOptions = {},
 ): Promise<void> {
-  const entries = buildOutboxEntries(
-    (options.track ?? true) && isSyncableStore(storeName)
-      ? [{ store: storeName, record_id: id, op: 'delete' }]
-      : [],
-    outboxOwner(options),
-  )
-
-  const db = await database()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(storeNamesFor(storeName, entries), 'readwrite')
-    const failure = (reason: unknown) =>
-      reject(reason instanceof Error ? reason : new Error('删除本地数据失败。'))
-    transaction.onerror = () => reject(transaction.error ?? new Error('删除本地数据失败。'))
-    transaction.onabort = () => reject(transaction.error ?? new Error('删除本地数据被中止。'))
-    void guardRequest(transaction.objectStore(storeName).delete(id), '删除本地数据失败。').catch(reject)
-    writeOutbox(transaction, entries, failure)
-    transaction.oncomplete = () => {
-      resolve()
-      if (entries.length) notifyOutboxChange()
-    }
-  })
+  await runTransaction({ remove: [{ store: storeName, id }] }, options)
 }
 
 // ---------------------------------------------------------------- 跨仓库事务
@@ -624,74 +681,39 @@ export type TransactionWork = {
  * 因此对用户数据仓库**要求显式 `{ track: false }`**，而不是悄悄漏记一批删除。
  */
 export async function runTransaction(work: TransactionWork, options: WriteOptions = {}): Promise<void> {
-  for (const item of work.put ?? []) assertRecord(item.store, item.value)
-
-  const changes: OutboxChange[] = []
-  if (options.track ?? true) {
-    // 先删除、后写入：同一次调用里同一条记录既被删又被写时（「导入备份替换当前账号数据」正是这个形状），
-    // 去重后应收敛成 `upsert`——记录最终是存在的。
-    for (const item of work.remove ?? []) {
-      if (isSyncableStore(item.store)) changes.push({ store: item.store, record_id: item.id, op: 'delete' })
-    }
-    for (const item of work.put ?? []) {
-      if (isSyncableStore(item.store)) {
-        changes.push({ store: item.store, record_id: item.value.id, op: 'upsert' })
-      }
-    }
-    for (const storeName of work.clear ?? []) {
-      if (isSyncableStore(storeName)) {
-        throw new Error(
-          `清空用户数据仓库（${storeName}）必须显式传 { track: false }，并自行保证云端一致。`,
-        )
-      }
-    }
-  }
-  const tracked = dedupeChanges(changes)
-  const entries = buildOutboxEntries(tracked, outboxOwner(options))
-
   const names = [
     ...new Set([
       ...(work.clear ?? []),
       ...(work.put ?? []).map((item) => item.store),
       ...(work.remove ?? []).map((item) => item.store),
-      ...(entries.length ? (['sync_outbox'] as LocalStore[]) : []),
     ]),
   ]
-  if (!names.length) return
-
-  const db = await database()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(names, 'readwrite')
-    const failure = new Error('写入本地数据库失败。')
-    transaction.onerror = () => reject(transaction.error ?? failure)
-    transaction.onabort = () => reject(transaction.error ?? failure)
-    transaction.oncomplete = () => {
-      resolve()
-      if (entries.length) notifyOutboxChange()
-    }
-
-    for (const storeName of work.clear ?? []) {
-      void guardRequest(transaction.objectStore(storeName).clear(), '清空本地数据失败。').catch(reject)
-    }
-    for (const item of work.remove ?? []) {
-      void guardRequest(transaction.objectStore(item.store).delete(item.id), '删除本地数据失败。').catch(reject)
-    }
-    for (const item of work.put ?? []) {
-      void guardRequest(transaction.objectStore(item.store).put(item.value), '写入本地数据库失败。').catch(reject)
-    }
-    writeOutbox(transaction, entries, (reason) =>
-      reject(reason instanceof Error ? reason : new Error('写入本地数据库失败。')),
-    )
+  if (!names.length) {
+    options.guard?.()
+    return
+  }
+  await atomicReadWrite({
+    ...options,
+    stores: names,
+    read: async () => work,
+    build: (snapshot) => snapshot,
   })
 }
 
 // ---------------------------------------------------------------- 事务内先读后写
 
 /** 读请求 → promise。`get` 未命中时结果是 `undefined`，由调用方决定要不要折成 `null`。 */
-function requestResult<T>(request: IDBRequest, fallback: string): Promise<T> {
+function requestResult<T>(request: IDBRequest, fallback: string, guard?: () => void): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onerror = () => reject(request.error ?? new Error(fallback))
-    request.onsuccess = () => resolve(request.result as T)
+    request.onsuccess = () => {
+      try {
+        guard?.()
+        resolve(request.result as T)
+      } catch (reason) {
+        reject(reason)
+      }
+    }
   })
 }
 
@@ -705,6 +727,163 @@ export type TransactionReader = {
   get: <T>(storeName: LocalStore, id: string) => Promise<T | null>
   getByIndex: <T>(storeName: LocalStore, indexName: string, key: IDBValidKey) => Promise<T | null>
   getAll: <T>(storeName: LocalStore) => Promise<T[]>
+}
+
+function transactionReader(transaction: IDBTransaction, guard?: () => void): TransactionReader {
+  return {
+    get: <V>(storeName: LocalStore, id: string) =>
+      requestResult<V | undefined>(transaction.objectStore(storeName).get(id), READ_FAILED, guard)
+        .then((value) => value ?? null),
+    getByIndex: <V>(storeName: LocalStore, indexName: string, key: IDBValidKey) =>
+      requestResult<V | undefined>(
+        transaction.objectStore(storeName).index(indexName).get(key), READ_FAILED, guard,
+      ).then((value) => value ?? null),
+    getAll: <V>(storeName: LocalStore) =>
+      requestResult<V[]>(transaction.objectStore(storeName).getAll(), READ_FAILED, guard),
+  }
+}
+
+/** 一致只读快照。回调只能 await 本事务的 IDB 请求。 */
+export async function readTransaction<T>(input: {
+  stores: LocalStore[]
+  read: (reader: TransactionReader) => Promise<T>
+  guard?: () => void
+}): Promise<T> {
+  input.guard?.()
+  const db = await database()
+  input.guard?.()
+  return new Promise<T>((resolve, reject) => {
+    const transaction = db.transaction([...new Set(input.stores)], 'readonly')
+    let snapshot: T
+    let readFinished = false
+    let failure: unknown
+    let stopAuthGuard = () => {}
+    const abort = (reason: unknown) => {
+      failure = reason
+      try { transaction.abort() } catch { /* 事务可能已由请求错误中止。 */ }
+      stopAuthGuard()
+      reject(reason)
+    }
+    if (input.guard) {
+      stopAuthGuard = subscribeAuth(() => {
+        try { input.guard?.() } catch (reason) { abort(reason) }
+      })
+    }
+    transaction.onerror = () => abort(transaction.error ?? new Error(READ_FAILED))
+    transaction.onabort = () => {
+      stopAuthGuard()
+      reject(failure ?? transaction.error ?? new Error(READ_FAILED))
+    }
+    transaction.oncomplete = () => {
+      stopAuthGuard()
+      try {
+        input.guard?.()
+        if (!readFinished) throw new Error('本地快照读取尚未完成。')
+        resolve(snapshot)
+      } catch (reason) {
+        reject(reason)
+      }
+    }
+    void input.read(transactionReader(transaction, input.guard)).then((result) => {
+      input.guard?.()
+      snapshot = result
+      readFinished = true
+    }).catch(abort)
+  })
+}
+
+/**
+ * 所有权检查与写入处于同一个事务；校验或身份代次失败会显式 abort。
+ * read 只 await 本事务请求，build 只做纯计算，返回要一次提交的工作。
+ */
+export async function atomicReadWrite<T>(input: {
+  stores: LocalStore[]
+  read: (reader: TransactionReader) => Promise<T>
+  build: (snapshot: T) => TransactionWork
+} & WriteOptions): Promise<T> {
+  input.guard?.()
+  const owner = outboxOwner(input)
+  const db = await database()
+  input.guard?.()
+  const names = [...new Set<LocalStore>([
+    ...input.stores,
+    ...((input.track ?? true) ? ['sync_outbox'] as LocalStore[] : []),
+  ])]
+  if (!names.length) throw new Error('原子事务缺少对象仓库。')
+  return new Promise<T>((resolve, reject) => {
+    const transaction = db.transaction(names, 'readwrite')
+    let failure: unknown
+    let snapshot: T
+    let prepared = false
+    let queued = false
+    let stopAuthGuard = () => {}
+    const abort = (reason: unknown) => {
+      failure = reason
+      try { transaction.abort() } catch { /* 请求失败可能已经中止事务。 */ }
+      stopAuthGuard()
+      reject(reason instanceof Error ? reason : new Error('写入本地数据库失败。'))
+    }
+    if (input.guard) {
+      stopAuthGuard = subscribeAuth(() => {
+        try { input.guard?.() } catch (reason) { abort(reason) }
+      })
+    }
+    transaction.onerror = () => abort(transaction.error ?? new Error('写入本地数据库失败。'))
+    transaction.onabort = () => {
+      stopAuthGuard()
+      reject(failure ?? transaction.error ?? new Error('写入本地数据库被中止。'))
+    }
+    transaction.oncomplete = () => {
+      stopAuthGuard()
+      if (!prepared) {
+        reject(new Error('原子事务未完成所有检查。'))
+        return
+      }
+      try {
+        input.guard?.()
+        resolve(snapshot)
+        if (queued) notifyOutboxChange()
+      } catch (reason) {
+        reject(reason)
+      }
+    }
+    void (async () => {
+      snapshot = await input.read(transactionReader(transaction, input.guard))
+      input.guard?.()
+      const work = input.build(snapshot)
+      for (const item of work.put ?? []) assertRecord(item.store, item.value)
+      const changes: OutboxChange[] = []
+      if (input.track ?? true) {
+        for (const item of work.remove ?? []) {
+          if (isSyncableStore(item.store)) changes.push({ store: item.store, record_id: item.id, op: 'delete' })
+        }
+        for (const item of work.put ?? []) {
+          if (isSyncableStore(item.store)) changes.push({ store: item.store, record_id: item.value.id, op: 'upsert' })
+        }
+        for (const store of work.clear ?? []) {
+          if (isSyncableStore(store)) throw new Error(`清空用户数据仓库（${store}）必须显式传 { track: false }。`)
+        }
+      }
+      const tracked = dedupeChanges(changes).filter((change) => input.trackChange?.(change) ?? true)
+      const entries = buildOutboxEntries(tracked, owner)
+      input.guard?.()
+      const pending: Promise<void>[] = []
+      for (const store of work.clear ?? []) {
+        pending.push(guardRequest(transaction.objectStore(store).clear(), '清空本地数据失败。', input.guard))
+      }
+      for (const item of work.remove ?? []) {
+        pending.push(guardRequest(transaction.objectStore(item.store).delete(item.id), '删除本地数据失败。', input.guard))
+      }
+      for (const item of work.put ?? []) {
+        pending.push(guardRequest(transaction.objectStore(item.store).put(item.value), '写入本地数据库失败。', input.guard))
+      }
+      pending.push(writeOutbox(transaction, entries, input.guard))
+      await Promise.all(pending)
+      input.guard?.()
+      prepared = true
+      queued = entries.length > 0
+    })().catch(abort)
+  })
 }
 
 /**
@@ -745,62 +924,19 @@ export async function readModifyWrite<T extends { id: string }>(input: {
   /** 由当前值算出要写的记录。**必须是纯计算**，不要在里面对事务发请求。 */
   build: (existing: T | null) => T
   track?: boolean
+  owner?: string
+  guard?: () => void
 }): Promise<T> {
-  const track = (input.track ?? true) && isSyncableStore(input.writeStore)
-  const names = [
-    ...new Set<LocalStore>([
-      ...input.stores,
-      input.writeStore,
-      ...(track ? (['sync_outbox'] as LocalStore[]) : []),
-    ]),
-  ]
-
-  const db = await database()
-  return new Promise<T>((resolve, reject) => {
-    const transaction = db.transaction(names, 'readwrite')
-    const failure = (reason: unknown) =>
-      reject(reason instanceof Error ? reason : new Error('写入本地数据库失败。'))
-    transaction.onerror = () => reject(transaction.error ?? new Error('写入本地数据库失败。'))
-    transaction.onabort = () => reject(transaction.error ?? new Error('写入本地数据库被中止。'))
-
-    let written: T | null = null
-    let queued = false
-    // 与 `put` 同口径：等事务真的提交了才算成功，中途被中止时不会先给出「已保存」。
-    transaction.oncomplete = () => {
-      if (!written) return
-      resolve(written)
-      if (queued) notifyOutboxChange()
-    }
-
-    const reader: TransactionReader = {
-      get: <V>(storeName: LocalStore, id: string) =>
-        requestResult<V | undefined>(transaction.objectStore(storeName).get(id), READ_FAILED).then(
-          (value) => value ?? null,
-        ),
-      getByIndex: <V>(storeName: LocalStore, indexName: string, key: IDBValidKey) =>
-        requestResult<V | undefined>(
-          transaction.objectStore(storeName).index(indexName).get(key),
-          READ_FAILED,
-        ).then((value) => value ?? null),
-      getAll: <V>(storeName: LocalStore) => requestResult<V[]>(transaction.objectStore(storeName).getAll(), READ_FAILED),
-    }
-
-    void (async () => {
-      try {
-        const existing = await input.read(reader)
-        const next = input.build(existing)
-        assertRecord(input.writeStore, next)
-        const entries = buildOutboxEntries(
-          track ? [{ store: input.writeStore as UserDataStore, record_id: next.id, op: 'upsert' }] : [],
-          outboxOwner(input),
-        )
-        await guardRequest(transaction.objectStore(input.writeStore).put(next), '写入本地数据库失败。')
-        writeOutbox(transaction, entries, failure)
-        written = next
-        queued = entries.length > 0
-      } catch (reason) {
-        failure(reason)
-      }
-    })()
+  let written: T | null = null
+  await atomicReadWrite({
+    ...input,
+    stores: [...input.stores, input.writeStore],
+    build: (existing) => {
+      const next = input.build(existing)
+      written = next
+      return { put: [{ store: input.writeStore, value: next }] }
+    },
   })
+  if (!written) throw new Error('本地记录尚未写入。')
+  return written
 }

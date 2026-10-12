@@ -11,9 +11,8 @@
  *     失败：整批写回 attempts + last_error，并把原因写进 sync_state
  * ```
  *
- * 最后一行的两笔写入是**分开的**：`sync_outbox` 记「这批条目怎么样了」，
- * `sync_state` 记「整个同步通道现在什么状况」。设置页显示的是后者，
- * 推送重试看的是前者——两者口径不同，不能合并成一份账。
+ * 队列结算与状态更新在同一事务提交。每轮固定认证上下文，
+ * 退出后不出队、不重建失败条目，也不写入后来登录的账号状态。
  *
  * ## 四条硬约束
  *
@@ -41,12 +40,100 @@
 
 import { describeDataError } from '../../shared/errors'
 import { normalizeSupabaseError } from '../cloud/errors'
+import { callRpc } from '../cloud/rpc'
 import { requireSupabase } from '../cloud/supabase'
 import type { LocalStore, UserDataStore } from '../local/localDb'
 import { getAll, getOne, runTransaction } from '../local/localDb'
-import { BATCH_LIMIT, changeKey, entriesOfOwner, sortChangesForPush, type OutboxEntry } from '../local/outboxRules'
-import { toCloudRow, type CloudRow } from './mapper'
-import { currentLocalUserId, writeSyncState } from './syncState'
+import { atomicReadWrite } from '../local/localDb'
+import { BATCH_LIMIT, entriesOfOwner, layerOf, type OutboxEntry } from '../local/outboxRules'
+import {
+  assertAuthContextCurrent,
+  captureAuthContext,
+  invalidateAuthContext,
+  isAuthContextCurrent,
+  isCloudSessionVerified,
+  type AuthContext,
+} from '../session'
+import { isUserScoped, toCloudRow, type CloudRow } from './mapper'
+import { emptySyncState, type SyncState } from './syncState'
+import { isRejectedAuthFailure } from './authErrors'
+
+const SYNC_LOCK_NAME = 'molly-sync-push'
+let localLockTail = Promise.resolve()
+
+/** 增量上传和整体替换共用互斥；无 Web Locks 时仍保证本标签页串行。 */
+export async function withSyncLock<T>(work: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+    return navigator.locks.request(SYNC_LOCK_NAME, work)
+  }
+  const previous = localLockTail
+  let release = () => {}
+  localLockTail = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await previous
+  try {
+    return await work()
+  } finally {
+    release()
+  }
+}
+
+/** 只关闭明确被拒绝的身份；普通 RLS、迁移或网络错误仍按原错误保留重试。 */
+export function invalidateRejectedCloudContext(context: AuthContext, reason: unknown): void {
+  const error = normalizeSupabaseError(reason)
+  const gateRejected = error.code === '42501' && error.message === '当前账号未获应用访问授权'
+  if (isRejectedAuthFailure(error)) {
+    invalidateAuthContext(context, gateRejected
+      ? '当前账号未获应用访问授权，请联系管理员确认账号权限。'
+      : '登录凭据已失效，请重新登录。')
+  }
+}
+
+/** 不把 SDK 缓存当认证：重新验证用户与服务器访问门禁，防撤销授权后仍退役队列。 */
+export async function assertVerifiedCloudContext(context: AuthContext): Promise<void> {
+  assertAuthContextCurrent(context)
+  if (!isCloudSessionVerified()) {
+    throw new Error('当前账号尚未完成联网验证，已暂停上传。')
+  }
+  try {
+    const client = requireSupabase()
+    const session = await client.auth.getSession()
+    assertAuthContextCurrent(context)
+    if (session.error) throw normalizeSupabaseError(session.error)
+    if (!session.data.session || session.data.session.user.id !== context.owner) {
+      const message = '登录会话已变化，请重新登录后继续。'
+      invalidateAuthContext(context, message)
+      throw new Error(message)
+    }
+
+    const user = await client.auth.getUser()
+    assertAuthContextCurrent(context)
+    if (user.error) throw normalizeSupabaseError(user.error)
+    if (!user.data.user || user.data.user.id !== context.owner) {
+      const message = '账号验证结果已变化，请重新登录后继续。'
+      invalidateAuthContext(context, message)
+      throw new Error(message)
+    }
+
+    const access = await callRpc<{ allowed: boolean; uid: string | null }>('account_access')
+    assertAuthContextCurrent(context)
+    if (access?.allowed === false || (access?.allowed === true && access.uid !== context.owner)) {
+      const message = '当前账号未获应用访问授权，请联系管理员确认账号权限。'
+      invalidateAuthContext(context, message)
+      throw new Error(message)
+    }
+    if (access?.allowed !== true || access.uid !== context.owner) {
+      throw new Error('云端没有返回有效的账号授权结果，已暂停上传。')
+    }
+    if (!isCloudSessionVerified()) {
+      throw new Error('当前账号尚未完成联网验证，已暂停上传。')
+    }
+  } catch (reason) {
+    invalidateRejectedCloudContext(context, reason)
+    throw reason
+  }
+}
 
 export type PushOnceResult =
   /** 队列是空的，没什么可推。 */
@@ -58,23 +145,19 @@ export type PushOnceResult =
 
 /** 把条目按依赖层级排好：删除倒序在前，写入正序在后，同层按 `seq`。 */
 function sortEntries(entries: OutboxEntry[]): OutboxEntry[] {
-  const byKey = new Map(entries.map((entry) => [changeKey(entry), entry]))
-  const sorted = sortChangesForPush(
-    entries.map((entry) => ({ store: entry.store, record_id: entry.record_id, op: entry.op })),
-    (change) => byKey.get(changeKey(change))?.seq ?? 0,
-  )
-  return sorted
-    .map((change) => byKey.get(changeKey(change)))
-    .filter((entry): entry is OutboxEntry => Boolean(entry))
+  return [...entries].sort((left, right) => {
+    if (left.op !== right.op) return left.op === 'delete' ? -1 : 1
+    const leftRank = left.op === 'delete' ? -layerOf(left.store) : layerOf(left.store)
+    const rightRank = right.op === 'delete' ? -layerOf(right.store) : layerOf(right.store)
+    return leftRank - rightRank || left.seq - right.seq
+  })
 }
 
 /**
- * 取一个批次——**只取属于当前本地账号的条目**（S4 补丁 ②）。
+ * 取一个批次：只取属于当前认证上下文的 Supabase Auth UID 的条目。
  *
- * 归属过滤不是可选项：队列是设备级的，而绑定是「本地账号 ↔ 云端账号」的。
- * 换过账号之后，队列里可能还留着上一个账号的条目；不加区分地推上去，
- * 就会把 A 的数据写进 B 绑定的云端账号。过滤规则本身在 `entriesOfOwner` 里
- * （纯函数，`check:sync` 直接回归），这里只负责把当前账号传进去。
+ * 队列按 UID 过滤，不能把其他工作区的改动上传到当前账号。
+ * 过滤规则在 `entriesOfOwner` 中；本轮捕获的 UID 和身份代次同时约束读取、请求与结算。
  *
  * 没有登录会话时 `entriesOfOwner` 返回空数组：宁可什么都不推。
  *
@@ -85,35 +168,37 @@ function sortEntries(entries: OutboxEntry[]): OutboxEntry[] {
  * 代价是要把整个队列读进内存。可以接受：队列的条目数 = **不同记录数**（S2 压缩过），
  * 单机应用量级在千条以内；真要更大时再改成按层级分段取，规则不变。
  */
-async function readBatch(): Promise<OutboxEntry[]> {
-  const mine = entriesOfOwner(await getAll<OutboxEntry>('sync_outbox'), currentLocalUserId())
+async function readBatch(context: AuthContext): Promise<OutboxEntry[]> {
+  assertAuthContextCurrent(context)
+  const rows = await getAll<OutboxEntry>('sync_outbox')
+  assertAuthContextCurrent(context)
+  const mine = entriesOfOwner(rows, context.owner)
   if (mine.length <= BATCH_LIMIT) return sortEntries(mine)
   return sortEntries(mine).slice(0, BATCH_LIMIT)
 }
 
 /**
- * 清掉**当前本地账号**的待上传账本，返回清掉的条数。
+ * 清掉当前 Auth UID 的待上传账本，返回清掉的条数。
  *
- * 与「清空整张表」的区别：`sync_outbox` 里可能有别的本地账号留下的条目
- * （见 `readBatch` 的归属过滤），它们不属于当前的绑定关系，
- * 不该被这次绑定 / 解绑牵连——那些条目会在那个账号自己回来时继续生效。
- *
- * 调用方在绑定 / 解绑流程里（`accountLink.ts`）：队列记的是「相对当时那个云端关系的增量」，
- * 关系变了，这份增量就不再成立，正确的动作是走 S5 的整体替换而不是补推旧增量。
+ * 只删除当前上下文所属的条目，其他 UID 的队列保持原样。
+ * 整体上传成功后应使用 `retireOwnOutbox`，只退役上传快照捕获的条目。
  */
-export async function clearOwnOutbox(): Promise<number> {
-  const ids = ownOutboxIds(await getAll<OutboxEntry>('sync_outbox'), currentLocalUserId())
+export async function clearOwnOutbox(context: AuthContext = captureAuthContext()): Promise<number> {
+  assertAuthContextCurrent(context)
+  const rows = await getAll<OutboxEntry>('sync_outbox')
+  assertAuthContextCurrent(context)
+  const ids = ownOutboxIds(rows, context.owner)
   if (!ids.length) return 0
   await runTransaction(
     { remove: ids.map((id) => ({ store: 'sync_outbox' as LocalStore, id })) },
-    { track: false },
+    { track: false, owner: context.owner, guard: () => assertAuthContextCurrent(context) },
   )
+  assertAuthContextCurrent(context)
   return ids.length
 }
 
 /**
- * 某人的队列条目 id。读与写分开暴露，是为了让解绑能把「状态行 + 队列」放进**同一个事务**
- * （分开清的话，中途失败会留下「队列空了但界面还显示已连接」这种自相矛盾的状态）。
+ * 指定 Auth UID 的队列条目 ID。纯筛选结果可与工作区及同步状态放在同一事务提交。
  */
 export function ownOutboxIds(rows: OutboxEntry[], owner: string | null): string[] {
   return entriesOfOwner(rows, owner).map((row) => row.id)
@@ -126,53 +211,99 @@ function pushInto<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   else map.set(key, [value])
 }
 
-/** 成功（或作废）的条目出队。 */
-async function retire(entries: OutboxEntry[]): Promise<void> {
-  if (!entries.length) return
-  await runTransaction(
-    { remove: entries.map((entry) => ({ store: 'sync_outbox' as LocalStore, id: entry.id })) },
-    { track: false },
-  )
-}
-
-/** 失败：整批写回 `attempts` 与 `last_error`，条目留在队列里等下次重试。 */
-async function recordFailure(entries: OutboxEntry[], message: string): Promise<void> {
-  if (!entries.length) return
-  await runTransaction(
-    {
-      put: entries.map((entry) => ({
-        store: 'sync_outbox' as LocalStore,
-        value: { ...entry, attempts: entry.attempts + 1, last_error: message },
-      })),
+/** 仅退役本轮捕获且仍存在的条目；新编辑生成的条目保持待上传。 */
+export async function retireOwnOutbox(
+  context: AuthContext,
+  ids: readonly string[],
+  patch: Partial<Omit<SyncState, 'id'>> = {},
+): Promise<number> {
+  assertAuthContextCurrent(context)
+  const capturedIds = new Set(ids)
+  const at = new Date().toISOString()
+  const snapshot = await atomicReadWrite({
+    stores: ['sync_outbox', 'sync_state'],
+    read: async (reader) => {
+      const rows = await reader.getAll<OutboxEntry>('sync_outbox')
+      const state = await reader.get<SyncState>('sync_state', context.owner)
+      return {
+        entries: entriesOfOwner(rows, context.owner).filter((row) => capturedIds.has(row.id)),
+        state: state ?? emptySyncState(context.owner, at),
+      }
     },
-    { track: false },
-  )
+    build: ({ entries, state }) => ({
+      remove: entries.map((entry) => ({ store: 'sync_outbox' as LocalStore, id: entry.id })),
+      put: [{ store: 'sync_state', value: { ...state, ...patch, id: context.owner, updated_at: at } }],
+    }),
+    track: false,
+    owner: context.owner,
+    guard: () => assertAuthContextCurrent(context),
+  })
+  assertAuthContextCurrent(context)
+  return snapshot.entries.length
 }
 
-/**
- * 成功：记下这次上传的时间，并**清掉上一次的失败原因**。
- *
- * 清掉是必须的：不清的话「上传失败：网络错误」会在恢复之后一直挂在设置页上，
- * 变成一个已经过期却仍在陈述的假事实。两个字段一起写，不存在「有失败原因但时间是上次成功」的中间态。
- */
-async function recordSuccess(at: string): Promise<void> {
-  await writeSyncState({ last_push_at: at, last_error_message: null, last_error_at: null })
+/** 原子更新存活条目，避免失败回调复活已被新编辑压缩掉的旧条目。 */
+async function recordFailure(context: AuthContext, entries: OutboxEntry[], message: string): Promise<void> {
+  assertAuthContextCurrent(context)
+  const ids = new Set(entries.map((entry) => entry.id))
+  const at = new Date().toISOString()
+  await atomicReadWrite({
+    stores: ['sync_outbox', 'sync_state'],
+    read: async (reader) => {
+      const rows = await reader.getAll<OutboxEntry>('sync_outbox')
+      const state = await reader.get<SyncState>('sync_state', context.owner)
+      return {
+        entries: entriesOfOwner(rows, context.owner).filter((row) => ids.has(row.id)),
+        state: state ?? emptySyncState(context.owner, at),
+      }
+    },
+    build: (snapshot) => ({
+      put: [
+        ...snapshot.entries.map((entry) => ({
+          store: 'sync_outbox' as LocalStore,
+          value: { ...entry, attempts: entry.attempts + 1, last_error: message },
+        })),
+        {
+          store: 'sync_state' as LocalStore,
+          value: { ...snapshot.state, last_error_message: message, last_error_at: at, updated_at: at },
+        },
+      ],
+    }),
+    track: false,
+    owner: context.owner,
+    guard: () => assertAuthContextCurrent(context),
+  })
+  assertAuthContextCurrent(context)
 }
 
-/** 失败：把原因与时间写进 `sync_state`，供设置页如实显示（不写 `last_push_at`）。 */
-async function recordPushError(message: string, at: string): Promise<void> {
-  await writeSyncState({ last_error_message: message, last_error_at: at })
+async function assertRecordOwner(context: AuthContext, store: UserDataStore, record: CloudRow): Promise<void> {
+  assertAuthContextCurrent(context)
+  if (isUserScoped(store)) {
+    if (record.user_id !== context.owner) throw new Error('记录不属于当前账号，已停止上传。')
+    return
+  }
+  let planId = record.day_plan_id
+  if (store === 'daily_meal_items') {
+    const meal = await getOne<CloudRow>('daily_meals', String(record.daily_meal_id))
+    assertAuthContextCurrent(context)
+    planId = meal?.day_plan_id
+  }
+  const plan = typeof planId === 'string' ? await getOne<CloudRow>('day_plans', planId) : null
+  assertAuthContextCurrent(context)
+  if (!plan || plan.user_id !== context.owner) {
+    throw new Error('记录的父级不属于当前账号，已停止上传。')
+  }
 }
 
 /**
  * 推一个批次。
  *
- * `cloudUserId` 由调用方从 `sync_state` 取好传进来——本模块不自己去读，
- * 因为「有没有绑定云端账号」是调度器（`pushQueue.ts`）的判断，
- * 而未绑定时压根不该走到这里（`users` 不进队列，所以 `cloud_user_id` 也无处可推）。
+ * context 必须来自已经准备好的工作区；所有 await 后和提交前再次验证。
  */
-export async function pushOnce(cloudUserId: string): Promise<PushOnceResult> {
-  const batch = await readBatch()
+export async function pushOnce(context: AuthContext): Promise<PushOnceResult> {
+  await assertVerifiedCloudContext(context)
+  const batch = await readBatch(context)
+  assertAuthContextCurrent(context)
   if (!batch.length) return { kind: 'idle' }
 
   const upserts = new Map<UserDataStore, CloudRow[]>()
@@ -181,50 +312,63 @@ export async function pushOnce(cloudUserId: string): Promise<PushOnceResult> {
   const settled: OutboxEntry[] = []
   let skipped = 0
 
-  for (const entry of batch) {
-    if (entry.op === 'delete') {
-      pushInto(deletes, entry.store, entry.record_id)
-      settled.push(entry)
-      continue
-    }
-
-    // 回主表读**当前**行——不是队列里的副本（队列里本来也没有副本）。
-    const record = await getOne<CloudRow>(entry.store, entry.record_id)
-    if (!record) {
-      // 记录已经被删了：这条 upsert 已经没有意义，作废出队。
-      // 它的删除会以 `delete` 的形式在队列里（写入钩子记过），下一批推上去。
-      settled.push(entry)
-      skipped += 1
-      continue
-    }
-
-    pushInto(upserts, entry.store, toCloudRow(entry.store, record, cloudUserId))
-    settled.push(entry)
-  }
-
   try {
+    for (const entry of batch) {
+      assertAuthContextCurrent(context)
+      if (entry.op === 'delete') {
+        pushInto(deletes, entry.store, entry.record_id)
+        settled.push(entry)
+        continue
+      }
+
+      const record = await getOne<CloudRow>(entry.store, entry.record_id)
+      assertAuthContextCurrent(context)
+      if (!record) {
+        settled.push(entry)
+        skipped += 1
+        continue
+      }
+      await assertRecordOwner(context, entry.store, record)
+      assertAuthContextCurrent(context)
+      pushInto(upserts, entry.store, toCloudRow(entry.store, record, context.owner))
+      settled.push(entry)
+    }
+
     const client = requireSupabase()
 
     // 先删后写：顺序由 `sortChangesForPush` 定，这里只是**保持**它，
     // 所以先跑完所有 delete 请求，再跑 upsert 请求。
     for (const [store, ids] of deletes) {
+      await assertVerifiedCloudContext(context)
+      assertAuthContextCurrent(context)
       const { error } = await client.from(store).delete().in('id', ids)
+      assertAuthContextCurrent(context)
       if (error) throw normalizeSupabaseError(error)
     }
 
     for (const [store, rows] of upserts) {
+      await assertVerifiedCloudContext(context)
+      assertAuthContextCurrent(context)
       // 按主键 upsert：本地 id 就是 uuid v4，直接沿用，父子外键不需要重映射（docs/13 §5.2）。
       const { error } = await client.from(store).upsert(rows, { onConflict: 'id' })
+      assertAuthContextCurrent(context)
       if (error) throw normalizeSupabaseError(error)
     }
+    await assertVerifiedCloudContext(context)
   } catch (cause) {
+    invalidateRejectedCloudContext(context, cause)
+    if (!isAuthContextCurrent(context)) throw cause
     const message = describeDataError(cause)
-    await recordFailure(batch, message)
-    await recordPushError(message, new Date().toISOString())
+    await recordFailure(context, batch, message)
+    assertAuthContextCurrent(context)
     return { kind: 'failed', attempted: batch.length, error: message }
   }
 
-  await retire(settled)
-  await recordSuccess(new Date().toISOString())
+  await retireOwnOutbox(context, settled.map((entry) => entry.id), {
+    last_push_at: new Date().toISOString(),
+    last_error_message: null,
+    last_error_at: null,
+  })
+  assertAuthContextCurrent(context)
   return { kind: 'pushed', pushed: settled.length, skipped }
 }

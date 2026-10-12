@@ -1,13 +1,13 @@
 import type { ExerciseOption, FoodOption, SupplementTemplate } from '../../shared/types/options'
 import { EXAMPLE_EXERCISES, EXAMPLE_FOODS, EXAMPLE_SUPPLEMENTS } from '../optionExamples'
-import { getAll, newId, put } from './localDb'
+import { assertAuthContextCurrent, captureAuthContext } from '../session'
+import { atomicReadWrite, newId, type TransactionWork } from './localDb'
 
 /**
  * 示例选项种子数据（本地实现）。
  *
  * 放在服务层而不是页面里：页面只调用 `seedExampleOptions()`，不持有任何默认清单，
- * 这样以后调整示例内容不需要动界面代码。清单本身在 `services/optionExamples.ts`，
- * 由本地与云端两套适配器共用，保证两种后端播种出同样的示例。
+ * 这样以后调整示例内容不需要动界面代码。清单本身在 `services/optionExamples.ts`。
  */
 
 function now(): string {
@@ -15,48 +15,61 @@ function now(): string {
 }
 
 /**
- * 为新账号写入示例选项。
+ * 为已经认证且准备好的账号补齐示例选项。
  *
  * 幂等：按名称去重后只补缺失项，重复调用不会产生重复记录，
- * 因此「载入示例选项」按钮和注册时的自动播种可以安全共用同一个入口。
- * 只按仓库名与 userId 操作，不依赖 authService，避免与它形成循环依赖。
- *
- * **每一笔写入都显式带上 `owner`**（S4 补丁 ②）：注册时播种发生在
- * `writeSession()` **之前**，入队钩子那时读不到会话；不显式指定的话，
- * 这批条目会变成「无归属」，永远推不上去——而界面上会一直显示「待上传 N 条」。
- * 归属在这里本来就是已知的：就是这个新账号。
+ * 所有类别在同一个事务中补齐并记队列，首次云端恢复前不能调用。
  */
 export async function seedExampleOptions(userId: string): Promise<void> {
-  const timestamp = now()
-  const owned = { owner: userId }
-
-  const existingFoods = new Set((await getAll<FoodOption>('food_options')).filter((item) => item.user_id === userId).map((item) => item.name))
-  let foodOrder = existingFoods.size
-  for (const name of EXAMPLE_FOODS) {
-    if (existingFoods.has(name)) continue
-    await put<FoodOption>('food_options', { id: newId(), user_id: userId, name, active: true, sort_order: foodOrder, created_at: timestamp, updated_at: timestamp }, owned)
-    foodOrder += 1
-  }
-
-  const existingSupplements = new Set(
-    (await getAll<SupplementTemplate>('supplement_templates')).filter((item) => item.user_id === userId).map((item) => item.name),
-  )
-  let supplementOrder = existingSupplements.size
-  for (const example of EXAMPLE_SUPPLEMENTS) {
-    if (existingSupplements.has(example.name)) continue
-    await put<SupplementTemplate>('supplement_templates', {
-      id: newId(), user_id: userId, name: example.name, period: example.period, active: true, sort_order: supplementOrder, created_at: timestamp, updated_at: timestamp,
-    }, owned)
-    supplementOrder += 1
-  }
-
-  const existingExercises = new Set(
-    (await getAll<ExerciseOption>('exercise_options')).filter((item) => item.user_id === userId).map((item) => item.name),
-  )
-  let exerciseOrder = existingExercises.size
-  for (const name of EXAMPLE_EXERCISES) {
-    if (existingExercises.has(name)) continue
-    await put<ExerciseOption>('exercise_options', { id: newId(), user_id: userId, name, active: true, sort_order: exerciseOrder, created_at: timestamp, updated_at: timestamp }, owned)
-    exerciseOrder += 1
-  }
+  const context = captureAuthContext()
+  if (context.owner !== userId) throw new Error('示例选项只能载入当前账号。')
+  await atomicReadWrite({
+    stores: ['food_options', 'supplement_templates', 'exercise_options'],
+    owner: context.owner,
+    guard: () => assertAuthContextCurrent(context),
+    read: async (reader) => {
+      const [foods, supplements, exercises] = await Promise.all([
+        reader.getAll<FoodOption>('food_options'),
+        reader.getAll<SupplementTemplate>('supplement_templates'),
+        reader.getAll<ExerciseOption>('exercise_options'),
+      ])
+      return {
+        foods: foods.filter((row) => row.user_id === userId),
+        supplements: supplements.filter((row) => row.user_id === userId),
+        exercises: exercises.filter((row) => row.user_id === userId),
+      }
+    },
+    build: ({ foods, supplements, exercises }) => {
+      const timestamp = now()
+      const puts: NonNullable<TransactionWork['put']> = []
+      const existingFoods = new Set(foods.map((row) => row.name))
+      let foodOrder = foods.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1
+      for (const name of EXAMPLE_FOODS) {
+        if (existingFoods.has(name)) continue
+        puts.push({ store: 'food_options', value: {
+          id: newId(), user_id: userId, name, active: true, sort_order: foodOrder++,
+          created_at: timestamp, updated_at: timestamp,
+        } as FoodOption })
+      }
+      const existingSupplements = new Set(supplements.map((row) => `${row.period}:${row.name}`))
+      let supplementOrder = supplements.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1
+      for (const example of EXAMPLE_SUPPLEMENTS) {
+        if (existingSupplements.has(`${example.period}:${example.name}`)) continue
+        puts.push({ store: 'supplement_templates', value: {
+          id: newId(), user_id: userId, name: example.name, period: example.period, active: true,
+          sort_order: supplementOrder++, created_at: timestamp, updated_at: timestamp,
+        } as SupplementTemplate })
+      }
+      const existingExercises = new Set(exercises.map((row) => row.name))
+      let exerciseOrder = exercises.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1
+      for (const name of EXAMPLE_EXERCISES) {
+        if (existingExercises.has(name)) continue
+        puts.push({ store: 'exercise_options', value: {
+          id: newId(), user_id: userId, name, active: true, sort_order: exerciseOrder++,
+          created_at: timestamp, updated_at: timestamp,
+        } as ExerciseOption })
+      }
+      return { put: puts }
+    },
+  })
 }

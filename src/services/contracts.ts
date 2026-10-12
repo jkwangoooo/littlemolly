@@ -39,8 +39,8 @@
  * 但「页面该用哪些」这件事以本清单为准。
  */
 
-/** 认证：登录 / 注册 / 退出 / 恢复会话 / 同步取当前用户。 */
-export const AUTH_KEYS = ['getSession', 'signIn', 'signUp', 'signOut', 'currentUser'] as const
+/** 认证由 Supabase 验证，业务读写继续走本地服务。 */
+export const AUTH_KEYS = ['initializeAuth', 'getAuthState', 'subscribeAuth', 'signIn', 'signOut', 'currentUser'] as const
 
 /** 单日计划：主记录、三餐与内容项、补剂、健身、自定义事项、休息日家务、复制昨天。 */
 export const DAY_PLAN_KEYS = [
@@ -89,7 +89,7 @@ export const BACKUP_KEYS = ['exportBackup', 'inspectBackup', 'importBackup', 'BA
  * 会在 `npm run typecheck` 直接报错。签名不重写一遍，
  * 也就不会出现「契约和实现各写一遍、慢慢分叉」。
  */
-export type AuthApi = Pick<typeof import('./local/authService'), (typeof AUTH_KEYS)[number]>
+export type AuthApi = Pick<typeof import('./api/authService'), (typeof AUTH_KEYS)[number]>
 export type DayPlanApi = Pick<typeof import('./local/dayPlanService'), (typeof DAY_PLAN_KEYS)[number]>
 export type OptionApi = Pick<typeof import('./local/optionService'), (typeof OPTION_KEYS)[number]>
 export type BackupApi = Pick<typeof import('./local/backupService'), (typeof BACKUP_KEYS)[number]>

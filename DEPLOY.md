@@ -1,196 +1,89 @@
-# 部署指南 · 幸福小Molly
+# 幸福小Molly部署指南
 
-> **目标**：把 PWA 部署到 **Vercel**（前端）+ **Supabase**（云端同步，可选）。
->
-> **先说清楚**：这两步都必须用**你自己的账号**——我没有你的 Supabase / Vercel 账号，
-> 无法代你注册、登录或点确认。但下面每一步都写到了「点哪里」，照着做大约 **15 分钟**。
-> 如果你愿意把 **Vercel Token**（和/或 Supabase 数据库连接串）给我，我可以直接代你跑命令部署。
+本项目部署到 Vercel 前端与 Supabase Auth/Postgres。**认证必须配置 Supabase**；IndexedDB 继续承担业务唯一写入落点，暂时断网可使用已准备的缓存工作区。
 
----
+**2026-10-13 本地账密改造、自动验收与文档收口已完成；本次未执行生产迁移、W 账号准备、Vercel 环境更新或发布。** 线上域名为 `https://molly.lightwavecommunity.site`，现有线上提交和真实项目配置尚未验证。操作执行者先读 [本地实施与部署交接](docs/44-账密改造本地实施与部署交接.md)、[部署执行说明](docs/27-deploy-runbook-for-codex.md) 和 [账密改造详细执行文档](docs/43-账密改造详细执行文档.md)。
 
-## 0. 部署形态
+生产数据库迁移与 W 准备均未执行；Supabase 项目 ref、真实 W UID、Auth 配置未验证；Vercel Production 变量未更新、未验证；线上浏览器、账号链路和真机验收未验证。后文是待执行流程，不能据此判定生产已经完成。
 
-- **前端**：Vite 构建出的纯静态站点（`dist/`），部署到 Vercel。
-- **后端**：Supabase（Postgres + Auth）。**可选**——不配也能跑，只是没有云端同步；
-  未配置时应用行为与本地单机完全一致（这是产品的既定设计，不是降级）。
-- `vercel.json` 已经写好（SPA 回退 + 缓存头），**不需要改**。
+## 1. 发布前核实
 
----
+1. 核对最终本地实施提交与第 44 份文档的验收记录。本轮类型、静态、构建、浏览器、PWA、同步、SQL，以及认证并发、旧工作区迁移和部署凭据护栏均已通过；源码变动后按部署执行说明重跑对应检查，失败时停在本地修复。
+2. 核实现有 Vercel 项目关联、Supabase 项目 ref、数据库迁移历史和当前线上版本，避免新建或覆盖错项目。
+3. 盘点旧本地 owner、旧 Auth UID、云端业务数据和独立备份；明确 W 采用哪个真实 Auth UID及旧数据去向。身份停用与业务删除是两件事，不能因为账号只剩 W 自动删除或合并旧业务数据。
+4. 本机已有四项所需凭据。继续使用仓库外受保护的 `C:/Users/Administrator/.happy-little-molly/deploy.env`，或 `MOLLY_DEPLOY_CONFIG` 指定的文件，不重复提供、不把值贴进对话或源码。
 
-## 1. Supabase（约 8 分钟）
+| 所需字段 | 用途 |
+| --- | --- |
+| `VERCEL_TOKEN` | 已有 Vercel 项目、Production 配置与发布 |
+| `SUPABASE_DB_URL` | 已授权的数据库管理与只读核验 |
+| `VITE_SUPABASE_URL` | 前端 Auth/API 构建期 URL |
+| `VITE_SUPABASE_ANON_KEY` | 公开 legacy anon JWT 或 `sb_publishable_` key；沿用现有变量名 |
 
-### 1.1 建项目
+前端只允许 anon/publishable key，禁止 `service_role` / `sb_secret_` 管理员 key 或密码进入 `VITE_*`、源码、种子和公开文档。
 
-1. 打开 <https://supabase.com/dashboard> → **New project**。
-2. 填 Name（随意）、Database Password（**记下来**，本项目其实用不到）、
-   Region 选离你近的（如 Singapore / Tokyo）。
-3. 等 1–2 分钟项目初始化完成。
+部署脚本在读写配置前核验真实路径，拒绝仓库内路径，以及通过 junction、有效或悬空链接、多级链接指向仓库的路径；链接循环或嵌套过深也会失败。`MOLLY_DEPLOY_CONFIG` 指定的文件同样必须在仓库外。2026-10-13 部署凭据护栏专项 **20/20 通过**；Windows 无文件符号链接权限时，文件链接使用 API 模型夹具，目录 junction 仍实测文件系统。专项不读取真实凭据、不执行部署，不证明生产配置已经可用。
 
-### 1.2 跑迁移（建表 / RLS 策略 / 三个 RPC）
+## 2. 数据库迁移
 
-1. 左侧 → **SQL Editor** → **New query**。
-2. 把 **`deploy/supabase-all-migrations.sql`** 整份粘进去（这是 6 个迁移按序合并成的单文件）。
-3. 点 **Run**（或 `Ctrl+Enter`）。
-4. 期望结果：`Success. No rows returned`。
+当前目录有 **7 个顺序迁移**，新增文件是 `database/migrations/20261011183805_account_identity_gate.sql`。`deploy/supabase-all-migrations.sql` 是仅供空项目初始化的完整合并文件：
 
-> 想逐个执行也可以，直接用 `database/migrations/` 下的 6 个原文件，按文件名顺序跑，效果相同。
->
-> **这个合并文件已经在本机真库上验证过**：起临时 PostgreSQL → 应用 auth 垫片 → 整份执行 →
-> 退出码 0、**12 张 public 基表**、三个 RPC（`cloud_sync_summary` / `export_cloud_snapshot` /
-> `import_local_backup`）齐全、**21 条 RLS 策略**。
-> 执行时会有若干 `NOTICE: trigger/policy "..." does not exist, skipping` —— 那是
-> `drop ... if exists` 的正常提示，**不是错误**。
->
-> 若报错，把错误原文贴给我。**最可能的一条**是 `stage1` 要在 `auth.users` 上建触发器
-> （`on_auth_user_created`）时报权限不足——Supabase 的 SQL Editor 以 `postgres` 身份运行，
-> 通常可行；真报错就贴出来一起判断。
+- **空库初始化**：审核目标后按文件名顺序执行全部迁移，或执行完整合并文件。
+- **已有项目升级**：先查已执行迁移和实际结构，只执行缺失且已审核的迁移。已执行前六个迁移的项目只需新增门禁迁移，不能盲目重跑完整合并文件。
+- 按可信 Supabase SQL Editor 或已授权数据库管理通道操作；权限错误、对象冲突或迁移失败立即停下核对，不用删除表绕过。
 
-### 1.3 刷新 PostgREST 的 schema cache（**最容易忘的一步**）
+迁移后预期 **12 张 public 表、4 个应用 RPC、33 条 public RLS 策略**。其中每张 public 表都有一条 restrictive `account_uid_gate`，原 owner 策略继续生效；`private.account_allowlist` 开启 RLS，无客户端策略和读写权限。
 
-新建的函数不会立刻出现在 API 里，否则前端会报
-`Could not find the function 'public.import_local_backup' in the schema cache`。
+四个应用 RPC 为 `account_access`、`cloud_sync_summary`、`export_cloud_snapshot`、`import_local_backup`，均 `security invoker`、空 `search_path`，只授予 authenticated 执行权限。原有复制 RPC 与触发器也需核对权限，不能只看四个名称存在。
 
-在 SQL Editor 里再跑一句：
+迁移允许在 W 尚未创建时执行，门禁初始为空并拒绝所有业务访问。它不会创建账号、重设密码或决定旧数据归属。
 
-```sql
-notify pgrst, 'reload schema';
-```
+## 3. 可信准备 W
 
-（或者：Project Settings → API → **Reload schema cache**。）
+在已授权的 Supabase Auth 管理入口创建或核实唯一目标账号：
 
-### 1.4 Auth 配置
+1. 登录界面账号 `W`，内部 Auth 邮箱 `w@molly.local`；用户名元数据可设为 `W`。
+2. 使用用户已指定的初始密码，在可信管理入口设置并检查项目密码策略。若策略拒绝则如实报告，不能自行降低策略或替换密码。
+3. 核实并记录实际 Auth UID；保留同一 UID，避免因删号重建而丢失资料关联。
+4. 确保管理创建的身份满足邮箱确认要求；不使用前端公开注册来准备账号，也不把“关闭 Confirm email”当成必需步骤。
+5. Auth 用户真实存在后，把实际 UID 写入受保护的 `private.account_allowlist`，核对恰好一行且关联 `w@molly.local`。
+6. 写入门禁后复核公开注册限制、本项目不需要的匿名/其他身份入口、密码策略，以及使用真实上线域名的 `Site URL` 与 `Redirect URLs`，最后刷新 PostgREST schema cache。
 
-1. 左侧 → **Authentication** → **Sign In / Providers**：
-   - 确认 **Email** 已启用。
-   - **关掉 Confirm email**（否则注册后拿不到会话——本项目没有配 SMTP）。
-2. 左侧 → **Authentication** → **URL Configuration**：
-   - **Site URL**：先填 `http://127.0.0.1:8800`，等 Vercel 部署完再回来改成正式域名。
-   - **Redirect URLs**：同样加上你的 Vercel 域名。
+旧 UID 即使已有未过期 JWT，也必须受 RLS 门禁限制。需要停用旧 Auth 身份时按已确认的保留与迁移方案处理，不能顺带删除其业务数据。
 
-### 1.5 取两个值（第 2 步要用）
+用数据库管理员连接确认表、策略或数据存在，只证明结构和管理访问可用。真实 Auth/RLS 验收必须使用受限角色或真实用户 JWT 的应用请求；旧 UID 对查询应读不到业务数据，写入和受保护 RPC 应被拒。门禁 UID、owner 与子表父链都要分别核验。
 
-左侧 → **Project Settings** → **API**：
+## 4. Vercel 发布
 
-| 字段 | 形如 | 注意 |
-| --- | --- | --- |
-| **Project URL** | `https://abcdefgh.supabase.co` | **结尾不要带斜杠** |
-| **anon / public key** | `eyJhbGciOi...` 一长串 | 只用 anon key |
+沿用已有 `.vercel/project.json` 项目关联和本机受保护 Token，不运行交互式 `vercel login`。若关联缺失，先核实预期 team/project 后在可信管理通道关联；不能默认新建同名项目。
 
-> **绝不要**把 `service_role` key 放进前端——这个项目没有服务端，放进去等于把整个库交给浏览器。
-
----
-
-## 2. Vercel（约 5 分钟）
-
-两条路，**选一条**即可。因为本机 `.git` 不可用（提交不了、也推不了 GitHub），
-推荐 **路线 B（CLI 直接上传本地目录）**。
-
-### 路线 A：用 Vercel 控制台 + Git 仓库
-
-1. 先把代码推到 GitHub（需要先修好本机 git，或在别的机器上推）。
-2. <https://vercel.com/new> → 选你的仓库 → **Import**。
-3. Framework Preset 会自动识别为 **Vite**：
-   - Build Command：`npm run build`
-   - Output Directory：`dist`
-4. **在 Deploy 之前**展开 **Environment Variables**，加两个（见 1.5）：
-
-   | Name | Value |
-   | --- | --- |
-   | `VITE_SUPABASE_URL` | 你的 Project URL（不带斜杠） |
-   | `VITE_SUPABASE_ANON_KEY` | 你的 anon key |
-
-5. 点 **Deploy**。
-
-### 路线 B：Vercel CLI（不用 git，直接上传当前目录）
-
-在本项目目录里逐条执行：
+数据库及 W 完成准备、权限核验通过后运行：
 
 ```bash
-# 1. 登录（会打开浏览器让你授权，这一步只能你自己做）
-npx vercel login
-
-# 2. 关联 / 新建项目（首次会让你确认项目名、目录等，一路回车即可）
-npx vercel
-
-# 3. 写入两个环境变量（Vite 在「构建时」把它们内联进产物，所以必须在部署前设好）
-npx vercel env add VITE_SUPABASE_URL production
-npx vercel env add VITE_SUPABASE_ANON_KEY production
-
-# 4. 正式部署
-npx vercel --prod
+npm run deploy
 ```
 
-> **顺序很重要**：`VITE_*` 是**构建期**变量。先设环境变量、再 `--prod`。
-> 如果先部署后设变量，页面里会没有云端能力——重新 `npx vercel --prod` 一次即可。
+脚本依次执行类型、静态、生产构建、PWA 检查；只读核验数据库结构和 W 门禁；写入 Production 的 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY`；发布并检查基本 HTTP 与缓存规则。它不执行迁移或 Auth 管理操作，前置不满足会失败。
 
-### 只想要一个能打开的链接、暂时不配云端？
+`VITE_*` 是构建期内联变量，**先配置再发布，变更后必须重新构建部署**。本次统一账号需求下，不发布无 Auth 配置的“纯本地登录版”。不要把脚本的“部署完成”输出当成完整账号链路已验收。
 
-也可以。不加环境变量直接部署，应用会以**纯本地模式**运行（数据只存浏览器 IndexedDB），
-行为与单机完全一致。之后随时补上环境变量重新部署，就能开启云端同步。
+## 5. 线上验收
 
----
-
-## 3. 部署完的自检（必做）
-
-### 3.1 打开线上地址，确认应用壳正常
-
-- 首屏应渲染登录页，文案是「本地模式」。
-- 浏览器 DevTools → Application → **Service Workers**：应有已 activated 的 `sw.js`。
-- 刷新一次，Network 里应看到 `sw.js` **不是** `304`/强缓存（`vercel.json` 里设了 `no-cache`）。
-
-### 3.2 回到 Supabase 改 Site URL
-
-把 1.4 里的 **Site URL / Redirect URLs** 改成你的 Vercel 正式域名。
-
-### 3.3 跑真实凭据人工清单
-
-按 `docs/18 §9.3`（也见 `docs/26` §5.2 第 4 步）逐项打勾，重点是：
-
-1. 六个迁移在真实项目上按序执行成功，表 / 策略 / 触发器齐备。
-2. 连接云端账号 → 上传 → 退出 → 重新登录 → 状态恢复。
-3. **RLS 双账号**：账号 B 看不到账号 A 的任何数据（含子表）。
-4. **断网**：写入本地成功、上传显示失败、恢复网络后自动补推成功。
-5. **历史日期**：上传含历史计划的备份必须成功（GUC 豁免的主路径）。
-6. **整体替换往返**：本地 → 云端 → 清空本地 → 云端 → 本地，逐项核对。
-7. **真机**：手机上装 PWA，走完整流程；确认底部导航不被 Home 指示条遮挡。
-
-### 3.4 上线前已在本机确认的事项（就绪检查，2026-09-21）
-
-这些不需要凭据就能查，已经查过，结论如下：
-
-| 检查项 | 结论 |
+| 检查 | 必须验证的结果 |
 | --- | --- |
-| 源码里读环境变量的地方 | **只有** `src/services/capabilities.ts` 读 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`；别处只用 `import.meta.env.DEV` / `PROD` / `BASE_URL` 这类 Vite 内置量 |
-| 会不会把服务端密钥打进前端 | **不会**。全仓源码/配置 0 个真实密钥；`service_role` 只出现在注释与本地测试垫片（那里建的是**角色**，不是密钥） |
-| `.env` 会不会被提交 | **不会**。`.gitignore` 忽略 `.env` / `.env.local` / `.env.*.local`，只保留 `.env.example` |
-| 不设环境变量能否构建 | **能**，退出码 0，产物里 0 处项目 URL → 干净**纯本地**包 |
-| 设了环境变量会不会生效 | **会**。设一个假 URL 构建后，该字符串被内联进 `assets/index-*.js`（入口 chunk） |
-| 六个迁移能否一次粘贴执行 | **能**（见 §1.2 的验证结论：12 张表 / 3 个 RPC / 21 条策略） |
-| 本机全量验收 | **全绿**：`check:*` 48/62/62/78/113、`verify:local` 119、`verify:pwa` 49、`verify:sync` 74、`verify:sql` 39 |
+| 首页与深链接 | 正常渲染新版登录界面和 SPA，静态资源类型正确 |
+| PWA 缓存 | SW/manifest/index `no-cache`，assets `immutable`，不缓存跨域 Auth/API 响应 |
+| W 登录 | 正确密码成功，错误密码失败，显示唯一 W 身份并完成工作区准备 |
+| 退出后重登 | 同一 Auth UID、业务数据与待上传队列保持，不能再次注册或补建身份 |
+| 新设备/清缓存 | 使用测试设备及已上传样本，认证后恢复同 UID 数据；恢复失败不开业务页 |
+| 断网与重验 | 已准备缓存可保存，暂不上传，联网身份重验后补传 |
+| 旧身份门禁 | 旧 UID/JWT、匿名与伪造 owner 对表和 RPC 的读写被拒 |
+| RLS 与 GRANT | 逐表 owner/子表父链、restrictive 门禁、函数及 private 权限均符合预期 |
+| 业务备份 | v3 无凭据，v1/v2 只恢复业务，历史日期数据往返可用 |
+| 真机 | 安装、独立窗口、软键盘、抽屉按钮和安全区实际可用 |
 
-> **两条推论**：
-> ① 环境变量是**构建期内联**的，所以 Vercel 上必须「先设变量、再 Deploy」，且**改了变量要重新部署**才会生效；
-> ② 因为不设变量也能正常构建，所以「先发一版纯本地的、再补云端」是完全可行的路线，不存在「必须先配好 Supabase 才能上线」。
+清缓存测试先确认云端样本和独立备份存在，优先在新浏览器或测试设备执行。未经上传且被清除的本地编辑不能凭账号恢复。
 
----
+## 6. 回报
 
-## 4. 我（AI）能帮你做的部分
-
-| 事项 | 我能否代做 | 需要什么 |
-| --- | --- | --- |
-| 生成迁移 SQL / 部署配置 / 这份指南 | ✅ 已完成 | — |
-| 在本地跑全部验收（含真库 `verify:sql`） | ✅ 已完成（39/39） | 本机 PostgreSQL（已装） |
-| 登录 Supabase / Vercel | ❌ | 你的账号，只能你自己操作 |
-| 在 Supabase 跑迁移 | ⚠️ 可代跑 | 你的**数据库连接串**（Project Settings → Database → Connection string） |
-| 部署到 Vercel | ⚠️ 可代跑 | 你的 **Vercel Token**（vercel.com/account/tokens） |
-
-**如果要我代跑**：把上面的连接串 / Token 发我，我用 CLI 直接执行并回报每一步的真实输出。
-**如果自己跑**：照着第 1–3 节做，任何一步报错把原文贴给我，我来判断。
-
----
-
-## 5. 别忘了
-
-- **备份仍是唯一的兜底路径**。云端同步是一期功能，不是数据保险——界面文案里也一直是这么说的。
-- 部署配置改动后要跑 `npm run verify:pwa`（49 项，其中 6 条专门守部署配置）。
-- 改动 `database/migrations/` 或三个云端 RPC 后要跑 `npm run verify:sql`（39 项，真库）。
+逐项报告部署状态、线上 URL、已发布提交/版本、项目 ref、迁移、表/RPC/RLS/GRANT、Vercel 环境配置、缓存头，以及登录、重登、恢复和真机结果。未验证就写「未验证」，失败就写实际原因；本地假云端通过不等于生产通过。

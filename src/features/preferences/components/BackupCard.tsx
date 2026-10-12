@@ -1,4 +1,5 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { captureAuthContext, isAuthContextCurrent, type AuthContext } from '../../../services/api/authService'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { describeDataError } from '../../../shared/errors'
 import { backupFileName, describeBackupSummary, type BackupStore, type BackupSummary } from '../../../services/api/backupFormat'
@@ -49,13 +50,15 @@ export function BackupCard({
   busy,
   runSave,
   onImported,
+  onInputChange,
 }: {
   busy: boolean
-  runSave: (action: () => Promise<void>) => Promise<void>
+  runSave: (action: (isCurrent: () => boolean) => Promise<void>) => Promise<void>
   /** 导入成功后由页面重新读取清单，让界面立刻反映备份内容。 */
   onImported: () => Promise<void>
+  onInputChange: () => void
 }) {
-  return <LocalBackupCard busy={busy} runSave={runSave} onImported={onImported} />
+  return <LocalBackupCard busy={busy} runSave={runSave} onImported={onImported} onInputChange={onInputChange} />
 }
 
 /** 备份卡片的实际实现。 */
@@ -63,11 +66,13 @@ function LocalBackupCard({
   busy,
   runSave,
   onImported,
+  onInputChange,
 }: {
   busy: boolean
-  runSave: (action: () => Promise<void>) => Promise<void>
+  runSave: (action: (isCurrent: () => boolean) => Promise<void>) => Promise<void>
   /** 导入成功后由页面重新读取清单，让界面立刻反映备份内容。 */
   onImported: () => Promise<void>
+  onInputChange: () => void
 }) {
   const [text, setText] = useState('')
   const [exportNote, setExportNote] = useState<string | null>(null)
@@ -76,17 +81,51 @@ function LocalBackupCard({
   const [pendingImport, setPendingImport] = useState<{ summary: BackupSummary; text: string } | null>(null)
   const [importedNote, setImportedNote] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const mounted = useRef(false)
+  const revision = useRef(0)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      revision.current += 1
+    }
+  }, [])
+
+  function invalidateInput() {
+    revision.current += 1
+    onInputChange()
+  }
+
+  function startRequest(): { context: AuthContext; request: number } | null {
+    if (!mounted.current) return null
+    try {
+      const context = captureAuthContext()
+      invalidateInput()
+      return { context, request: revision.current }
+    } catch { return null }
+  }
+
+  function current(context: AuthContext, request: number): boolean {
+    return mounted.current && revision.current === request && isAuthContextCurrent(context)
+  }
 
   /** 生成备份：只读库并组装文本，不产生任何写入。 */
   async function handleExport() {
+    const task = startRequest()
+    if (!task) return
+    const { context, request } = task
     setExportNote(null)
     setExportError(null)
     setImportedNote(null)
+    setPendingImport(null)
     try {
       const result = await exportBackup()
+      if (!current(context, request)) return
       setText(result.text)
       setExportNote(result.summary.total ? describeBackupSummary(result.summary, labelOf) : BACKUP_EMPTY_NOTE)
     } catch (reason) {
+      if (!current(context, request)) return
       setExportError(describeDataError(reason))
     }
   }
@@ -103,10 +142,15 @@ function LocalBackupCard({
 
   async function handleCopy() {
     if (!text) return
+    const task = startRequest()
+    if (!task) return
+    const { context, request } = task
     try {
       await navigator.clipboard.writeText(text)
+      if (!current(context, request)) return
       setExportNote(BACKUP_COPIED_NOTE)
     } catch {
+      if (!current(context, request)) return
       setExportNote(BACKUP_COPY_FAILED_NOTE)
     }
   }
@@ -116,17 +160,25 @@ function LocalBackupCard({
     // 先清掉 input 的值，否则连续选同一个文件不会再触发 change 事件。
     if (fileRef.current) fileRef.current.value = ''
     if (!file) return
+    const task = startRequest()
+    if (!task) return
+    const { context, request } = task
     setImportError(null)
     setImportedNote(null)
+    setPendingImport(null)
     try {
-      setText(await file.text())
+      const nextText = await file.text()
+      if (!current(context, request)) return
+      setText(nextText)
     } catch {
+      if (!current(context, request)) return
       setImportError('这个文件读不出来，请确认它是一份导出的 JSON 备份。')
     }
   }
 
   /** 校验后再弹确认框；文件不过关时不会有任何写入。 */
   function handleInspect() {
+    invalidateInput()
     setImportError(null)
     setImportedNote(null)
     if (!text.trim()) {
@@ -146,13 +198,17 @@ function LocalBackupCard({
     const target = pendingImport
     setPendingImport(null)
     if (!target) return
-    let summary: BackupSummary | null = null
-    await runSave(async () => {
-      summary = await importBackup(target.text)
+    const task = startRequest()
+    if (!task) return
+    const { context, request } = task
+    await runSave(async (isCurrent) => {
+      if (!current(context, request) || !isCurrent()) return
+      const summary = await importBackup(target.text)
+      if (!current(context, request) || !isCurrent()) return
       await onImported()
+      if (!current(context, request) || !isCurrent()) return
+      setImportedNote(`已替换为备份内容：${describeBackupSummary(summary, labelOf)}`)
     })
-    // 失败时 runSave 已把原因写进页面顶部的错误提示，这里只在成功时补一句结果。
-    if (summary) setImportedNote(`已替换为备份内容：${describeBackupSummary(summary, labelOf)}`)
   }
 
   return (
@@ -182,7 +238,13 @@ function LocalBackupCard({
           value={text}
           placeholder={BACKUP_PASTE_PLACEHOLDER}
           spellCheck={false}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            invalidateInput()
+            setText(event.target.value)
+            setPendingImport(null)
+            setExportNote(null)
+            setImportedNote(null)
+          }}
         />
       </label>
 
@@ -210,7 +272,9 @@ function LocalBackupCard({
           type="button"
           disabled={!text}
           onClick={() => {
+            invalidateInput()
             setText('')
+            setPendingImport(null)
             setExportNote(null)
             setExportError(null)
             setImportError(null)

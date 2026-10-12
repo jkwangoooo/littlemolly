@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { CustomTask, DayMode, DayPlan } from '../../shared/types/dayPlan'
 import { addDays, classifyDate, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
-import type { AuthResult } from '../../services/api/authService'
 import {
   copyYesterday,
   deleteCustomTask,
@@ -39,7 +38,7 @@ import { TodayBubbleStage } from './components/TodayBubbleStage'
 import { DayPlanAside } from './components/DayPlanAside'
 import { FloatingPet } from '../../shared/components/FloatingPet'
 import type { PetPosition } from '../../shared/components/PetMessageBubble'
-import { publishFeedback } from '../../shared/feedback/feedbackBus'
+import { publishFeedback, resetFeedbackActions } from '../../shared/feedback/feedbackBus'
 import { FeedbackHost } from '../../shared/feedback/FeedbackHost'
 
 type Tab = 'execute' | 'prepare'
@@ -48,13 +47,7 @@ type Tab = 'execute' | 'prepare'
  * 单日计划页。只负责编排：持有界面状态、串起数据加载与保存、组装子组件。
  * 具体展示在 components/，数据读取在 useDayPlanData，保存状态机在 useSaveRunner。
  */
-export function DayPlanScreen({
-  authResult,
-  onDismissAuthResult,
-}: {
-  authResult: AuthResult | null
-  onDismissAuthResult: () => void
-}) {
+export function DayPlanScreen() {
   const today = getBusinessDateKey()
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(today)
@@ -71,6 +64,8 @@ export function DayPlanScreen({
   const navigationVersionRef = useRef(0)
   const feedbackActionIdRef = useRef(0)
   const previousSaveErrorRef = useRef<string | null>(null)
+
+  useEffect(() => () => { resetFeedbackActions() }, [])
 
   useEffect(() => {
     const updateViewport = () => setPetViewport({
@@ -90,7 +85,7 @@ export function DayPlanScreen({
   }, [])
 
 
-  const data = useDayPlanData(selectedDate)
+  const data = useDayPlanData(selectedDate, !optionsOpen)
   const { status, saveError, canRetry, runSave, retryLastSave, resetForDateChange } = useSaveRunner()
 
   useEffect(() => {
@@ -133,6 +128,12 @@ export function DayPlanScreen({
 
   function invalidatePageContext() {
     navigationVersionRef.current += 1
+    resetForDateChange()
+    resetFeedbackActions()
+    setPanel(null)
+    setEditingTask(null)
+    setConfirmCopy(false)
+    setConfirmDelete(null)
     setPendingMode(null)
     setCelebrationOpen(false)
   }
@@ -178,19 +179,23 @@ export function DayPlanScreen({
     if (writable && status !== 'saving' && node.editorTarget) void openPanel(node.editorTarget)
   }
 
-  async function ensurePlan(): Promise<DayPlan> {
+  async function ensurePlan(isCurrent: () => boolean): Promise<DayPlan | null> {
+    if (!isCurrent()) return null
     if (data.plan) return data.plan
     const created = await upsertDayPlan(selectedDate, {
       mode: defaultModeForDate(selectedDate),
       mode_override: false,
     })
+    if (!isCurrent()) return null
     data.setPlan(created)
     return created
   }
 
   async function savePlan(patch: Partial<DayPlan>, completed = false) {
-    await runSave(async () => {
-      data.setPlan(await upsertDayPlan(selectedDate, patch))
+    await runSave(async (isCurrent) => {
+      const saved = await upsertDayPlan(selectedDate, patch)
+      if (!isCurrent()) return
+      data.setPlan(saved)
       if (completed) showCompletionFeedback()
     })
   }
@@ -200,8 +205,9 @@ export function DayPlanScreen({
     const sourceMode = mode
     const navigationVersion = navigationVersionRef.current
 
-    await runSave(async () => {
+    await runSave(async (isCurrent) => {
       const saved = await upsertDayPlan(targetDate, { mode: targetMode, mode_override: true })
+      if (!isCurrent()) return
       data.setPlan(saved)
       if (
         navigationVersion !== navigationVersionRef.current
@@ -234,30 +240,37 @@ export function DayPlanScreen({
     setEditingTask(null)
     setPanel(kind)
     if (kind === 'supplements' && writable) {
-      await runSave(async () => {
-        await ensurePlan()
-        data.setSupplements(await ensureDaySupplements(selectedDate))
+      await runSave(async (isCurrent) => {
+        if (!await ensurePlan(isCurrent) || !isCurrent()) return
+        const saved = await ensureDaySupplements(selectedDate)
+        if (isCurrent()) data.setSupplements(saved)
       })
     }
   }
 
   async function savePanel(payload: PanelPayload) {
-    await runSave(async () => {
-      await ensurePlan()
+    await runSave(async (isCurrent) => {
+      if (!await ensurePlan(isCurrent) || !isCurrent()) return
 
       if (payload.kind === 'meals') {
         const saved = await saveMeals(selectedDate, payload.meals)
+        if (!isCurrent()) return
         data.setMeals(saved.meals)
         data.setMealItems(saved.items)
       }
       if (payload.kind === 'supplements') {
-        data.setSupplements(await saveDaySupplements(selectedDate, payload.rows))
+        const saved = await saveDaySupplements(selectedDate, payload.rows)
+        if (!isCurrent()) return
+        data.setSupplements(saved)
       }
       if (payload.kind === 'morning') {
-        data.setPlan(await upsertDayPlan(selectedDate, { morning_focus: payload.morning_focus }))
+        const saved = await upsertDayPlan(selectedDate, { morning_focus: payload.morning_focus })
+        if (!isCurrent()) return
+        data.setPlan(saved)
       }
       if (payload.kind === 'exercise') {
         const saved = await saveExercise(selectedDate, payload.exercise)
+        if (!isCurrent()) return
         data.setPlan(saved.plan)
         data.setExerciseItems(saved.items)
       }
@@ -269,6 +282,7 @@ export function DayPlanScreen({
           note: payload.task.note,
           completed: editingTask?.completed ?? false,
         })
+        if (!isCurrent()) return
         data.setTasks((current) =>
           [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) =>
             a.task_time.localeCompare(b.task_time),
@@ -303,8 +317,10 @@ export function DayPlanScreen({
     if (toggle.kind === 'meal') {
       const meal = data.meals.find((item) => item.meal_type === toggle.mealType)
       const nextCompleted = !(meal?.completed ?? false)
-      await runSave(async () => {
-        data.setMeals(await setMealCompleted(selectedDate, toggle.mealType, nextCompleted))
+      await runSave(async (isCurrent) => {
+        const saved = await setMealCompleted(selectedDate, toggle.mealType, nextCompleted)
+        if (!isCurrent()) return
+        data.setMeals(saved)
         if (nextCompleted) showCompletionFeedback()
       })
       return
@@ -313,8 +329,10 @@ export function DayPlanScreen({
     const row = data.supplements.find((item) => item.id === toggle.id)
     if (!row) return
     const nextCompleted = !row.completed
-    await runSave(async () => {
-      data.setSupplements(await setSupplementCompleted(selectedDate, row.id, nextCompleted))
+    await runSave(async (isCurrent) => {
+      const saved = await setSupplementCompleted(selectedDate, row.id, nextCompleted)
+      if (!isCurrent()) return
+      data.setSupplements(saved)
       if (nextCompleted) showCompletionFeedback()
     })
   }
@@ -324,8 +342,9 @@ export function DayPlanScreen({
     const task = data.tasks.find((item) => item.id === id)
     if (!task) return
     const nextCompleted = !task.completed
-    await runSave(async () => {
+    await runSave(async (isCurrent) => {
       const saved = await saveCustomTask(selectedDate, { ...task, completed: nextCompleted })
+      if (!isCurrent()) return
       data.setTasks((current) => current.map((item) => (item.id === id ? saved : item)))
       if (nextCompleted) showCompletionFeedback()
     })
@@ -336,16 +355,19 @@ export function DayPlanScreen({
     const routine = data.routines.find((item) => item.id === id)
     if (!routine) return
     const nextCompleted = !routine.completed
-    await runSave(async () => {
-      data.setRoutines(await setRoutineCompleted(selectedDate, id, nextCompleted))
+    await runSave(async (isCurrent) => {
+      const saved = await setRoutineCompleted(selectedDate, id, nextCompleted)
+      if (!isCurrent()) return
+      data.setRoutines(saved)
       if (nextCompleted) showCompletionFeedback()
     })
   }
 
   async function doCopy() {
     setConfirmCopy(false)
-    await runSave(async () => {
+    await runSave(async (isCurrent) => {
       const copied = await copyYesterday(selectedDate)
+      if (!isCurrent()) return
       const [nextMeals, nextMealItems, nextSupplements, nextExerciseItems, nextTasks] = await Promise.all([
         listMeals(copied.id),
         listMealItems(copied.id),
@@ -353,6 +375,7 @@ export function DayPlanScreen({
         listExerciseItems(copied.id),
         listCustomTasks(copied.id),
       ])
+      if (!isCurrent()) return
       data.setPlan(copied)
       data.setMeals(nextMeals)
       data.setMealItems(nextMealItems)
@@ -363,15 +386,17 @@ export function DayPlanScreen({
   }
 
   async function restoreDefault() {
-    await runSave(async () => {
-      data.setPlan(await restoreDefaultDayPlan(selectedDate, defaultModeForDate(selectedDate)))
+    await runSave(async (isCurrent) => {
+      const saved = await restoreDefaultDayPlan(selectedDate, defaultModeForDate(selectedDate))
+      if (isCurrent()) data.setPlan(saved)
     })
   }
 
   async function confirmDeleteTask(task: CustomTask) {
     setConfirmDelete(null)
-    await runSave(async () => {
+    await runSave(async (isCurrent) => {
       await deleteCustomTask(selectedDate, task.id)
+      if (!isCurrent()) return
       data.setTasks((current) => current.filter((item) => item.id !== task.id))
     })
   }
@@ -395,26 +420,11 @@ export function DayPlanScreen({
           <p className="eyebrow">幸福小Molly</p>
           <h1>{pageTitle}</h1>
         </div>
-        <button className="secondary bubble-options-button" type="button" onClick={() => setOptionsOpen(true)}>
+        <button className="secondary bubble-options-button" type="button" onClick={() => { invalidatePageContext(); setOptionsOpen(true) }}>
           选项
         </button>
       </header>
 
-
-      {authResult ? (
-        <div className={`auth-result auth-result-${authResult.cloud}`} role="status">
-          <span>
-            {authResult.cloud === 'connected'
-              ? '本地数据已可用，云端账号也已连接。'
-              : authResult.cloud === 'unavailable'
-                ? '本地数据已可用；当前版本未配置云端服务。'
-                : '本地数据已可用；云端账号暂未连接，可在“选项 → 账号与同步”中重试。'}
-          </span>
-          <button className="icon-button" type="button" aria-label="关闭账号状态提示" onClick={onDismissAuthResult}>
-            ×
-          </button>
-        </div>
-      ) : null}
 
       {/* page-scroll：固定外壳里唯一可滚动的区域（页面本身不滚动，见 styles.css 布局段）。 */}
       <section className="page-scroll page-content">

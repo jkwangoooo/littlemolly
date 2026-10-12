@@ -1,12 +1,15 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { captureAuthContext, isAuthContextCurrent } from '../../services/api/authService'
 import type { SaveStatus } from '../types/save'
 import { describeDataError } from '../errors'
+
+type SaveAction = (isCurrent: () => boolean) => Promise<void>
 
 export type SaveRunner = {
   status: SaveStatus
   saveError: string | null
   canRetry: boolean
-  runSave: (action: () => Promise<void>) => Promise<void>
+  runSave: (action: SaveAction) => Promise<void>
   retryLastSave: () => Promise<void>
   /** 切换日期时调用：丢弃上一次的待重试请求与错误提示，并把状态文案回到「尚未修改」。 */
   resetForDateChange: () => void
@@ -19,22 +22,36 @@ export type SaveRunner = {
 export function useSaveRunner(): SaveRunner {
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
-  const retryRef = useRef<(() => Promise<void>) | null>(null)
+  const retryRef = useRef<SaveAction | null>(null)
   const runIdRef = useRef(0)
+  const mounted = useRef(false)
 
-  const runSave = useCallback(async (action: () => Promise<void>) => {
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      runIdRef.current += 1
+      retryRef.current = null
+    }
+  }, [])
+
+  const runSave = useCallback(async (action: SaveAction) => {
+    if (!mounted.current) return
+    let context: ReturnType<typeof captureAuthContext>
+    try { context = captureAuthContext() } catch { return }
     const runId = runIdRef.current + 1
+    const isCurrent = () => mounted.current && runId === runIdRef.current && isAuthContextCurrent(context)
     runIdRef.current = runId
     retryRef.current = action
     setStatus('saving')
     setSaveError(null)
     try {
-      await action()
-      if (runId !== runIdRef.current) return
+      await action(isCurrent)
+      if (!isCurrent()) return
       setStatus('saved')
       retryRef.current = null
     } catch (reason) {
-      if (runId !== runIdRef.current) return
+      if (!isCurrent()) return
       setStatus('error')
       setSaveError(describeDataError(reason))
     }

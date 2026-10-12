@@ -31,9 +31,17 @@
  * 仍然被一个几分钟前的失败挡住，而他明明已经换了网络。
  */
 
+import { describeDataError } from '../../shared/errors'
 import { OUTBOX_CHANGE_EVENT } from '../local/outboxRules'
-import { pushOnce } from './outbox'
-import { readSyncState } from './syncState'
+import {
+  AUTH_CHANGE_EVENT,
+  assertAuthContextCurrent,
+  captureAuthContext,
+  isAuthContextCurrent,
+  isCloudSessionVerified,
+} from '../session'
+import { pushOnce, withSyncLock } from './outbox'
+import { readSyncState, writeSyncState } from './syncState'
 
 /** 写入后等多久再推：把连续的几次写入攒成一批。 */
 export const DEBOUNCE_MS = 1500
@@ -44,13 +52,11 @@ export const BACKOFF_MAX_MS = 60_000
 /** 一轮最多推几个批次，避免「一边写一边推」时无限循环。 */
 export const MAX_ROUNDS = 20
 
-/** 跨标签互斥用的锁名。 */
-const LOCK_NAME = 'molly-sync-push'
-
 let timer: ReturnType<typeof setTimeout> | null = null
 let running = false
 let backoff = 0
 let started = false
+let wakePending = false
 
 /** 下一次退避时长：第一次 1s，之后翻倍，60s 封顶。 */
 function nextBackoff(current: number): number {
@@ -60,6 +66,7 @@ function nextBackoff(current: number): number {
 
 /** 排一次推送。重复调用会重置计时器（防抖）。 */
 function schedule(delay: number = DEBOUNCE_MS): void {
+  if (!started) return
   if (timer !== null) clearTimeout(timer)
   timer = setTimeout(() => {
     timer = null
@@ -67,37 +74,35 @@ function schedule(delay: number = DEBOUNCE_MS): void {
   }, delay)
 }
 
-/** 拿锁执行。不支持 Web Locks 时降级为直接执行（见文件头注释）。 */
-async function withLock(work: () => Promise<void>): Promise<void> {
-  const locks = navigator.locks
-  if (locks?.request) {
-    await locks.request(LOCK_NAME, work)
-    return
-  }
-  await work()
-}
-
 /**
  * 推一轮：在锁内循环取批次，直到队列空、失败、或达到轮数上限。
  *
- * 未绑定云端账号时**直接返回**，连队列都不读——这是「未绑定/未配置时
- * 行为与本地单机逐字节等价」在 S4 之后的落点：多了推送能力，
- * 但没绑定时它一次都不启动。
+ * 只有当前账号已在线验证且工作区准备完成时才读队列。
+ * 离线缓存、退出及重新认证期间保留队列，验证恢复后再上传。
  */
 async function run(): Promise<void> {
-  if (running) return
+  if (!started || !isCloudSessionVerified()) return
+  if (running) {
+    wakePending = true
+    return
+  }
+  const context = captureAuthContext()
   running = true
   try {
-    const state = await readSyncState()
-    const cloudUserId = state?.enabled ? state.cloud_user_id : null
-    if (!cloudUserId) return
+    const state = await readSyncState(context)
+    assertAuthContextCurrent(context)
+    if (!state?.enabled || !isCloudSessionVerified()) return
 
     // 离线时不推，等 `online` 事件把这一轮叫回来。
     if (typeof navigator.onLine === 'boolean' && !navigator.onLine) return
 
-    await withLock(async () => {
+    await withSyncLock(async () => {
+      assertAuthContextCurrent(context)
       for (let round = 0; round < MAX_ROUNDS; round += 1) {
-        const result = await pushOnce(cloudUserId)
+        if (!started || !isCloudSessionVerified()) return
+        assertAuthContextCurrent(context)
+        const result = await pushOnce(context)
+        assertAuthContextCurrent(context)
 
         if (result.kind === 'idle') {
           backoff = 0
@@ -112,9 +117,29 @@ async function run(): Promise<void> {
       }
       // 达到轮数上限：剩下的等下一次触发（写入 / online / 回前台）。
       backoff = 0
+      schedule(0)
     })
+    assertAuthContextCurrent(context)
+  } catch (cause) {
+    if (started && isAuthContextCurrent(context) && isCloudSessionVerified()) {
+      try {
+        await writeSyncState(
+          { last_error_message: describeDataError(cause), last_error_at: new Date().toISOString() },
+          context,
+        )
+        assertAuthContextCurrent(context)
+        backoff = nextBackoff(backoff)
+        schedule(backoff)
+      } catch {
+        // 身份已关闭时保留队列，下一次成功认证会唤醒调度器。
+      }
+    }
   } finally {
     running = false
+    if (wakePending) {
+      wakePending = false
+      if (started && isCloudSessionVerified()) schedule(0)
+    }
   }
 }
 
@@ -133,10 +158,23 @@ export function startPushScheduler(): () => void {
   const onVisible = () => {
     if (document.visibilityState === 'visible') schedule(0)
   }
+  const onAuthChange = () => {
+    if (isCloudSessionVerified()) {
+      backoff = 0
+      schedule(0)
+      return
+    }
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
+    backoff = 0
+  }
 
   window.addEventListener(OUTBOX_CHANGE_EVENT, onOutboxChange)
   window.addEventListener('online', onOnline)
   document.addEventListener('visibilitychange', onVisible)
+  window.addEventListener(AUTH_CHANGE_EVENT, onAuthChange)
 
   // 启动时立刻排一次：上次关页面时队列里可能还留着没推完的条目。
   schedule(0)
@@ -146,6 +184,7 @@ export function startPushScheduler(): () => void {
     window.removeEventListener(OUTBOX_CHANGE_EVENT, onOutboxChange)
     window.removeEventListener('online', onOnline)
     document.removeEventListener('visibilitychange', onVisible)
+    window.removeEventListener(AUTH_CHANGE_EVENT, onAuthChange)
     if (timer !== null) {
       clearTimeout(timer)
       timer = null

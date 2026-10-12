@@ -1,9 +1,28 @@
 export interface AppUser {
   id: string
-  /** 账号（登录名）。老库里的历史账号是从邮箱原样迁过来的，因此**可能带 `@`**。 */
   username: string
+  created_at: string
 }
 
 export interface AppSession {
   user: AppUser
+}
+
+export type AuthContext = { owner: string; generation: number }
+
+export type AuthPhase =
+  | 'checking'
+  | 'signed-out'
+  | 'preparing'
+  | 'ready'
+  | 'offline-cached'
+  | 'reauth-required'
+  | 'error'
+
+export type AuthState = {
+  phase: AuthPhase
+  session: AppSession | null
+  generation: number
+  verified: boolean
+  error: string | null
 }
