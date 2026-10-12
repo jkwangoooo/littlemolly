@@ -8,7 +8,8 @@ const { buildBackup } = await import('../../src/services/local/backupFormat.ts')
 export const FIXTURE_URL = 'https://molly-auth-fixture.invalid'
 export const FIXTURE_UID = '11111111-2222-4333-8444-555555555555'
 export const OTHER_UID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
-export const FIXTURE_EMAIL = 'w@molly.local'
+export const FIXTURE_USERNAME = 'W'
+export const FIXTURE_AUTH_IDENTIFIER = 'w@molly.local'
 export const FIXTURE_PASSWORD = 'fixture-pass-2026'
 export const FIXTURE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJmaXh0dXJlIiwicm9sZSI6ImFub24ifQ.fixture-signature'
@@ -55,7 +56,7 @@ export function createAuthFixture() {
     id: fixture.userId,
     aud: 'authenticated',
     role: 'authenticated',
-    email: fixture.userEmail,
+    user_metadata: { username: fixture.userUsername },
     email_confirmed_at: epoch,
     created_at: epoch,
     updated_at: epoch,
@@ -72,7 +73,7 @@ export function createAuthFixture() {
         sub: fixture.userId,
         aud: 'authenticated',
         role: 'authenticated',
-        email: fixture.userEmail,
+        user_metadata: { username: fixture.userUsername },
         exp: expires,
         iat: expires - 3600,
         session_id: `fixture-${sequence}`,
@@ -188,7 +189,7 @@ export function createAuthFixture() {
             const refresh = url.searchParams.get('grant_type') === 'refresh_token'
             const credentialsValid = refresh
               ? fixture.validRefreshTokens.has(body.refresh_token)
-              : body.email === FIXTURE_EMAIL && body.password === FIXTURE_PASSWORD
+              : body.email === FIXTURE_AUTH_IDENTIFIER && body.password === FIXTURE_PASSWORD
             if (fixture.rejectAuth || !credentialsValid) return respond(params.requestId, 400, { error_code: 'invalid_credentials', msg: 'Invalid login credentials' })
             return respond(params.requestId, 200, fixture.session())
           }

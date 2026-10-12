@@ -206,7 +206,7 @@ function verifySupabase(env) {
   const allowlistRows = psql(['-tAc', 'select count(*) from private.account_allowlist'], env).trim()
   const wAccountRows = psql([
     '-tAc',
-    "select count(*) from private.account_allowlist a join auth.users u on u.id=a.user_id where lower(u.email)='w@molly.local'",
+    "select count(*) from private.account_allowlist a join auth.users u on u.id=a.user_id where coalesce(u.raw_user_meta_data->>'username', '')='W'",
   ], env).trim()
   const gatePolicies = psql([
     '-tAc',
@@ -226,7 +226,7 @@ function verifySupabase(env) {
     throw new Error(`Supabase W 账号门禁尚未准备：allowlist 当前 ${allowlistRows} 行，预期 1 行；请先在可信 Supabase Auth/SQL 管理入口创建 W 并写入目标 UID`)
   }
   if (wAccountRows !== '1') {
-    throw new Error('Supabase allowlist 中没有唯一的 W（w@molly.local）Auth 身份；请先在可信 Supabase Auth/SQL 管理入口核验账号与 UID')
+    throw new Error('Supabase allowlist 中没有唯一的 W 用户名 Auth 身份；请先在可信 Supabase Auth/SQL 管理入口核验账号与 UID')
   }
   console.log(`Supabase 核验通过：${expectedTables.length} 张表、${expectedRpcs.length} 个认证/RPC、${gatePolicies} 条 UID 门禁策略、W 门禁 1 行`)
 }

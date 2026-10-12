@@ -3,7 +3,7 @@ import { ACCOUNT_USERNAME, passwordProblem, usernameProblem } from '../../shared
 import { describeDataError } from '../../shared/errors'
 import type { AppSession } from '../../shared/types/auth'
 import { normalizeSupabaseError } from '../cloud/errors'
-import { emailForUsername } from '../cloud/identity'
+import { authIdentifierForUsername } from '../cloud/identity'
 import { callRpc } from '../cloud/rpc'
 import { requireSupabase } from '../cloud/supabase'
 import { initializeCloudWorkspace, inspectBackup } from '../local/backupService'
@@ -60,7 +60,7 @@ function rememberPreparedOwner(owner: string, guard: () => void): void {
 /** This pointer identifies an already prepared workspace; it never authenticates or enables uploads. */
 function offlineOwner(cached: Session | null): string | null {
   if (cached?.user) {
-    return cached.user.email?.toLowerCase() === emailForUsername(ACCOUNT_USERNAME) ? cached.user.id : null
+    return cached.user.user_metadata?.username === ACCOUNT_USERNAME ? cached.user.id : null
   }
   const current = getAuthState().session?.user.id
   if (current) return current
@@ -69,7 +69,7 @@ function offlineOwner(cached: Session | null): string | null {
 
 async function verifyAccountAccess(user: User, guard: () => void): Promise<void> {
   guard()
-  if (user.email?.toLowerCase() !== emailForUsername(ACCOUNT_USERNAME)) {
+  if (user.user_metadata?.username !== ACCOUNT_USERNAME) {
     throw rejectedAccount('当前认证身份不是账号 W，请重新登录。')
   }
   const access = await callRpc<{ allowed: boolean; uid: string | null }>('account_access')
@@ -88,7 +88,7 @@ async function prepareSession(user: User, guard: () => void): Promise<AppSession
   guard()
   const syncStatePatch = {
     enabled: true,
-    cloud_email: user.email ?? null,
+    cloud_email: null,
     device_id: deviceId(),
     bound_at: new Date().toISOString(),
     last_error_message: null,
@@ -360,7 +360,7 @@ export function signIn(username: string, password: string, generation: number, e
       installLifecycle()
       const client = requireSupabase()
       const { data, error } = await client.auth.signInWithPassword({
-        email: emailForUsername(username), password,
+        email: authIdentifierForUsername(username), password,
       })
       guard()
       if (error) throw normalizeSupabaseError(error)

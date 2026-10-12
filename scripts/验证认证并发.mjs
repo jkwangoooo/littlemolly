@@ -12,7 +12,12 @@ import {
 } from './lib/browser-harness.mjs'
 
 const root = new URL('../', import.meta.url)
-const user = { id: 'uid-w', email: 'w@molly.local', created_at: '2026-10-12T00:00:00Z' }
+const user = {
+  id: 'uid-w',
+  email: 'w@molly.local',
+  user_metadata: { username: 'W' },
+  created_at: '2026-10-12T00:00:00Z',
+}
 const sdkSession = (owner = user) => ({ user: owner, access_token: 'test-token' })
 
 function deferred() {

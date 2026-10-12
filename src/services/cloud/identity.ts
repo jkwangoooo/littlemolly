@@ -1,10 +1,9 @@
 import { normalizeUsername } from '../../shared/authRules'
 
-export const CLOUD_EMAIL_DOMAIN = 'molly.local'
-export const ACCOUNT_EMAIL = `w@${CLOUD_EMAIL_DOMAIN}`
+export const ACCOUNT_USERNAME = 'W'
 
-/** Must match the existing account prepared through the trusted Auth console. */
-export function emailForUsername(username: string): string {
+/** The product-facing identity is a username; Auth's transport identifier stays internal. */
+export function authIdentifierForUsername(username: string): string {
   if (normalizeUsername(username) !== 'w') throw new Error('账号或密码不正确。')
-  return ACCOUNT_EMAIL
+  return 'w@molly.local'
 }
