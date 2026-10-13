@@ -197,9 +197,11 @@ async function main() {
   record('未知账号被拒绝', Boolean(await errorOf(`window.__v.auth.signIn('old-user',${JSON.stringify(FIXTURE_PASSWORD)})`)))
   record('未知账号不触发自动注册', fixture.auth.length === tokensBeforeUnknown && !fixture.auth.some((request) => request.path.endsWith('/signup')))
   fixture.userId = OTHER_UID
-  record('持有效凭据的旧 UID 被服务端门禁拒绝', Boolean(await errorOf(`window.__v.auth.signIn('W',${JSON.stringify(FIXTURE_PASSWORD)})`)))
+  fixture.userMetadata = { username: 'W' }
+  record('伪造 W 元数据的旧 UID 被服务端门禁拒绝', Boolean(await errorOf(`window.__v.auth.signIn('W',${JSON.stringify(FIXTURE_PASSWORD)})`)))
   record('旧 UID 被拒后没有创建工作区', !(await browser.readDb()).rows.workspace_state.some((row) => row.id === OTHER_UID))
   fixture.userId = FIXTURE_UID
+  fixture.userMetadata = {}
   fixture.rejectGate = 'fixture account gate unavailable'
   record('门禁服务失败不能降级本地成功', Boolean(await errorOf(`window.__v.auth.signIn('W',${JSON.stringify(FIXTURE_PASSWORD)})`)) && (await phase()) !== 'ready')
   fixture.rejectGate = null
@@ -213,7 +215,7 @@ async function main() {
   await assertRejectedWithoutWrites('准备过程中普通写入被拒绝', `window.__v.options.createOption('food',{name:'early-write'})`)
   await fixture.release()
   await browser.ready()
-  record('首次真实认证与空工作区准备完成', await evaluate(`window.__login`) === true && (await phase()) === 'ready')
+  record('无用户名元数据仍完成真实认证与空工作区准备', await evaluate(`window.__login`) === true && (await phase()) === 'ready')
   record('认证及本地资料统一使用 Supabase UID', await evaluate(`window.__v.auth.currentUser().id`) === FIXTURE_UID && (await browser.readDb()).rows.users.some((row) => row.id === FIXTURE_UID && !('password_hash' in row)))
   record('空云端必须明确准备并标记工作区', (await browser.readDb()).rows.workspace_state.some((row) => row.id === FIXTURE_UID && row.initialized && row.initialized_from === 'empty'))
   record('活动同步状态使用同一 UID，不保留 cloud_user_id', (await browser.readDb()).rows.sync_state.every((row) => row.id === FIXTURE_UID && !('cloud_user_id' in row)))

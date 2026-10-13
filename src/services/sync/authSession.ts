@@ -59,19 +59,15 @@ function rememberPreparedOwner(owner: string, guard: () => void): void {
 
 /** This pointer identifies an already prepared workspace; it never authenticates or enables uploads. */
 function offlineOwner(cached: Session | null): string | null {
-  if (cached?.user) {
-    return cached.user.user_metadata?.username === ACCOUNT_USERNAME ? cached.user.id : null
+  let owner = getAuthState().session?.user.id ?? preparedOwner
+  if (!owner) {
+    try { owner = localStorage.getItem(OFFLINE_OWNER_KEY) } catch { /* No prepared owner is available. */ }
   }
-  const current = getAuthState().session?.user.id
-  if (current) return current
-  try { return localStorage.getItem(OFFLINE_OWNER_KEY) ?? preparedOwner } catch { return preparedOwner }
+  return cached?.user && cached.user.id !== owner ? null : owner
 }
 
 async function verifyAccountAccess(user: User, guard: () => void): Promise<void> {
   guard()
-  if (user.user_metadata?.username !== ACCOUNT_USERNAME) {
-    throw rejectedAccount('当前认证身份不是账号 W，请重新登录。')
-  }
   const access = await callRpc<{ allowed: boolean; uid: string | null }>('account_access')
   guard()
   if (access?.allowed === false || (access?.allowed === true && access.uid !== user.id)) {

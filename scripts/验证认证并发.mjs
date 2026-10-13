@@ -15,7 +15,7 @@ const root = new URL('../', import.meta.url)
 const user = {
   id: 'uid-w',
   email: 'w@molly.local',
-  user_metadata: { username: 'W' },
+  user_metadata: {},
   created_at: '2026-10-12T00:00:00Z',
 }
 const sdkSession = (owner = user) => ({ user: owner, access_token: 'test-token' })
@@ -26,8 +26,13 @@ function deferred() {
   return { promise, resolve }
 }
 
-function fixture({ cached = null, holdWorkspace = true } = {}) {
+function fixture({
+  cached = null, holdWorkspace = true, authUser = user,
+  access = { allowed: true, uid: user.id }, prepared = null,
+  userError = null, workspaceInitialized = true, profileOwner = user.id,
+} = {}) {
   const storage = new Map()
+  if (prepared) storage.set('happy-little-molly.offline-owner.v1', prepared)
   const timers = new Map()
   const window = new EventTarget()
   const document = new EventTarget()
@@ -75,6 +80,7 @@ function fixture({ cached = null, holdWorkspace = true } = {}) {
   let sessionRead
   let logout
   const history = []
+  const workspaceReads = []
   session.subscribeAuth(() => { history.push(session.getAuthState()) })
   const emit = (event, value) => { onChange(event, value) }
   const client = {
@@ -83,11 +89,11 @@ function fixture({ cached = null, holdWorkspace = true } = {}) {
       getSession: async () => sessionRead
         ? sessionRead()
         : { data: { session: currentSdkSession }, error: null },
-      getUser: async () => ({ data: { user: currentSdkSession?.user ?? null }, error: null }),
+      getUser: async () => ({ data: { user: currentSdkSession?.user ?? null }, error: userError }),
       signInWithPassword: async () => {
-        currentSdkSession = sdkSession()
+        currentSdkSession = sdkSession(authUser)
         emit('SIGNED_IN', currentSdkSession)
-        return { data: { session: currentSdkSession, user }, error: null }
+        return { data: { session: currentSdkSession, user: authUser }, error: null }
       },
       signOut: async () => {
         if (logout) await logout()
@@ -102,15 +108,18 @@ function fixture({ cached = null, holdWorkspace = true } = {}) {
     '../../shared/errors': errors,
     '../cloud/errors': cloudErrors,
     '../cloud/identity': identity,
-    '../cloud/rpc': { callRpc: async () => ({ allowed: true, uid: user.id }) },
+    '../cloud/rpc': { callRpc: async () => access },
     '../cloud/supabase': { requireSupabase: () => client },
     '../local/backupService': {
       initializeCloudWorkspace: async () => {},
       inspectBackup: () => ({ records: { users: [user] }, summary: { total: 0 } }),
     },
-    '../local/localDb': { getOne: async () => null },
+    '../local/localDb': { getOne: async (_, owner) => owner === profileOwner ? { ...user, username: 'W' } : null },
     '../local/workspaceService': {
-      getWorkspaceState: async () => ({ initialized: true }),
+      getWorkspaceState: async (owner) => {
+        workspaceReads.push(owner)
+        return { initialized: workspaceInitialized }
+      },
       prepareEmptyWorkspace: async () => {
         workspaceStarted.resolve()
         await workspaceRelease.promise
@@ -140,7 +149,7 @@ function fixture({ cached = null, holdWorkspace = true } = {}) {
     throw new Error('Authentication callbacks did not settle')
   }
   return {
-    auth, session, history, signIn, flush, emit,
+    auth, session, history, signIn, flush, emit, workspaceReads,
     workspaceStarted: workspaceStarted.promise,
     releaseWorkspace: workspaceRelease.resolve,
     setSdkSession: (value) => { currentSdkSession = value },
@@ -162,6 +171,76 @@ function assertClosed(f) {
   assert.equal(f.session.isCloudSessionVerified(), false)
   assert.notEqual(f.session.readAuthLock(), null)
 }
+
+test('an authorized user can log in and restore a session without metadata', async () => {
+  const f = fixture({ holdWorkspace: false })
+  await f.signIn()
+  assertReady(f)
+  const restored = fixture({ cached: sdkSession(), holdWorkspace: false })
+  await restored.auth.initializeAuth()
+  assertReady(restored)
+})
+
+test('forged W metadata cannot authorize an unrelated UID', async () => {
+  const other = { ...user, id: 'other-uid', user_metadata: { username: 'W' } }
+  const f = fixture({ authUser: other, access: { allowed: false, uid: other.id }, holdWorkspace: false })
+  await assert.rejects(f.signIn(), /未获准访问/)
+  assertClosed(f)
+  assert.deepEqual(f.workspaceReads, [])
+})
+
+for (const [label, access] of [
+  ['missing', null],
+  ['malformed', { allowed: 'true', uid: user.id }],
+  ['missing UID', { allowed: true }],
+  ['mismatched UID', { allowed: true, uid: 'other-uid' }],
+]) {
+  test(`${label} RPC authorization cannot open a workspace`, async () => {
+    const f = fixture({ access, holdWorkspace: false })
+    await assert.rejects(f.signIn())
+    assert.equal(f.session.readSession(), null)
+    assert.equal(f.session.isCloudSessionVerified(), false)
+    assert.deepEqual(f.workspaceReads, [])
+  })
+}
+
+test('a prepared offline workspace restores without metadata and never enables cloud writes', async () => {
+  const f = fixture({
+    cached: sdkSession(), prepared: user.id, userError: { message: 'Failed to fetch' },
+  })
+  await f.auth.initializeAuth()
+  assert.equal(f.session.getAuthState().phase, 'offline-cached')
+  assert.equal(f.session.readSession()?.user.id, user.id)
+  assert.equal(f.session.isCloudSessionVerified(), false)
+})
+
+test('a cached UID without a previously prepared owner cannot open offline data', async () => {
+  const f = fixture({ cached: sdkSession(), userError: { message: 'Failed to fetch' } })
+  await f.auth.initializeAuth()
+  assert.equal(f.session.readSession(), null)
+  assert.deepEqual(f.workspaceReads, [])
+})
+
+test('an unrelated cached UID cannot select the previously prepared offline workspace', async () => {
+  const f = fixture({
+    cached: sdkSession({ ...user, id: 'other-uid', user_metadata: { username: 'W' } }),
+    prepared: user.id, userError: { message: 'Failed to fetch' },
+  })
+  await f.auth.initializeAuth()
+  assert.equal(f.session.readSession(), null)
+  assert.deepEqual(f.workspaceReads, [])
+})
+
+test('the prepared owner still needs an initialized workspace and matching profile offline', async () => {
+  for (const invalid of [{ workspaceInitialized: false }, { profileOwner: 'other-uid' }]) {
+    const f = fixture({
+      cached: sdkSession(), prepared: user.id, userError: { message: 'Failed to fetch' }, ...invalid,
+    })
+    await f.auth.initializeAuth()
+    assert.equal(f.session.readSession(), null)
+    assert.equal(f.session.isCloudSessionVerified(), false)
+  }
+})
 
 test('SDK logout during explicit login cannot publish a verified workspace', async () => {
   const f = fixture()

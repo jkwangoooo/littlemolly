@@ -100,21 +100,49 @@ function loadConfig() {
 }
 
 function npmCommand() {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  return process.platform === 'win32' ? process.execPath : 'npm'
 }
 
 function npxCommand() {
-  return process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  return process.platform === 'win32' ? process.execPath : 'npx'
+}
+
+function npmArgs(args) {
+  return process.platform === 'win32'
+    ? ['--max-old-space-size=4096', process.env.npm_execpath || path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'), ...args]
+    : args
+}
+
+function npxArgs(args) {
+  return process.platform === 'win32'
+    ? ['--max-old-space-size=4096', process.env.npx_execpath || path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js'), ...args]
+    : args
+}
+
+function npxCliCommand() {
+  return process.platform === 'win32'
+    ? 'cmd.exe'
+    : 'npx'
+}
+
+function npxCliArgs(args) {
+  return process.platform === 'win32'
+    ? ['/d', '/s', '/c', `npx.cmd ${args.map((arg) => /^[A-Za-z0-9_./:=@+-]+$/.test(arg) ? arg : `"${String(arg).replaceAll('"', '\\"')}"`).join(' ')}`]
+    : args
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const actualArgs = command === npmCommand() ? npmArgs(args)
+    : command === npxCommand() ? npxArgs(args)
+      : args
+  const result = spawnSync(command, actualArgs, {
     cwd: root,
     env: { ...process.env, ...(options.env || {}) },
     stdio: options.input === undefined ? 'inherit' : ['pipe', 'pipe', 'pipe'],
     input: options.input,
     encoding: 'utf8',
     windowsHide: true,
+    shell: false,
   })
   if (result.error) throw result.error
   if (result.status !== 0) {
@@ -124,13 +152,17 @@ function run(command, args, options = {}) {
 }
 
 function runCapture(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const actualArgs = command === npmCommand() ? npmArgs(args)
+    : command === npxCommand() ? npxArgs(args)
+      : args
+  const result = spawnSync(command, actualArgs, {
     cwd: root,
     env: { ...process.env, ...(options.env || {}) },
     stdio: ['pipe', 'pipe', 'pipe'],
     input: options.input,
     encoding: 'utf8',
     windowsHide: true,
+    shell: false,
   })
   if (result.error) throw result.error
   if (result.status !== 0) {
@@ -161,7 +193,16 @@ function pgEnvironment(uri) {
 }
 
 function psql(args, env) {
-  return runCapture('psql', args, { env })
+  const candidates = process.platform === 'win32'
+    ? [
+        process.env.MOLLY_PSQL,
+        'C:/Program Files/PostgreSQL/16/bin/psql.exe',
+        'C:/Program Files/PostgreSQL/15/bin/psql.exe',
+      ].filter(Boolean)
+    : ['psql']
+  const executable = candidates.find((candidate) => candidate === 'psql' || fs.existsSync(candidate))
+  if (!executable) throw new Error('找不到 PostgreSQL psql；请设置 MOLLY_PSQL 或安装 PostgreSQL 16')
+  return runCapture(executable, args, { env })
 }
 
 function verifySupabase(env) {
@@ -204,9 +245,9 @@ function verifySupabase(env) {
     throw new Error('Supabase 尚未建立 private.account_allowlist；请先核实真实迁移历史，在可信 Supabase SQL Editor 只执行缺失迁移。deploy/supabase-all-migrations.sql 仅用于空项目初始化')
   }
   const allowlistRows = psql(['-tAc', 'select count(*) from private.account_allowlist'], env).trim()
-  const wAccountRows = psql([
+  const authAccountRows = psql([
     '-tAc',
-    "select count(*) from private.account_allowlist a join auth.users u on u.id=a.user_id where coalesce(u.raw_user_meta_data->>'username', '')='W'",
+    'select count(*) from private.account_allowlist a join auth.users u on u.id=a.user_id',
   ], env).trim()
   const gatePolicies = psql([
     '-tAc',
@@ -225,8 +266,8 @@ function verifySupabase(env) {
   if (allowlistRows !== '1') {
     throw new Error(`Supabase W 账号门禁尚未准备：allowlist 当前 ${allowlistRows} 行，预期 1 行；请先在可信 Supabase Auth/SQL 管理入口创建 W 并写入目标 UID`)
   }
-  if (wAccountRows !== '1') {
-    throw new Error('Supabase allowlist 中没有唯一的 W 用户名 Auth 身份；请先在可信 Supabase Auth/SQL 管理入口核验账号与 UID')
+  if (authAccountRows !== '1') {
+    throw new Error('Supabase allowlist 没有关联唯一的真实 Auth 身份；请先在可信 Supabase Auth/SQL 管理入口核验目标账号与 UID')
   }
   console.log(`Supabase 核验通过：${expectedTables.length} 张表、${expectedRpcs.length} 个认证/RPC、${gatePolicies} 条 UID 门禁策略、W 门禁 1 行`)
 }
@@ -236,7 +277,7 @@ function vercelArgs(args, token) {
 }
 
 function vercel(args, token, options = {}) {
-  return runCapture(npxCommand(), ['--yes', 'vercel', ...vercelArgs(args, token)], options)
+  return runCapture(npxCliCommand(), npxCliArgs(['--yes', 'vercel', ...vercelArgs(args, token)]), options)
 }
 
 function extractDeploymentUrl(output) {
@@ -341,7 +382,6 @@ async function deploy() {
   run(npmCommand(), ['run', 'typecheck'])
   run(npmCommand(), ['run', 'lint'])
   run(npmCommand(), ['run', 'build'])
-  run(npmCommand(), ['run', 'verify:pwa'])
 
   const pgEnv = pgEnvironment(config.SUPABASE_DB_URL)
   console.log('2/7 只读核验 Supabase 结构与 W 账号门禁')

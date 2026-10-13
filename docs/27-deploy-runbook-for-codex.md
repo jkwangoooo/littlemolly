@@ -29,7 +29,7 @@ docs/43-账密改造详细执行文档.md、docs/44-账密改造本地实施与�
 核实现有 Supabase/Vercel 项目、当前线上版本和迁移历史；已有数据库只执行缺失迁移，
 空库才使用完整合并 SQL。保留旧业务数据，先确认旧 owner、目标 W UID及数据去向。
 
-通过可信 Supabase Auth 管理入口准备 W（用户名元数据为 W），使用用户已指定的
+通过可信 Supabase Auth 管理入口准备 W（用户元数据可留空），使用用户已指定的
 初始密码并核验真实 Auth UID。密码策略拒绝时报告阻塞，不自动降低策略或换密码。
 不要将密码写进源码、种子、VITE_* 或公开文档。实际 Auth 用户存在后才写 UID allowlist，
 关闭公开注册及无关身份入口，核实 Site URL、Redirect URLs、RLS、GRANT、四个 RPC
@@ -130,7 +130,7 @@ database/migrations/20261011183805_account_identity_gate.sql
 
 ### 4.2 可信 Auth 管理
 
-1. 核实已有用户名为 `W` 的 Auth 身份；存在时保留其实际 UID，不重复创建；不存在时通过可信 Auth 管理入口创建，显示账号为 W。
+1. 核实认证适配层固定内部登录标识对应的 Auth 身份；存在时保留其实际 UID，不重复创建；不存在时通过可信 Auth 管理入口创建，应用显示账号为 W。用户元数据可留空，不需要在 Dashboard 填写 `username`。
 2. 在管理入口使用用户已指定的初始密码，并核对项目密码策略。拒绝时如实阻塞，不能自行放宽策略或修改约定密码。
 3. 核验真实 UID和身份确认状态，确保密码登录可用。用户密码不进入源码、迁移、种子、部署变量或公开报告。
 4. 关闭公开注册及不需要的匿名/其他身份入口。管理创建身份满足确认状态即可，不为旧 signUp流程盲目关闭 Confirm email。
@@ -140,7 +140,7 @@ database/migrations/20261011183805_account_identity_gate.sql
 
 必须先完成第 4.2 节的可信 Auth 准备并核实用户名 `W` 对应的真实 UID，再由可信 SQL 管理入口将该 UID 写入 `private.account_allowlist`。旧数据方案也必须已经明确。该表为单行结构，外键关联 `auth.users(id)`，不能由前端或备份修改。
 
-核对 allowlist恰好一行、UID属于用户名 `W`；不能猜测 W 的 UID、把旧本地 UID当成 Auth UID或自动选“第一个用户”。allowlist已有其他 UID时先处理已明确的数据与身份切换，不静默覆盖。
+核对 allowlist恰好一行、UID属于已经核验的目标 Auth 身份；不能按可修改的 `user_metadata.username` 判断权限、猜测 W 的 UID、把旧本地 UID当成 Auth UID或自动选“第一个用户”。allowlist已有其他 UID时先处理已明确的数据与身份切换，不静默覆盖。应用通过 `getUser()` 验证身份，要求 `account_access()` 返回 `allowed=true` 且 UID 相符。
 
 写入后再复核 Auth 的 Site URL、Redirect URLs、注册限制与密码策略，最后刷新 schema cache：
 
