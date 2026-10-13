@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { captureAuthContext, isAuthContextCurrent } from '../../services/api/authService'
 import type { SaveStatus } from '../types/save'
@@ -5,11 +6,21 @@ import { describeDataError } from '../errors'
 
 type SaveAction = (isCurrent: () => boolean) => Promise<void>
 
+=======
+import { useCallback, useRef, useState } from 'react'
+import type { SaveStatus } from '../types/save'
+import { describeDataError } from '../errors'
+
+>>>>>>> origin/main
 export type SaveRunner = {
   status: SaveStatus
   saveError: string | null
   canRetry: boolean
+<<<<<<< HEAD
   runSave: (action: SaveAction) => Promise<void>
+=======
+  runSave: (action: () => Promise<void>) => Promise<void>
+>>>>>>> origin/main
   retryLastSave: () => Promise<void>
   /** 切换日期时调用：丢弃上一次的待重试请求与错误提示，并把状态文案回到「尚未修改」。 */
   resetForDateChange: () => void
@@ -22,6 +33,7 @@ export type SaveRunner = {
 export function useSaveRunner(): SaveRunner {
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
+<<<<<<< HEAD
   const retryRef = useRef<SaveAction | null>(null)
   const runIdRef = useRef(0)
   const mounted = useRef(false)
@@ -42,16 +54,28 @@ export function useSaveRunner(): SaveRunner {
     const runId = runIdRef.current + 1
     const isCurrent = () => mounted.current && runId === runIdRef.current && isAuthContextCurrent(context)
     runIdRef.current = runId
+=======
+  const retryRef = useRef<(() => Promise<void>) | null>(null)
+
+  const runSave = useCallback(async (action: () => Promise<void>) => {
+>>>>>>> origin/main
     retryRef.current = action
     setStatus('saving')
     setSaveError(null)
     try {
+<<<<<<< HEAD
       await action(isCurrent)
       if (!isCurrent()) return
       setStatus('saved')
       retryRef.current = null
     } catch (reason) {
       if (!isCurrent()) return
+=======
+      await action()
+      setStatus('saved')
+      retryRef.current = null
+    } catch (reason) {
+>>>>>>> origin/main
       setStatus('error')
       setSaveError(describeDataError(reason))
     }
@@ -64,7 +88,10 @@ export function useSaveRunner(): SaveRunner {
   // 同时把状态文案归零：否则在 A 日期保存完再切到空白的 B 日期，顶部会显示「已保存」，
   // 让人以为 B 日期也有内容。这里只改文案，不产生任何写入。
   const resetForDateChange = useCallback(() => {
+<<<<<<< HEAD
     runIdRef.current += 1
+=======
+>>>>>>> origin/main
     retryRef.current = null
     setSaveError(null)
     setStatus('idle')

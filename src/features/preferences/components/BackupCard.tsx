@@ -1,5 +1,9 @@
+<<<<<<< HEAD
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { captureAuthContext, isAuthContextCurrent, type AuthContext } from '../../../services/api/authService'
+=======
+import { useRef, useState, type ChangeEvent } from 'react'
+>>>>>>> origin/main
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { describeDataError } from '../../../shared/errors'
 import { backupFileName, describeBackupSummary, type BackupStore, type BackupSummary } from '../../../services/api/backupFormat'
@@ -22,6 +26,10 @@ import {
   BACKUP_PASTE_PLACEHOLDER,
   BACKUP_STORE_LABEL,
   BACKUP_TITLE,
+<<<<<<< HEAD
+=======
+  BACKUP_UNAVAILABLE_NOTE,
+>>>>>>> origin/main
 } from '../preferencesLabels'
 
 /** 仓库名 → 中文名，供摘要展示。 */
@@ -42,6 +50,7 @@ function labelOf(store: BackupStore): string {
  * 保存状态不在这里重复显示：备份导入与选项写入共用页面顶部那条
  * 「本地保存状态：」，避免同一页出现两行状态、说法还可能不一致。
  *
+<<<<<<< HEAD
  * S1 起这张卡片**恒为可用**，不再有「云端后端下换成一句说明」的分支：
  * 导出 / 导入操作的对象是浏览器 IndexedDB，而 IndexedDB 从 S1 起永远是业务的落点。
  * 那个分支是「后端二选一」的副产物，留着一个永远走不到的分支比没有更糟。
@@ -62,10 +71,45 @@ export function BackupCard({
 }
 
 /** 备份卡片的实际实现。 */
+=======
+ * 云端模式下整张卡片换成一句说明（`available` 为 false）：导出 / 导入操作的对象是
+ * 浏览器本地库，云端模式下它根本不存在，给一个必然报错的按钮比不给更糟。
+ */
+export function BackupCard({
+  available,
+  busy,
+  runSave,
+  onImported,
+}: {
+  /** 本地后端专属能力；云端构建下为 false。 */
+  available: boolean
+  busy: boolean
+  runSave: (action: () => Promise<void>) => Promise<void>
+  /** 导入成功后由页面重新读取清单，让界面立刻反映备份内容。 */
+  onImported: () => Promise<void>
+}) {
+  if (!available) {
+    return (
+      <section className="option-section backup-card">
+        <div className="timeline-head">
+          <h3>{BACKUP_TITLE}</h3>
+        </div>
+        <p className="muted account-body" data-backup-unavailable>
+          {BACKUP_UNAVAILABLE_NOTE}
+        </p>
+      </section>
+    )
+  }
+  return <LocalBackupCard busy={busy} runSave={runSave} onImported={onImported} />
+}
+
+/** 本地后端下的完整备份卡片。 */
+>>>>>>> origin/main
 function LocalBackupCard({
   busy,
   runSave,
   onImported,
+<<<<<<< HEAD
   onInputChange,
 }: {
   busy: boolean
@@ -73,6 +117,13 @@ function LocalBackupCard({
   /** 导入成功后由页面重新读取清单，让界面立刻反映备份内容。 */
   onImported: () => Promise<void>
   onInputChange: () => void
+=======
+}: {
+  busy: boolean
+  runSave: (action: () => Promise<void>) => Promise<void>
+  /** 导入成功后由页面重新读取清单，让界面立刻反映备份内容。 */
+  onImported: () => Promise<void>
+>>>>>>> origin/main
 }) {
   const [text, setText] = useState('')
   const [exportNote, setExportNote] = useState<string | null>(null)
@@ -81,6 +132,7 @@ function LocalBackupCard({
   const [pendingImport, setPendingImport] = useState<{ summary: BackupSummary; text: string } | null>(null)
   const [importedNote, setImportedNote] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+<<<<<<< HEAD
   const mounted = useRef(false)
   const revision = useRef(0)
 
@@ -126,6 +178,19 @@ function LocalBackupCard({
       setExportNote(result.summary.total ? describeBackupSummary(result.summary, labelOf) : BACKUP_EMPTY_NOTE)
     } catch (reason) {
       if (!current(context, request)) return
+=======
+
+  /** 生成备份：只读库并组装文本，不产生任何写入。 */
+  async function handleExport() {
+    setExportNote(null)
+    setExportError(null)
+    setImportedNote(null)
+    try {
+      const result = await exportBackup()
+      setText(result.text)
+      setExportNote(result.summary.total ? describeBackupSummary(result.summary, labelOf) : BACKUP_EMPTY_NOTE)
+    } catch (reason) {
+>>>>>>> origin/main
       setExportError(describeDataError(reason))
     }
   }
@@ -142,6 +207,7 @@ function LocalBackupCard({
 
   async function handleCopy() {
     if (!text) return
+<<<<<<< HEAD
     const task = startRequest()
     if (!task) return
     const { context, request } = task
@@ -151,6 +217,12 @@ function LocalBackupCard({
       setExportNote(BACKUP_COPIED_NOTE)
     } catch {
       if (!current(context, request)) return
+=======
+    try {
+      await navigator.clipboard.writeText(text)
+      setExportNote(BACKUP_COPIED_NOTE)
+    } catch {
+>>>>>>> origin/main
       setExportNote(BACKUP_COPY_FAILED_NOTE)
     }
   }
@@ -160,6 +232,7 @@ function LocalBackupCard({
     // 先清掉 input 的值，否则连续选同一个文件不会再触发 change 事件。
     if (fileRef.current) fileRef.current.value = ''
     if (!file) return
+<<<<<<< HEAD
     const task = startRequest()
     if (!task) return
     const { context, request } = task
@@ -172,13 +245,23 @@ function LocalBackupCard({
       setText(nextText)
     } catch {
       if (!current(context, request)) return
+=======
+    setImportError(null)
+    setImportedNote(null)
+    try {
+      setText(await file.text())
+    } catch {
+>>>>>>> origin/main
       setImportError('这个文件读不出来，请确认它是一份导出的 JSON 备份。')
     }
   }
 
   /** 校验后再弹确认框；文件不过关时不会有任何写入。 */
   function handleInspect() {
+<<<<<<< HEAD
     invalidateInput()
+=======
+>>>>>>> origin/main
     setImportError(null)
     setImportedNote(null)
     if (!text.trim()) {
@@ -198,6 +281,7 @@ function LocalBackupCard({
     const target = pendingImport
     setPendingImport(null)
     if (!target) return
+<<<<<<< HEAD
     const task = startRequest()
     if (!task) return
     const { context, request } = task
@@ -209,6 +293,15 @@ function LocalBackupCard({
       if (!current(context, request) || !isCurrent()) return
       setImportedNote(`已替换为备份内容：${describeBackupSummary(summary, labelOf)}`)
     })
+=======
+    let summary: BackupSummary | null = null
+    await runSave(async () => {
+      summary = await importBackup(target.text)
+      await onImported()
+    })
+    // 失败时 runSave 已把原因写进页面顶部的错误提示，这里只在成功时补一句结果。
+    if (summary) setImportedNote(`已替换为备份内容：${describeBackupSummary(summary, labelOf)}`)
+>>>>>>> origin/main
   }
 
   return (
@@ -238,6 +331,7 @@ function LocalBackupCard({
           value={text}
           placeholder={BACKUP_PASTE_PLACEHOLDER}
           spellCheck={false}
+<<<<<<< HEAD
           onChange={(event) => {
             invalidateInput()
             setText(event.target.value)
@@ -245,6 +339,9 @@ function LocalBackupCard({
             setExportNote(null)
             setImportedNote(null)
           }}
+=======
+          onChange={(event) => setText(event.target.value)}
+>>>>>>> origin/main
         />
       </label>
 
@@ -272,9 +369,13 @@ function LocalBackupCard({
           type="button"
           disabled={!text}
           onClick={() => {
+<<<<<<< HEAD
             invalidateInput()
             setText('')
             setPendingImport(null)
+=======
+            setText('')
+>>>>>>> origin/main
             setExportNote(null)
             setExportError(null)
             setImportError(null)
@@ -309,7 +410,11 @@ function LocalBackupCard({
         >
           <p className="muted">
             {describeBackupSummary(pendingImport.summary, labelOf)}
+<<<<<<< HEAD
             {pendingImport.summary.sourceUsername ? ` · 来源账号 ${pendingImport.summary.sourceUsername}` : ''}
+=======
+            {pendingImport.summary.sourceEmail ? ` · 来源账号 ${pendingImport.summary.sourceEmail}` : ''}
+>>>>>>> origin/main
           </p>
           {pendingImport.summary.warnings.map((warning) => (
             <p className="muted" key={warning}>
@@ -320,4 +425,8 @@ function LocalBackupCard({
       ) : null}
     </section>
   )
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/main

@@ -1,9 +1,21 @@
+<<<<<<< HEAD
 export type DayDestination = 'execute' | 'prepare'
 
+=======
+import type { View } from '../types/view'
+
+/**
+ * 底部固定导航：今日 / 本周 / 选项（docs/02 应用导航）。
+ *
+ * 三个主入口统一固定到屏幕底部，方便手机单手切换；桌面宽屏同样适用（内容区居中，
+ * 导航栏随视口宽度居中）。当前页高亮，其余页可点跳转。
+ */
+>>>>>>> origin/main
 export function BottomNav({
   current,
   onNavigate,
 }: {
+<<<<<<< HEAD
   current: DayDestination | null
   onNavigate: (destination: DayDestination) => void
 }) {
@@ -14,6 +26,19 @@ export function BottomNav({
 
   return (
     <nav className="bottom-nav" aria-label="日程导航">
+=======
+  current: View
+  onNavigate: (view: View) => void
+}) {
+  const items: { key: View; label: string }[] = [
+    { key: 'day', label: '今日' },
+    { key: 'week', label: '本周' },
+    { key: 'options', label: '选项' },
+  ]
+
+  return (
+    <nav className="bottom-nav" aria-label="主导航">
+>>>>>>> origin/main
       {items.map((item) => (
         <button
           key={item.key}

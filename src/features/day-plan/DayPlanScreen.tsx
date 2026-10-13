@@ -1,7 +1,15 @@
+<<<<<<< HEAD
 import { useEffect, useRef, useState } from 'react'
 import type { CustomTask, DayMode, DayPlan } from '../../shared/types/dayPlan'
 import { addDays, classifyDate, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
+=======
+import { useEffect, useState } from 'react'
+import type { CustomTask, DayMode, DayPlan } from '../../shared/types/dayPlan'
+import { addDays, classifyDate, defaultModeForDate, getBusinessDateKey } from '../../shared/date/dateUtils'
+import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
+import { signOut } from '../../services/api/authService'
+>>>>>>> origin/main
 import {
   copyYesterday,
   deleteCustomTask,
@@ -21,6 +29,7 @@ import {
   setSupplementCompleted,
   upsertDayPlan,
 } from '../../services/api/dayPlanService'
+<<<<<<< HEAD
 import { PreferencesScreen } from '../preferences/PreferencesScreen'
 import { BubbleHeader } from './components/BubbleHeader'
 import { EditorSheet, type EditorKind, type PanelPayload } from './components/EditorSheet'
@@ -40,6 +49,25 @@ import { FloatingPet } from '../../shared/components/FloatingPet'
 import type { PetPosition } from '../../shared/components/PetMessageBubble'
 import { publishFeedback, resetFeedbackActions } from '../../shared/feedback/feedbackBus'
 import { FeedbackHost } from '../../shared/feedback/FeedbackHost'
+=======
+import { WeekView } from '../week/WeekView'
+import { PreferencesScreen } from '../preferences/PreferencesScreen'
+import { CustomTaskList } from './components/CustomTaskList'
+import { DateHeading } from './components/DateHeading'
+import { DayNavTabs } from './components/DayNavTabs'
+import { EditorSheet, type EditorKind, type PanelPayload } from './components/EditorSheet'
+import { EmptyDayHint } from './components/EmptyDayHint'
+import { ExecuteList, type ExecutionToggle } from './components/ExecuteList'
+import { ModeCard } from './components/ModeCard'
+import { PrepList, type PrepKey } from './components/PrepList'
+import { RoutineList } from './components/RoutineList'
+import { SaveStatusBar } from './components/SaveStatusBar'
+import { HISTORY_READONLY_TEXT, LOADING_TEXT, MODE_SWITCH_MESSAGE, REST_NO_ROUTINE_NOTE } from './dayPlanLabels'
+import { useSaveRunner } from '../../shared/hooks/useSaveRunner'
+import { useDayPlanData } from './useDayPlanData'
+import { BottomNav } from '../../shared/components/BottomNav'
+import type { View } from '../../shared/types/view'
+>>>>>>> origin/main
 
 type Tab = 'execute' | 'prepare'
 
@@ -49,7 +77,11 @@ type Tab = 'execute' | 'prepare'
  */
 export function DayPlanScreen() {
   const today = getBusinessDateKey()
+<<<<<<< HEAD
   const [optionsOpen, setOptionsOpen] = useState(false)
+=======
+  const [view, setView] = useState<View>('day')
+>>>>>>> origin/main
   const [selectedDate, setSelectedDate] = useState(today)
   const [tab, setTab] = useState<Tab>('execute')
   const [panel, setPanel] = useState<EditorKind | null>(null)
@@ -57,6 +89,7 @@ export function DayPlanScreen() {
   const [confirmDelete, setConfirmDelete] = useState<CustomTask | null>(null)
   const [confirmCopy, setConfirmCopy] = useState(false)
   const [pendingMode, setPendingMode] = useState<DayMode | null>(null)
+<<<<<<< HEAD
   const [feedbackIndex, setFeedbackIndex] = useState(0)
   const [celebrationOpen, setCelebrationOpen] = useState(false)
   const [petPosition, setPetPosition] = useState<PetPosition | null>(null)
@@ -108,10 +141,22 @@ export function DayPlanScreen() {
   }, [selectedDate, resetForDateChange])
 
 
+=======
+
+  const data = useDayPlanData(selectedDate)
+  const { status, saveError, canRetry, runSave, retryLastSave, resetForDateChange } = useSaveRunner()
+
+  // 切换日期时丢弃上一次的待重试写入请求与错误提示，避免跨日期误重试。
+  useEffect(() => {
+    resetForDateChange()
+  }, [selectedDate, resetForDateChange])
+
+>>>>>>> origin/main
   const relation = classifyDate(selectedDate, today)
   const writable = relation !== 'history'
   const isPrepare = tab === 'prepare'
   const mode = data.plan?.mode ?? defaultModeForDate(selectedDate)
+<<<<<<< HEAD
   const route = buildTodayRoute({
     relation, prepare: isPrepare, mode, plan: data.plan,
     meals: data.meals, mealItems: data.mealItems,
@@ -143,6 +188,8 @@ export function DayPlanScreen() {
     setSelectedDate((current) => addDays(current, offset))
   }
 
+=======
+>>>>>>> origin/main
 
   // 未来空日期的引导块：明天起的未规划日期显示一次说明，用户任意一次真实写入（勾选或保存面板）
   // 都会创建当天计划，引导随之消失；它自己不落库，也不阻止用户空着不填（docs/02）。
@@ -156,6 +203,7 @@ export function DayPlanScreen() {
         data.plan.morning_ready,
         data.plan.exercise_ready,
       ].filter(Boolean).length
+<<<<<<< HEAD
       : 0
 
   function showCompletionFeedback() {
@@ -181,16 +229,25 @@ export function DayPlanScreen() {
 
   async function ensurePlan(isCurrent: () => boolean): Promise<DayPlan | null> {
     if (!isCurrent()) return null
+=======
+    : 0
+
+  async function ensurePlan(): Promise<DayPlan> {
+>>>>>>> origin/main
     if (data.plan) return data.plan
     const created = await upsertDayPlan(selectedDate, {
       mode: defaultModeForDate(selectedDate),
       mode_override: false,
     })
+<<<<<<< HEAD
     if (!isCurrent()) return null
+=======
+>>>>>>> origin/main
     data.setPlan(created)
     return created
   }
 
+<<<<<<< HEAD
   async function savePlan(patch: Partial<DayPlan>, completed = false) {
     await runSave(async (isCurrent) => {
       const saved = await upsertDayPlan(selectedDate, patch)
@@ -228,6 +285,11 @@ export function DayPlanScreen() {
         relation: classifyDate(targetDate, today),
         localSaved: true,
       })
+=======
+  async function savePlan(patch: Partial<DayPlan>) {
+    await runSave(async () => {
+      data.setPlan(await upsertDayPlan(selectedDate, patch))
+>>>>>>> origin/main
     })
   }
 
@@ -238,6 +300,7 @@ export function DayPlanScreen() {
    */
   async function openPanel(kind: EditorKind) {
     setEditingTask(null)
+<<<<<<< HEAD
     setPanel(kind)
     if (kind === 'supplements' && writable) {
       await runSave(async (isCurrent) => {
@@ -255,10 +318,28 @@ export function DayPlanScreen() {
       if (payload.kind === 'meals') {
         const saved = await saveMeals(selectedDate, payload.meals)
         if (!isCurrent()) return
+=======
+    if (kind === 'supplements' && writable) {
+      await runSave(async () => {
+        await ensurePlan()
+        data.setSupplements(await ensureDaySupplements(selectedDate))
+      })
+    }
+    setPanel(kind)
+  }
+
+  async function savePanel(payload: PanelPayload) {
+    await runSave(async () => {
+      await ensurePlan()
+
+      if (payload.kind === 'meals') {
+        const saved = await saveMeals(selectedDate, payload.meals)
+>>>>>>> origin/main
         data.setMeals(saved.meals)
         data.setMealItems(saved.items)
       }
       if (payload.kind === 'supplements') {
+<<<<<<< HEAD
         const saved = await saveDaySupplements(selectedDate, payload.rows)
         if (!isCurrent()) return
         data.setSupplements(saved)
@@ -271,6 +352,15 @@ export function DayPlanScreen() {
       if (payload.kind === 'exercise') {
         const saved = await saveExercise(selectedDate, payload.exercise)
         if (!isCurrent()) return
+=======
+        data.setSupplements(await saveDaySupplements(selectedDate, payload.rows))
+      }
+      if (payload.kind === 'morning') {
+        data.setPlan(await upsertDayPlan(selectedDate, { morning_focus: payload.morning_focus }))
+      }
+      if (payload.kind === 'exercise') {
+        const saved = await saveExercise(selectedDate, payload.exercise)
+>>>>>>> origin/main
         data.setPlan(saved.plan)
         data.setExerciseItems(saved.items)
       }
@@ -282,7 +372,10 @@ export function DayPlanScreen() {
           note: payload.task.note,
           completed: editingTask?.completed ?? false,
         })
+<<<<<<< HEAD
         if (!isCurrent()) return
+=======
+>>>>>>> origin/main
         data.setTasks((current) =>
           [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) =>
             a.task_time.localeCompare(b.task_time),
@@ -296,14 +389,19 @@ export function DayPlanScreen() {
 
   async function togglePrep(key: PrepKey) {
     if (!writable) return
+<<<<<<< HEAD
     const nextCompleted = !data.plan?.[key]
     await savePlan({ [key]: nextCompleted } as Partial<DayPlan>, nextCompleted)
+=======
+    await savePlan({ [key]: !data.plan?.[key] } as Partial<DayPlan>)
+>>>>>>> origin/main
   }
 
   async function toggleExecution(toggle: ExecutionToggle) {
     if (!writable) return
 
     if (toggle.kind === 'morning') {
+<<<<<<< HEAD
       const nextCompleted = !data.plan?.morning_completed
       await savePlan({ morning_completed: nextCompleted }, nextCompleted)
       return
@@ -311,29 +409,46 @@ export function DayPlanScreen() {
     if (toggle.kind === 'exercise') {
       const nextCompleted = !data.plan?.exercise_completed
       await savePlan({ exercise_completed: nextCompleted }, nextCompleted)
+=======
+      await savePlan({ morning_completed: !data.plan?.morning_completed })
+      return
+    }
+    if (toggle.kind === 'exercise') {
+      await savePlan({ exercise_completed: !data.plan?.exercise_completed })
+>>>>>>> origin/main
       return
     }
 
     if (toggle.kind === 'meal') {
       const meal = data.meals.find((item) => item.meal_type === toggle.mealType)
+<<<<<<< HEAD
       const nextCompleted = !(meal?.completed ?? false)
       await runSave(async (isCurrent) => {
         const saved = await setMealCompleted(selectedDate, toggle.mealType, nextCompleted)
         if (!isCurrent()) return
         data.setMeals(saved)
         if (nextCompleted) showCompletionFeedback()
+=======
+      await runSave(async () => {
+        data.setMeals(await setMealCompleted(selectedDate, toggle.mealType, !(meal?.completed ?? false)))
+>>>>>>> origin/main
       })
       return
     }
 
     const row = data.supplements.find((item) => item.id === toggle.id)
     if (!row) return
+<<<<<<< HEAD
     const nextCompleted = !row.completed
     await runSave(async (isCurrent) => {
       const saved = await setSupplementCompleted(selectedDate, row.id, nextCompleted)
       if (!isCurrent()) return
       data.setSupplements(saved)
       if (nextCompleted) showCompletionFeedback()
+=======
+    await runSave(async () => {
+      data.setSupplements(await setSupplementCompleted(selectedDate, row.id, !row.completed))
+>>>>>>> origin/main
     })
   }
 
@@ -341,12 +456,18 @@ export function DayPlanScreen() {
     if (!writable) return
     const task = data.tasks.find((item) => item.id === id)
     if (!task) return
+<<<<<<< HEAD
     const nextCompleted = !task.completed
     await runSave(async (isCurrent) => {
       const saved = await saveCustomTask(selectedDate, { ...task, completed: nextCompleted })
       if (!isCurrent()) return
       data.setTasks((current) => current.map((item) => (item.id === id ? saved : item)))
       if (nextCompleted) showCompletionFeedback()
+=======
+    await runSave(async () => {
+      const saved = await saveCustomTask(selectedDate, { ...task, completed: !task.completed })
+      data.setTasks((current) => current.map((item) => (item.id === id ? saved : item)))
+>>>>>>> origin/main
     })
   }
 
@@ -354,20 +475,30 @@ export function DayPlanScreen() {
     if (!writable) return
     const routine = data.routines.find((item) => item.id === id)
     if (!routine) return
+<<<<<<< HEAD
     const nextCompleted = !routine.completed
     await runSave(async (isCurrent) => {
       const saved = await setRoutineCompleted(selectedDate, id, nextCompleted)
       if (!isCurrent()) return
       data.setRoutines(saved)
       if (nextCompleted) showCompletionFeedback()
+=======
+    await runSave(async () => {
+      data.setRoutines(await setRoutineCompleted(selectedDate, id, !routine.completed))
+>>>>>>> origin/main
     })
   }
 
   async function doCopy() {
     setConfirmCopy(false)
+<<<<<<< HEAD
     await runSave(async (isCurrent) => {
       const copied = await copyYesterday(selectedDate)
       if (!isCurrent()) return
+=======
+    await runSave(async () => {
+      const copied = await copyYesterday(selectedDate)
+>>>>>>> origin/main
       const [nextMeals, nextMealItems, nextSupplements, nextExerciseItems, nextTasks] = await Promise.all([
         listMeals(copied.id),
         listMealItems(copied.id),
@@ -375,7 +506,10 @@ export function DayPlanScreen() {
         listExerciseItems(copied.id),
         listCustomTasks(copied.id),
       ])
+<<<<<<< HEAD
       if (!isCurrent()) return
+=======
+>>>>>>> origin/main
       data.setPlan(copied)
       data.setMeals(nextMeals)
       data.setMealItems(nextMealItems)
@@ -386,29 +520,60 @@ export function DayPlanScreen() {
   }
 
   async function restoreDefault() {
+<<<<<<< HEAD
     await runSave(async (isCurrent) => {
       const saved = await restoreDefaultDayPlan(selectedDate, defaultModeForDate(selectedDate))
       if (isCurrent()) data.setPlan(saved)
+=======
+    await runSave(async () => {
+      data.setPlan(await restoreDefaultDayPlan(selectedDate, defaultModeForDate(selectedDate)))
+>>>>>>> origin/main
     })
   }
 
   async function confirmDeleteTask(task: CustomTask) {
     setConfirmDelete(null)
+<<<<<<< HEAD
     await runSave(async (isCurrent) => {
       await deleteCustomTask(selectedDate, task.id)
       if (!isCurrent()) return
+=======
+    await runSave(async () => {
+      await deleteCustomTask(selectedDate, task.id)
+>>>>>>> origin/main
       data.setTasks((current) => current.filter((item) => item.id !== task.id))
     })
   }
 
+<<<<<<< HEAD
   if (optionsOpen) {
     return (
       <PreferencesScreen
         onBack={() => setOptionsOpen(false)}
+=======
+  if (view === 'week') {
+    return (
+      <WeekView
+        selectedDate={selectedDate}
+        onSelectDate={(date) => {
+          setSelectedDate(date)
+          setView('day')
+        }}
+        onNavigate={(next) => {
+          if (next === 'day') {
+            setTab('execute')
+            setSelectedDate(today)
+            setView('day')
+          } else {
+            setView(next)
+          }
+        }}
+>>>>>>> origin/main
       />
     )
   }
 
+<<<<<<< HEAD
 
 
   return (
@@ -441,6 +606,55 @@ export function DayPlanScreen() {
           onSwitchMode={() => setPendingMode(mode === 'work' ? 'rest' : 'work')}
           onRestoreDefault={() => void restoreDefault()}
           onAddTask={() => void openPanel('task')}
+=======
+  if (view === 'options') {
+    return (
+      <PreferencesScreen
+        onNavigate={(next) => {
+          if (next === 'day') {
+            setTab('execute')
+            setSelectedDate(today)
+            setView('day')
+          } else {
+            setView(next)
+          }
+        }}
+      />
+    )
+  }
+
+  return (
+    <main className="page">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">幸福小Molly</p>
+          <h1>{isPrepare ? '准备明天' : '执行今天'}</h1>
+        </div>
+        <button className="secondary" type="button" onClick={() => void signOut()}>
+          退出登录
+        </button>
+      </header>
+
+      <DayNavTabs
+        isPrepare={isPrepare}
+        onExecuteToday={() => {
+          setTab('execute')
+          setSelectedDate(today)
+        }}
+        onPrepareTomorrow={() => {
+          setTab('prepare')
+          setSelectedDate(addDays(today, 1))
+        }}
+      />
+
+      {/* page-scroll：固定外壳里唯一可滚动的区域（页面本身不滚动，见 styles.css 布局段）。 */}
+      <section className="panel stack page-scroll">
+        <DateHeading
+          relation={relation}
+          selectedDate={selectedDate}
+          onPrev={() => setSelectedDate(addDays(selectedDate, -1))}
+          onNext={() => setSelectedDate(addDays(selectedDate, 1))}
+>>>>>>> origin/main
         />
 
         <SaveStatusBar
@@ -461,6 +675,7 @@ export function DayPlanScreen() {
           <>
             {showEmptyDayHint ? <EmptyDayHint /> : null}
 
+<<<<<<< HEAD
 
 
             {mode === 'rest' && data.plan?.mode_override ? (
@@ -495,6 +710,91 @@ export function DayPlanScreen() {
       </section>
 
 
+=======
+            <ModeCard
+              mode={mode}
+              modeOverride={Boolean(data.plan?.mode_override)}
+              writable={writable}
+              onRequestSwitch={() => setPendingMode(mode === 'work' ? 'rest' : 'work')}
+              onRestoreDefault={() => void restoreDefault()}
+            />
+
+            {mode === 'work' && isPrepare ? (
+              <PrepList
+                plan={data.plan}
+                meals={data.meals}
+                mealItems={data.mealItems}
+                supplements={data.supplements}
+                progress={progress}
+                writable={writable}
+                onToggle={(key) => void togglePrep(key)}
+                onOpenEditor={(editor) => void openPanel(editor)}
+              />
+            ) : null}
+
+            {/* 休息日：家务（仅正常休息日）+ 补剂 / 健身 / 自定义事项，隐藏工作日准备项（衣服 / 三餐 / 晨间） */}
+            {mode === 'rest' ? (
+              <>
+                {data.plan?.mode_override ? (
+                  <p className="muted rest-note">{REST_NO_ROUTINE_NOTE}</p>
+                ) : (
+                  <RoutineList
+                    routines={data.routines}
+                    writable={writable}
+                    onToggle={(id) => void toggleRoutine(id)}
+                  />
+                )}
+              </>
+            ) : null}
+
+            {mode === 'work' && !isPrepare ? (
+              <ExecuteList
+                plan={data.plan}
+                meals={data.meals}
+                mealItems={data.mealItems}
+                supplements={data.supplements}
+                exerciseItems={data.exerciseItems}
+                writable={writable}
+                mode={mode}
+                onToggle={(toggle) => void toggleExecution(toggle)}
+              />
+            ) : null}
+
+            {mode === 'rest' ? (
+              <ExecuteList
+                plan={data.plan}
+                meals={data.meals}
+                mealItems={data.mealItems}
+                supplements={data.supplements}
+                exerciseItems={data.exerciseItems}
+                writable={writable}
+                mode={mode}
+                onToggle={(toggle) => void toggleExecution(toggle)}
+              />
+            ) : null}
+
+            <CustomTaskList
+              tasks={data.tasks}
+              writable={writable}
+              onAdd={() => void openPanel('task')}
+              onEdit={(task) => {
+                setEditingTask(task)
+                setPanel('task')
+              }}
+              onRequestDelete={(task) => setConfirmDelete(task)}
+              onToggle={(id) => void toggleTask(id)}
+            />
+
+            {writable ? (
+              <button className="secondary" type="button" onClick={() => setConfirmCopy(true)}>
+                复制昨天
+              </button>
+            ) : null}
+          </>
+        )}
+      </section>
+
+>>>>>>> origin/main
       {pendingMode ? (
         <ConfirmDialog
           title="确认切换日期模式"
@@ -503,7 +803,11 @@ export function DayPlanScreen() {
           onConfirm={() => {
             const next = pendingMode
             setPendingMode(null)
+<<<<<<< HEAD
             void saveModeSwitch(next)
+=======
+            void savePlan({ mode: next, mode_override: true })
+>>>>>>> origin/main
           }}
           onCancel={() => setPendingMode(null)}
         >
@@ -511,6 +815,7 @@ export function DayPlanScreen() {
         </ConfirmDialog>
       ) : null}
 
+<<<<<<< HEAD
       <FeedbackHost
         selectedDate={selectedDate}
         optionsOpen={optionsOpen}
@@ -519,6 +824,8 @@ export function DayPlanScreen() {
         petViewport={petViewport}
       />
 
+=======
+>>>>>>> origin/main
       {confirmDelete ? (
         <ConfirmDialog
           title="删除事项？"
@@ -550,18 +857,33 @@ export function DayPlanScreen() {
           plan={data.plan}
           task={editingTask}
           writable={writable}
+<<<<<<< HEAD
           saveError={saveError}
+=======
+>>>>>>> origin/main
           onCancel={() => setPanel(null)}
           onSave={(payload) => void savePanel(payload)}
         />
       ) : null}
 
       <BottomNav
+<<<<<<< HEAD
         current={isPrepare ? 'prepare' : 'execute'}
         onNavigate={(destination) => {
           invalidatePageContext()
           setTab(destination)
           setSelectedDate(destination === 'execute' ? today : addDays(today, 1))
+=======
+        current="day"
+        onNavigate={(next) => {
+          if (next === 'day') {
+            setTab('execute')
+            setSelectedDate(today)
+            setView('day')
+          } else {
+            setView(next)
+          }
+>>>>>>> origin/main
         }}
       />
     </main>

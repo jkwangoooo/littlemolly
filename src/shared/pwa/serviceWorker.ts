@@ -18,8 +18,11 @@
  * 这里只把「新版本已就绪」记下来，由界面提示，用户点刷新才让新版本接管。
  */
 
+<<<<<<< HEAD
 import { cloudSyncConfigured } from '../../services/capabilities'
 
+=======
+>>>>>>> origin/main
 type Listener = () => void
 
 const listeners = new Set<Listener>()
@@ -69,7 +72,11 @@ function watchForUpdate(registration: ServiceWorkerRegistration): void {
 async function register(): Promise<void> {
   // 构建戳拼在地址里：每次构建都是一个新的脚本地址，浏览器因此会走一次新的安装，
   // activate 里按前缀清掉上一版缓存。见 vite.config.ts 的 BUILD_STAMP。
+<<<<<<< HEAD
   const url = `${import.meta.env.BASE_URL}sw.js?build=${__BUILD_STAMP__}&auth=${cloudSyncConfigured ? '1' : '0'}`
+=======
+  const url = `${import.meta.env.BASE_URL}sw.js?build=${__BUILD_STAMP__}`
+>>>>>>> origin/main
   const registration = await navigator.serviceWorker.register(url, { scope: import.meta.env.BASE_URL })
   watchForUpdate(registration)
 }

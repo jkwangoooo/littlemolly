@@ -5,14 +5,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+<<<<<<< HEAD
     "build": "tsc -b && vite build",
     "build:no-empty": "tsc -b && vite build --emptyOutDir=false",
+=======
+    "dev:cloud": "vite --mode cloud",
+    "build": "tsc -b && vite build",
+    "build:cloud": "tsc -b && vite build --mode cloud",
+>>>>>>> origin/main
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "check:dates": "node scripts/check-date-rules.mjs",
     "check:local-data": "node scripts/check-local-data.mjs",
     "check:backup": "node scripts/check-backup.mjs",
     "check:cloud-parity": "node scripts/check-cloud-parity.mjs",
+<<<<<<< HEAD
     "check:sync": "node scripts/check-sync.mjs",
     "check:feedback": "node scripts/feedback-policy.mjs",
     "verify:local": "node scripts/verify-local.mjs",
@@ -28,6 +35,10 @@
     "db:local:status": "node scripts/local-db.mjs status",
     "db:local:reset": "node scripts/local-db.mjs reset",
     "db:local:psql": "node scripts/local-db.mjs psql",
+=======
+    "verify:local": "node scripts/verify-local.mjs",
+    "verify:pwa": "node scripts/verify-pwa.mjs",
+>>>>>>> origin/main
     "icons": "node scripts/generate-icons.mjs",
     "preview": "vite preview"
   },
