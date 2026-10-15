@@ -1,7 +1,4 @@
-<<<<<<< HEAD
 import { useRef } from 'react'
-=======
->>>>>>> origin/main
 import type { DateRelation } from '../../../shared/date/dateUtils'
 import { dayOfWeekMondayFirst, formatDateLabel, WEEKDAY_LABELS } from '../../../shared/date/dateUtils'
 
@@ -25,7 +22,6 @@ export function DateHeading({
   onNext: () => void
 }) {
   const weekday = WEEKDAY_LABELS[dayOfWeekMondayFirst(selectedDate)]
-<<<<<<< HEAD
   const pointerStart = useRef<{ id: number; x: number; y: number } | null>(null)
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -53,11 +49,6 @@ export function DateHeading({
       onPointerUp={handlePointerUp}
       onPointerCancel={() => { pointerStart.current = null }}
     >
-=======
-
-  return (
-    <div className="date-heading">
->>>>>>> origin/main
       <button className="icon-button" type="button" aria-label="前一天" onClick={onPrev}>
         ‹
       </button>

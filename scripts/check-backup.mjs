@@ -31,13 +31,10 @@ const {
   summarizeRecords,
 } = await import('../src/services/local/backupFormat.ts')
 const { sanitizeRecord, validateRecord } = await import('../src/services/local/recordSchemas.ts')
-<<<<<<< HEAD
 const { DB_VERSION } = await import('../src/services/local/localDb.ts')
 const {
   assertNoIdCollisions, copyWorkspaceRecords, OWNER_STORES, selectWorkspaceRecords,
 } = await import('../src/services/local/workspaceRecords.ts')
-=======
->>>>>>> origin/main
 
 const failures = []
 let passed = 0
@@ -69,7 +66,6 @@ function expectReject(name, run, needle) {
   )
 }
 
-<<<<<<< HEAD
 function workspaceError(run) {
   try {
     run()
@@ -86,10 +82,6 @@ function expectWorkspaceReject(name, run, needle) {
 
 const TS = '2026-09-15T02:30:00.000Z'
 const USER = { id: 'u1', username: 'W', created_at: TS }
-=======
-const TS = '2026-09-15T02:30:00.000Z'
-const USER = { id: 'u1', email: 'someone@example.com', password_hash: '', created_at: TS }
->>>>>>> origin/main
 const PLAN = {
   id: 'p1',
   user_id: 'u1',
@@ -122,21 +114,14 @@ const baseRecords = () => ({
   daily_meal_items: [{ ...ITEM }],
 })
 
-<<<<<<< HEAD
 const fileOf = (records) => buildBackup({ dbVersion: DB_VERSION, exportedAt: TS, sourceUsername: USER.username, records })
-=======
-const fileOf = (records) => buildBackup({ dbVersion: 4, exportedAt: TS, sourceEmail: USER.email, records })
->>>>>>> origin/main
 const textOf = (records) => serializeBackup(fileOf(records))
 /** 手改 JSON 文本：模拟用户或别的工具动过备份文件。 */
 const tamper = (records, edit) => JSON.stringify(edit(JSON.parse(textOf(records))))
 
 // ---- 仓库清单与契约必须同源 ----
 check('文件标记与格式名固定', [BACKUP_APP, BACKUP_FORMAT], ['happy-little-molly', 'local-backup'])
-<<<<<<< HEAD
 check('当前备份格式为不含密码的 v3', BACKUP_FORMAT_VERSION, 3)
-=======
->>>>>>> origin/main
 check('备份仓库数等于 11 张业务表', BACKUP_STORE_COUNT, 11)
 check('元数据仓库只有 users', BACKUP_META_STORES, ['users'])
 check(
@@ -146,30 +131,18 @@ check(
 )
 
 // ---- 合法备份必须通过 ----
-<<<<<<< HEAD
 const good = parseBackup(textOf(baseRecords()), DB_VERSION)
-=======
-const good = parseBackup(textOf(baseRecords()), 4)
->>>>>>> origin/main
 check('合法备份解析通过', good.summary.formatVersion, BACKUP_FORMAT_VERSION)
 check('合法备份记录数齐全', Object.keys(good.records).length, 5)
 check('用户表不计入数据条数', good.summary.counts.users ?? null, null)
 check('数据条数为四张业务表合计（不含 users）', good.summary.total, 4)
-<<<<<<< HEAD
 check('来源账号被读出', good.summary.sourceUsername, USER.username)
-=======
-check('来源邮箱被读出', good.summary.sourceEmail, USER.email)
->>>>>>> origin/main
 check('结构版本一致时没有提醒', good.summary.warnings, [])
 check('序列化后是缩进 2 空格的文本', serializeBackup(fileOf(baseRecords())).split('\n')[1], '  "app": "happy-little-molly",')
 check('序列化结果以换行结尾', serializeBackup(fileOf(baseRecords())).endsWith('\n'), true)
 
 // 序列化 → 解析 往返必须稳定：备份文件是「存下来以后再读回去」的东西。
-<<<<<<< HEAD
 const roundTrip = parseBackup(textOf(baseRecords()), DB_VERSION)
-=======
-const roundTrip = parseBackup(textOf(baseRecords()), 4)
->>>>>>> origin/main
 check('往返后引用关系保持不变', roundTrip.records.daily_meal_items[0].daily_meal_id, 'm1')
 
 // ---- 文件级标记与版本 ----
@@ -188,7 +161,6 @@ expectReject('缺导出时间被拒', () => parseBackup(tamper(baseRecords(), (f
 expectReject('缺 records 被拒', () => parseBackup(tamper(baseRecords(), (f) => ({ ...f, records: undefined }))), '缺少 records')
 
 // 结构版本不一致不拒绝，只给提醒：记录本身已逐条按当前契约校验过。
-<<<<<<< HEAD
 const older = parseBackup(tamper(baseRecords(), (f) => ({ ...f, db_version: 3 })), DB_VERSION)
 check('结构版本不一致只提醒不拒绝', older.summary.warnings.length, 1)
 check('提醒里写明两边的版本号', older.summary.warnings[0].includes('3') && older.summary.warnings[0].includes(String(DB_VERSION)), true)
@@ -261,14 +233,6 @@ expectReject(
   () => parseBackup(tamper(baseRecords(), (f) => { f.records.users[0].password_hash = 'unexpected-hash'; return f })),
   '格式不正确',
 )
-=======
-const older = parseBackup(tamper(baseRecords(), (f) => ({ ...f, db_version: 3 })), 4)
-check('结构版本不一致只提醒不拒绝', older.summary.warnings.length, 1)
-check('提醒里写明两边的版本号', older.summary.warnings[0].includes('3') && older.summary.warnings[0].includes('4'), true)
-
-// ---- 未知仓库 / 坏记录 ----
-expectReject('未知仓库被拒', () => parseBackup(tamper(baseRecords(), (f) => ({ ...f, records: { ...f.records, secret_notes: [] } }))), '不认识的仓库')
->>>>>>> origin/main
 expectReject('仓库内容不是数组被拒', () => parseBackup(tamper(baseRecords(), (f) => ({ ...f, records: { ...f.records, day_plans: {} } }))), '不是数组')
 expectReject('记录不是对象被拒', () => parseBackup(tamper(baseRecords(), (f) => ({ ...f, records: { ...f.records, day_plans: ['x'] } }))), '不是对象')
 expectReject(
@@ -336,7 +300,6 @@ expectReject(
 )
 expectReject(
   '缺父记录被拒',
-<<<<<<< HEAD
   () => parseBackup(tamper(baseRecords(), (f) => { delete f.records.day_plans; return f })),
   '缺少关联的父记录',
 )
@@ -361,20 +324,11 @@ check('同来源账号的选项引用合法', parseBackup(textOf(withOption), DB
 
 // ---- 空备份：放行等于「用一个空文件清空自己」，风险与收益完全不对称 ----
 expectReject('空 records 缺来源账号时被拒', () => parseBackup(tamper(baseRecords(), (f) => ({ ...f, records: {} }))), '一个明确的来源账号')
-=======
-  () => parseBackup(tamper(baseRecords(), (f) => { delete f.records.users; return f })),
-  '缺少关联的父记录',
-)
-
-// ---- 空备份：放行等于「用一个空文件清空自己」，风险与收益完全不对称 ----
-expectReject('没有任何数据被拒', () => parseBackup(tamper(baseRecords(), (f) => ({ ...f, records: {} }))), '没有任何数据')
->>>>>>> origin/main
 expectReject(
   '只有元数据仓库也算空备份',
   () => parseBackup(tamper(baseRecords(), (f) => ({ ...f, records: { users: f.records.users } }))),
   '没有任何数据',
 )
-<<<<<<< HEAD
 check(
   'allowEmpty 允许有明确来源账号的空业务备份',
   parseBackup(textOf({ users: [{ ...USER }] }), DB_VERSION, { allowEmpty: true }).summary.total,
@@ -388,11 +342,6 @@ expectReject(
 
 // ---- 摘要与文件名 ----
 const summary = summarizeRecords(baseRecords(), { sourceUsername: USER.username, exportedAt: TS, dbVersion: DB_VERSION })
-=======
-
-// ---- 摘要与文件名 ----
-const summary = summarizeRecords(baseRecords(), { sourceEmail: USER.email, exportedAt: TS, dbVersion: 4 })
->>>>>>> origin/main
 check('摘要条数口径与解析一致', summary.total, good.summary.total)
 const label = (store) => ({ day_plans: '日计划', food_options: '常用食物', daily_meals: '三餐', daily_meal_items: '餐次内容' })[store] ?? store
 // 摘要按契约里的仓库顺序排列（不是文件里的书写顺序），因此同一份数据在任何机器上输出一致。
@@ -407,7 +356,6 @@ check('导出口径会丢掉遗留字段', sanitizeRecord('day_plans', legacy).d
 check('清洗后仍通过校验', validateRecord('day_plans', sanitizeRecord('day_plans', legacy).value), [])
 check('清洗不丢业务字段', Object.keys(sanitizeRecord('day_plans', legacy).value).length, Object.keys(PLAN).length)
 
-<<<<<<< HEAD
 // ---- 恢复或复制父记录不能自动认领原先隔离的残留记录 ----
 const TARGET_OWNER = 'auth-target'
 const restoredWorkspace = (records) => {
@@ -586,16 +534,10 @@ check(
   foreignPlan.user_id,
 )
 
-=======
->>>>>>> origin/main
 console.log('')
 console.log(`结果：${passed}/${passed + failures.length} 通过`)
 if (failures.length) {
   console.log('未通过：')
   failures.forEach((item) => console.log(`  - ${item.name}`))
   process.exitCode = 1
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/main

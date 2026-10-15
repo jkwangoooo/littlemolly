@@ -25,16 +25,10 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync
 import { createServer } from 'node:http'
 import { createServer as createProbeServer } from 'node:net'
 import { tmpdir } from 'node:os'
-<<<<<<< HEAD
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { findBrowser } from './lib/find-browser.mjs'
 import { createAuthFixture, FIXTURE_ENV, FIXTURE_PASSWORD } from './lib/auth-fixture.mjs'
-=======
-import { dirname, extname, join, normalize } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { findBrowser } from './lib/find-browser.mjs'
->>>>>>> origin/main
 
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DIST_DIR = join(PROJECT_ROOT, 'dist')
@@ -119,7 +113,6 @@ ${items.map(([src, label]) => `  <li><img src="/${src}" width="96" height="96" a
 }
 
 function startStaticServer(root) {
-<<<<<<< HEAD
   const requestPaths = []
   const failurePaths = new Set()
   const server = createServer((request, response) => {
@@ -131,10 +124,6 @@ function startStaticServer(root) {
       response.end('fixture asset unavailable')
       return
     }
-=======
-  const server = createServer((request, response) => {
-    const url = new URL(request.url ?? '/', 'http://127.0.0.1')
->>>>>>> origin/main
 
     if (url.pathname === '/__icons-preview') {
       response.writeHead(200, { 'Content-Type': CONTENT_TYPES['.html'], 'Cache-Control': 'no-store' })
@@ -170,11 +159,8 @@ function startStaticServer(root) {
     })
     createReadStream(filePath).pipe(response)
   })
-<<<<<<< HEAD
   server.requestPaths = requestPaths
   server.failurePaths = failurePaths
-=======
->>>>>>> origin/main
   return server
 }
 
@@ -204,21 +190,14 @@ async function listenWithRetry(server, port, attempts = 25) {
   return false
 }
 
-<<<<<<< HEAD
 function runNpm(args, label, buildEnv = FIXTURE_ENV) {
-=======
-function runNpm(args, label) {
->>>>>>> origin/main
   return new Promise((resolve, reject) => {
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
     const child = spawn(npmCommand, args, {
       cwd: PROJECT_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
-<<<<<<< HEAD
       env: { ...process.env, ...buildEnv },
-=======
->>>>>>> origin/main
     })
     let output = ''
     child.stdout.on('data', (chunk) => {
@@ -244,10 +223,7 @@ async function startDevServer() {
   const child = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
     cwd: PROJECT_ROOT,
     stdio: 'ignore',
-<<<<<<< HEAD
     env: { ...process.env, ...FIXTURE_ENV },
-=======
->>>>>>> origin/main
   })
   child.on('error', () => {})
 
@@ -317,10 +293,7 @@ class Cdp {
       }
     })
   }
-<<<<<<< HEAD
   on(method, handler) { this.handlers.set(method, handler) }
-=======
->>>>>>> origin/main
   send(method, params = {}) {
     const id = ++this.seq
     return new Promise((resolve, reject) => {
@@ -353,7 +326,6 @@ async function connect(port) {
   return new Cdp(ws)
 }
 
-<<<<<<< HEAD
 /**
  * 把当前页面的日期模式切到工作日；已经是工作日就什么都不做。
  *
@@ -381,18 +353,12 @@ const ENSURE_WORKDAY = `
   })()
 `
 
-=======
->>>>>>> origin/main
 /** 注入页面的小工具：只做「按文案点按钮 / 填输入框 / 读状态」，不参与业务判断。 */
 const PAGE_HELPERS = `
 window.__p = {
   byText: (text) => [...document.querySelectorAll('button')].find((el) => el.textContent.trim() === text),
   clickText: (text) => { const el = window.__p.byText(text); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
-<<<<<<< HEAD
   clickContains: (text) => { const el = [...document.querySelectorAll('button, [role=button], .row-main')].find((node) => node.textContent.includes(text)); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
-=======
-  clickContains: (text) => { const el = [...document.querySelectorAll('button')].find((node) => node.textContent.includes(text)); if (!el) return 'NOT_FOUND:' + text; el.click(); return 'OK' },
->>>>>>> origin/main
   // 选项页现在是「概览 + 子屏」：存储状态卡片在「存储与安装」子屏里，先进入再读。
   openStorageScreen: async () => {
     const back = document.querySelector('.topbar-back button');
@@ -471,11 +437,7 @@ function scriptBuildParam(url) {
  *
  * 为什么另开一个浏览器实例：应用窗口必须换一个用户数据目录（同一个目录不能同时被两个
  * Chrome 实例占用），所以这是一个全新的存储分区——正好也顺带验证了「新设备 / 新分区
-<<<<<<< HEAD
  * 首次打开独立窗口」的完整路径：认证 → 工作区准备 → 选项页 → 存储卡片。
-=======
- * 首次打开独立窗口」的完整路径：注册 → 选项页 → 存储卡片。
->>>>>>> origin/main
  * 返回值里的 `card` 就是卡片读到的真实状态，`standalone` 是浏览器自己的回答。
  *
  * 截图必须用**这个窗口自己的** CDP 连接拍：主窗口的 `Page.captureScreenshot`
@@ -512,10 +474,7 @@ async function inspectStandaloneWindow(browserPath, appUrl, stamp) {
     if (!port) throw new Error('应用窗口的调试端口未就绪。')
 
     cdp = await connect(port)
-<<<<<<< HEAD
     await createAuthFixture().attach(cdp)
-=======
->>>>>>> origin/main
     await cdp.send('Runtime.enable')
     await cdp.send('Page.enable')
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
@@ -539,11 +498,7 @@ async function inspectStandaloneWindow(browserPath, appUrl, stamp) {
 
     let rendered = false
     for (let attempt = 0; attempt < 60; attempt += 1) {
-<<<<<<< HEAD
       rendered = await evaluate(`document.body.innerText.includes('账号')`)
-=======
-      rendered = await evaluate(`document.body.innerText.includes('邮箱')`)
->>>>>>> origin/main
       if (rendered) break
       await sleep(500)
     }
@@ -553,17 +508,10 @@ async function inspectStandaloneWindow(browserPath, appUrl, stamp) {
 
     await evaluate(`
       (async () => {
-<<<<<<< HEAD
         window.__p.fill('账号', 'W');
         window.__p.fill('密码', ${JSON.stringify(FIXTURE_PASSWORD)});
         await window.__p.wait(200);
         window.__p.clickText('登录');
-=======
-        window.__p.fill('邮箱', ${JSON.stringify(`app-${stamp}@local.test`)});
-        window.__p.fill('密码', 'verify123');
-        await window.__p.wait(200);
-        window.__p.clickText('注册');
->>>>>>> origin/main
         await window.__p.wait(2400);
       })()
     `)
@@ -595,37 +543,24 @@ async function inspectStandaloneWindow(browserPath, appUrl, stamp) {
     }
     child.kill()
     await sleep(400)
-<<<<<<< HEAD
     const cleanupPath = resolve(userDataDir)
     if (!cleanupPath.startsWith(`${resolve(tmpdir())}${sep}molly-pwa-app-`)) throw new Error(`应用窗口清理路径越界：${cleanupPath}`)
     rmSync(cleanupPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-=======
-    rmSync(userDataDir, { recursive: true, force: true })
->>>>>>> origin/main
   }
 }
 
 async function main() {
   const browserPath = findBrowser()
   const stamp = Date.now()
-<<<<<<< HEAD
-=======
-  const EMAIL = `pwa-${stamp}@local.test`
-  const PASSWORD = 'verify123'
->>>>>>> origin/main
   const userDataDir = join(tmpdir(), `molly-pwa-${stamp}`)
   let child = null
   let devServer = null
   let server = null
-<<<<<<< HEAD
   let unconfiguredServer = null
-=======
->>>>>>> origin/main
   let port = null
 
   try {
     // ---------------------------------------------------------------- 1 构建
-<<<<<<< HEAD
     //
     // 两次构建都走 `build:no-empty`（`--emptyOutDir=false`），**不删 `dist/`**。
     //
@@ -642,10 +577,6 @@ async function main() {
     // 真正的干净构建由 CI / 人手工执行 `npm run build` 负责。
     console.log('构建生产产物…')
     const buildOutput = await runNpm(['run', 'build:no-empty'], 'npm run build:no-empty')
-=======
-    console.log('构建生产产物…')
-    const buildOutput = await runNpm(['run', 'build'], 'npm run build')
->>>>>>> origin/main
     const builtSummary = buildOutput
       .split('\n')
       .filter((line) => line.includes('modules transformed') || line.includes('built in'))
@@ -658,7 +589,6 @@ async function main() {
       missing.length ? `缺少 ${missing.join(', ')}` : firstLine(builtSummary),
     )
 
-<<<<<<< HEAD
     // ---------------------------------------------------------------- 1b 部署配置
     //
     // 这几份配置**本地跑不出来**：静态服务器不读它们，浏览器也不按它们缓存。
@@ -745,8 +675,6 @@ async function main() {
       hasRedirects ? 'dist/_redirects 存在：确认它的规则不会命中 /sw.js 与 /assets/*' : '未提供，依赖 Pages 内置 SPA 回退',
     )
 
-=======
->>>>>>> origin/main
     // ---------------------------------------------------------------- 2 两个服务器
     port = await findFreePort()
     server = startStaticServer(DIST_DIR)
@@ -762,19 +690,13 @@ async function main() {
     const launched = await launchBrowser(browserPath, userDataDir)
     child = launched.child
     const cdp = await connect(launched.port)
-<<<<<<< HEAD
     const fixture = createAuthFixture()
     await fixture.attach(cdp)
-=======
->>>>>>> origin/main
     await cdp.send('Runtime.enable')
     await cdp.send('Log.enable')
     await cdp.send('Page.enable')
     await cdp.send('Network.enable')
-<<<<<<< HEAD
     await cdp.send('Network.setCacheDisabled', { cacheDisabled: true })
-=======
->>>>>>> origin/main
 
     const evaluate = async (expression) => {
       const outcome = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
@@ -827,11 +749,7 @@ async function main() {
     await navigate(devServer.url, 1500)
     // Vite dev 首次访问要预构建依赖，首屏可能比生产慢好几秒，因此轮询等文案出现，
     // 而不是赌一个固定等待时间——否则「dev 页面没起来」会被误读成「dev 注册了 SW」。
-<<<<<<< HEAD
     const devReady = await until(`document.body.innerText.includes('账号') && !!document.querySelector('input[type=password]') && !document.body.innerText.includes('注册')`, 30000)
-=======
-    const devReady = await until(`document.body.innerText.includes('邮箱') && document.body.innerText.includes('注册')`, 30000)
->>>>>>> origin/main
     const devState = await swState()
     record(
       'dev server 上渲染出登录页（确认 dev 页面确实跑起来了）',
@@ -854,11 +772,7 @@ async function main() {
     await shot('01-app-login')
 
     const loginText = await text()
-<<<<<<< HEAD
     record('生产构建首屏仅渲染账号密码登录页', loginText.includes('账号') && loginText.includes('密码') && !loginText.includes('注册'), firstLine(loginText, 60))
-=======
-    record('生产构建首屏渲染登录页', loginText.includes('邮箱') && loginText.includes('注册'), firstLine(loginText, 60))
->>>>>>> origin/main
 
     // manifest
     const manifest = JSON.parse(await evaluate(`fetch('/manifest.webmanifest').then((response) => response.text())`))
@@ -907,11 +821,7 @@ async function main() {
 
     // ---------------------------------------------------------------- 6 SW 注册与缓存
     const activated = await until(
-<<<<<<< HEAD
       `navigator.serviceWorker.getRegistration().then((registration) => registration?.active?.state === 'activated')`,
-=======
-      `navigator.serviceWorker.ready.then((registration) => !!(registration.active && registration.active.state === 'activated'))`,
->>>>>>> origin/main
       20000,
     )
     const registeredState = await swState()
@@ -921,14 +831,7 @@ async function main() {
       `active=${registeredState.active}, state=${registeredState.activeState}`,
     )
 
-<<<<<<< HEAD
     record('首次安装保持当前页面未受控，未静默接管', registeredState.controller === null)
-=======
-    // 首次安装时页面还没被 SW 接管（刻意不 clients.claim），刷新一次才会进入受控状态。
-    await reload()
-    const controlledState = await swState()
-    record('刷新后页面由 service worker 接管', Boolean(controlledState.controller), String(controlledState.controller))
->>>>>>> origin/main
 
     const report = await cacheReport()
     const cacheNames = Object.keys(report)
@@ -955,7 +858,6 @@ async function main() {
     const crossOrigin = shellEntries.filter((url) => new URL(url).origin !== origin)
     record('缓存里没有任何跨域条目（Supabase 之类一律不缓存）', crossOrigin.length === 0, crossOrigin.slice(0, 3).join(', ') || `${shellEntries.length} 条全部同源`)
 
-<<<<<<< HEAD
     const buildManifest = await evaluate(`fetch('/assets/shell-assets-${scriptBuildParam(registeredState.active)}.json').then(response => response.json())`)
     const missingBuildAssets = buildManifest.authenticated.filter((name) =>
       !shellEntries.includes(new URL(name, appUrl).href),
@@ -968,8 +870,6 @@ async function main() {
       missingBuildAssets.length ? `缺少 ${missingBuildAssets.join(', ')}` : `${buildManifest.authenticated.length} 个本轮产物均已缓存`,
     )
 
-=======
->>>>>>> origin/main
     const firstConsoleNoise = cdp.events.filter((event) => {
       if (event.method === 'Runtime.exceptionThrown') return true
       if (event.method === 'Log.entryAdded') return ['error', 'warning'].includes(event.params.entry.level)
@@ -982,7 +882,6 @@ async function main() {
       describeNoise(firstConsoleNoise),
     )
 
-<<<<<<< HEAD
     // Prepare a real SDK session and workspace before taking the app offline.
     await evaluate(`window.__p.fill('账号','W');window.__p.fill('密码',${JSON.stringify(FIXTURE_PASSWORD)});window.__p.clickText('登录')`)
     record('在线认证完成后开放当前账号工作区', await until(`!!document.querySelector('.bottom-nav')`, 20000) === true)
@@ -1034,35 +933,6 @@ async function main() {
     record('首次离线打开账号页能读取本地与待上传条数，无读取失败或加载滞留', offlineCountsReady === true, firstLine(offlineSyncText, 220))
     await evaluate(`document.querySelector('.topbar-back button').click()`)
     if (await until(`!!document.querySelector('[data-option-entry="food"]')`, 5000) !== true) throw new Error('离线选项概览未恢复')
-=======
-    // ---------------------------------------------------------------- 7 断网：模拟
-    await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 })
-    await reload()
-    const offlineEmulated = await text()
-    record('CDP 模拟断网后刷新仍渲染登录页', offlineEmulated.includes('邮箱') && offlineEmulated.includes('注册'), firstLine(offlineEmulated, 60))
-    await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
-
-    // ---------------------------------------------------------------- 8 断网：真的关掉服务器
-    server.closeAllConnections?.()
-    await new Promise((resolve) => server.close(resolve))
-    console.log('已关闭静态服务器，验证真实断网。')
-
-    await reload(3500)
-    const offlineReal = await text()
-    record('关掉服务器后刷新仍渲染登录页（应用壳来自缓存）', offlineReal.includes('邮箱') && offlineReal.includes('注册'), firstLine(offlineReal, 60))
-
-    const registeredOffline = await evaluate(`
-      (async () => {
-        window.__p.fill('邮箱', ${JSON.stringify(EMAIL)});
-        window.__p.fill('密码', ${JSON.stringify(PASSWORD)});
-        await window.__p.wait(200);
-        window.__p.clickText('注册');
-        await window.__p.wait(2200);
-        return window.__p.text();
-      })()
-    `)
-    record('断网时仍能注册并进入日计划页（IndexedDB 离线可写）', registeredOffline.includes('执行今天'), firstLine(registeredOffline, 70))
->>>>>>> origin/main
 
     // 概览只显示入口与数量，清单在各自的子屏里：进「常用食物」读一次，再进「固定补剂」读一次。
     const optionsOffline = JSON.parse(
@@ -1094,16 +964,12 @@ async function main() {
     if (!(await listenWithRetry(server, port))) throw new Error(`静态服务器无法在 ${port} 上恢复。`)
     console.log(`静态服务器已恢复：${appUrl}`)
 
-<<<<<<< HEAD
     fixture.offline = false
-=======
->>>>>>> origin/main
     await reload()
     const backOnline = await text()
     record('恢复网络后刷新，会话与数据仍在（仍停在已登录状态）', backOnline.includes('执行今天') || backOnline.includes('选项'), firstLine(backOnline, 60))
 
     // ---------------------------------------------------------------- 10 重新构建 → 更新提示
-<<<<<<< HEAD
     //
     // 同 §1：走 `build:no-empty` 且**不删 `dist/`**，见那边的注释。
     // 第二次构建原本最容易倒在最后一步——浏览器阶段已全绿，却因为
@@ -1111,11 +977,6 @@ async function main() {
     const oldStamp = scriptBuildParam((await swState()).active)
     cdp.events.length = 0
     await runNpm(['run', 'build:no-empty'], 'npm run build:no-empty（第二次）')
-=======
-    const oldStamp = scriptBuildParam((await swState()).active)
-    cdp.events.length = 0
-    await runNpm(['run', 'build'], 'npm run build（第二次）')
->>>>>>> origin/main
     await reload(3000)
 
     const waitingReady = await until(
@@ -1251,11 +1112,7 @@ async function main() {
     await sleep(500)
     await shot('06-storage-card-mobile')
 
-<<<<<<< HEAD
     // iOS 安全区：选项页是独立页面，日程页的固定底栏与页面内容各自让出 Home 指示条。
-=======
-    // iOS 安全区：装上主屏幕后没有浏览器工具栏兜底，底部导航会压在 Home 指示条上。
->>>>>>> origin/main
     // CDP 能模拟安全区（Chrome 152 实测支持 Emulation.setSafeAreaInsetsOverride），
     // 所以这一条不需要真机就能验：给一个 34px 的底部安全区，看有没有人把它让出来。
     const insetsApplied = await cdp
@@ -1263,7 +1120,6 @@ async function main() {
       .then(() => true)
       .catch(() => false)
     await sleep(400)
-<<<<<<< HEAD
     const optionsSafeArea = JSON.parse(
       await evaluate(`
         JSON.stringify({
@@ -1301,24 +1157,6 @@ async function main() {
         scheduleSafeArea.controlsBottom <= scheduleSafeArea.viewportBottom - 34 &&
         scheduleSafeArea.pagePaddingBottom === 94,
       `viewport-fit=cover=${optionsSafeArea.viewport.includes('viewport-fit=cover')}, 选项底栏=${optionsSafeArea.hasBottomNav}, 选项页 padding-bottom=${optionsSafeArea.pagePaddingBottom}px, 日程导航 bottom=${scheduleSafeArea.navBottomOffset}px, 按钮底部=${scheduleSafeArea.controlsBottom}px ≤ 安全区起点${scheduleSafeArea.viewportBottom - 34}px, 日程页 padding-bottom=${scheduleSafeArea.pagePaddingBottom}px`,
-=======
-    const safeArea = JSON.parse(
-      await evaluate(`
-        JSON.stringify({
-          viewport: (document.querySelector('meta[name=viewport]') || {}).content || '',
-          navPaddingBottom: parseFloat(getComputedStyle(document.querySelector('.bottom-nav')).paddingBottom) || 0,
-          pagePaddingBottom: parseFloat(getComputedStyle(document.querySelector('.page')).paddingBottom) || 0,
-        })
-      `),
-    )
-    record(
-      'iOS 安全区：底部导航与页面为 Home 指示条让出空间',
-      insetsApplied &&
-        safeArea.viewport.includes('viewport-fit=cover') &&
-        safeArea.navPaddingBottom === 34 &&
-        safeArea.pagePaddingBottom === 60 + 34,
-      `viewport-fit=cover=${safeArea.viewport.includes('viewport-fit=cover')}, 导航 padding-bottom=${safeArea.navPaddingBottom}px, 页面 padding-bottom=${safeArea.pagePaddingBottom}px（期望 34 / 94）`,
->>>>>>> origin/main
     )
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }).catch(() => {})
 
@@ -1328,11 +1166,7 @@ async function main() {
         JSON.stringify({
           viewport: (document.querySelector('meta[name=viewport]') || {}).content || '',
           bodyTouchAction: getComputedStyle(document.body).touchAction,
-<<<<<<< HEAD
           buttonTouchAction: getComputedStyle(document.querySelector('button:not(.floating-pet)')).touchAction,
-=======
-          buttonTouchAction: getComputedStyle(document.querySelector('button')).touchAction,
->>>>>>> origin/main
         })
       `),
     )
@@ -1359,7 +1193,6 @@ async function main() {
         const dialog = document.querySelector(${JSON.stringify(selector)});
         const actions = dialog ? dialog.querySelector('.actions') : null;
         const body = dialog ? dialog.querySelector('.editor-body') : null;
-<<<<<<< HEAD
         const title = dialog ? dialog.querySelector('h2') : null;
         let bodyScrollWorks = false;
         if (body && body.clientHeight > 0) {
@@ -1368,15 +1201,12 @@ async function main() {
           bodyScrollWorks = body.scrollTop >= body.scrollHeight - body.clientHeight - 1;
           body.scrollTop = previousScroll;
         }
-=======
->>>>>>> origin/main
         return JSON.stringify({
           found: Boolean(dialog),
           insetVar: document.documentElement.style.getPropertyValue('--vv-keyboard-inset'),
           heightVar: document.documentElement.style.getPropertyValue('--vv-height'),
           top: dialog ? Math.round(dialog.getBoundingClientRect().top) : null,
           bottom: dialog ? Math.round(dialog.getBoundingClientRect().bottom) : null,
-<<<<<<< HEAD
           titleTop: title ? Math.round(title.getBoundingClientRect().top) : null,
           titleBottom: title ? Math.round(title.getBoundingClientRect().bottom) : null,
           bodyTop: body ? Math.round(body.getBoundingClientRect().top) : null,
@@ -1384,8 +1214,6 @@ async function main() {
           bodyHeight: body ? body.clientHeight : 0,
           bodyScrollWorks,
           actionsTop: actions ? Math.round(actions.getBoundingClientRect().top) : null,
-=======
->>>>>>> origin/main
           actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom) : null,
           hasScrollableBody: Boolean(body) && getComputedStyle(body).overflowY === 'auto',
         });
@@ -1403,7 +1231,6 @@ async function main() {
     `
 
     // ① 底部抽屉：用「准备明天 → 三餐」打开（三餐面板内容多，仍然走抽屉）。
-<<<<<<< HEAD
     // 安全区检查结束后已经返回日程页；从「准备明天」打开三餐面板。
     if (await evaluate(`window.__p.clickText('今天')`) !== 'OK') throw new Error('日程今天入口未出现')
     if (await until(`!!document.querySelector('.bubble-stage[aria-label="执行今天"]')`, 5000) !== true) throw new Error('今天日程未渲染')
@@ -1456,32 +1283,12 @@ async function main() {
         sheetKeyboard.bodyBottom !== null && sheetKeyboard.bodyBottom <= sheetKeyboard.actionsTop &&
         sheetKeyboard.bodyHeight > 0 && sheetKeyboard.hasScrollableBody === true && sheetKeyboard.bodyScrollWorks,
       `操作区 ${sheetKeyboard.actionsTop}→${sheetKeyboard.actionsBottom}（可视区 0→508）, 内容区 ${sheetKeyboard.bodyTop}→${sheetKeyboard.bodyBottom}, 独立滚动到底=${sheetKeyboard.bodyScrollWorks}`,
-=======
-    // 注意此刻还在「选项」页，而「执行今天 / 准备明天」页签只存在于日计划页，必须先回今日。
-    await evaluate(`window.__p.clickText('今日')`)
-    await sleep(1400)
-    await evaluate(`window.__p.clickText('准备明天')`)
-    await sleep(1800)
-    const mealsOpened = await evaluate(`window.__p.clickContains('三餐已安排')`)
-    await sleep(1500)
-    const sheetKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('.bottom-sheet[data-editor-card]')))
-    record(
-      '软键盘弹出（可视视口缩到 508）时底部抽屉整体让开键盘',
-      sheetKeyboard.found && sheetKeyboard.insetVar === '336px' && sheetKeyboard.bottom !== null && sheetKeyboard.bottom <= 508,
-      `打开三餐=${mealsOpened}, --vv-keyboard-inset=${sheetKeyboard.insetVar}, --vv-height=${sheetKeyboard.heightVar}, 抽屉 ${sheetKeyboard.top}→${sheetKeyboard.bottom}（可视区 0→508）`,
-    )
-    record(
-      '底部抽屉的「保存 / 取消」仍在可见区域内，内容可独立滚动',
-      sheetKeyboard.actionsBottom !== null && sheetKeyboard.actionsBottom <= 508 && sheetKeyboard.hasScrollableBody === true,
-      `操作区底部=${sheetKeyboard.actionsBottom}（≤508 即可见）, 内容区可滚动=${sheetKeyboard.hasScrollableBody}`,
->>>>>>> origin/main
     )
     await evaluate(restoreVisualViewport)
     await evaluate(`window.__p.clickText('取消')`)
     await sleep(900)
 
     // ② 居中卡片：自定义事项改用的形态，同样要躲开键盘（否则卡片下半截被键盘盖住）。
-<<<<<<< HEAD
     if (await evaluate(`window.__p.clickText('今天')`) !== 'OK') throw new Error('日程今天入口未出现')
     if (await until(`!!document.querySelector('.bubble-stage[aria-label="执行今天"]')`, 5000) !== true) throw new Error('今天日程未渲染')
     const taskEditorOpened = await evaluate(`(() => { const button = document.querySelector('.bubble-add-task'); if (!button) return 'NOT_FOUND:task-editor'; button.click(); return 'OK'; })()`)
@@ -1508,22 +1315,6 @@ async function main() {
         cardKeyboard.bodyBottom !== null && cardKeyboard.bodyBottom <= cardKeyboard.actionsTop &&
         cardKeyboard.bodyHeight > 0 && cardKeyboard.hasScrollableBody === true && cardKeyboard.bodyScrollWorks,
       `操作区 ${cardKeyboard.actionsTop}→${cardKeyboard.actionsBottom}（可视区 0→508）, 内容区 ${cardKeyboard.bodyTop}→${cardKeyboard.bodyBottom}, 独立滚动到底=${cardKeyboard.bodyScrollWorks}`,
-=======
-    await evaluate(`window.__p.clickText('今日')`)
-    await sleep(1400)
-    await evaluate(`window.__p.clickContains('添加事项')`)
-    await sleep(1400)
-    const cardKeyboard = JSON.parse(await evaluate(fakeKeyboardGeometry('.center-card[data-editor-card]')))
-    record(
-      '软键盘弹出时居中卡片整体让开键盘（没有被顶到键盘下面）',
-      cardKeyboard.found && cardKeyboard.insetVar === '336px' && cardKeyboard.top >= 0 && cardKeyboard.bottom <= 508,
-      `--vv-keyboard-inset=${cardKeyboard.insetVar}, 卡片 ${cardKeyboard.top}→${cardKeyboard.bottom}（可视区 0→508）`,
-    )
-    record(
-      '居中卡片的「保存 / 取消」仍在可见区域内，内容可独立滚动',
-      cardKeyboard.actionsBottom !== null && cardKeyboard.actionsBottom <= 508 && cardKeyboard.hasScrollableBody === true,
-      `操作区底部=${cardKeyboard.actionsBottom}（≤508 即可见）, 内容区可滚动=${cardKeyboard.hasScrollableBody}`,
->>>>>>> origin/main
     )
     await shot('08-task-card-mobile')
     await evaluate(restoreVisualViewport)
@@ -1569,16 +1360,12 @@ async function main() {
             freeSpace: last ? Math.round(regionBox.bottom - last.getBoundingClientRect().bottom) : null,
             regionBottom: Math.round(regionBox.bottom),
             navTop: Math.round(document.querySelector('.bottom-nav').getBoundingClientRect().top),
-<<<<<<< HEAD
             modeLabel: (document.querySelector('.bubble-page-heading') || {}).textContent || '',
-=======
->>>>>>> origin/main
             breakdown: children.map((el) => Math.round(el.getBoundingClientRect().height) + ':' + String(el.className).split(' ')[0]).join(' '),
           });
         })()
       `),
     )
-<<<<<<< HEAD
     // 「余量 ≥24」这条只对**空计划**成立，而今天不一定是空的：
     // 周六 / 周日属于正常休息日，`useDayPlanData` 会立刻补一份 rest 计划并带出拖地 / 洗衣
     // （条件是 `mode === 'rest' && mode_override !== true`），页面本来就有内容。
@@ -1592,12 +1379,6 @@ async function main() {
       firstScreen.scrollHeight <= firstScreen.clientHeight + 1 &&
         (!emptyPlanCase || (firstScreen.freeSpace ?? -1) >= 24),
       `当天模式=${firstScreen.modeLabel}，内容区可视 ${firstScreen.clientHeight}px / 内容 ${firstScreen.scrollHeight}px，余量 ${firstScreen.freeSpace}px${emptyPlanCase ? '（空计划，要求 ≥24）' : '（休息日自带家务，不适用空计划余量门槛）'}；各块 ${firstScreen.breakdown}`,
-=======
-    record(
-      '「执行今天」空计划状态一屏放下（内容区无需滚动，且留有富余）',
-      firstScreen.scrollHeight <= firstScreen.clientHeight + 1 && (firstScreen.freeSpace ?? -1) >= 24,
-      `内容区可视 ${firstScreen.clientHeight}px / 内容 ${firstScreen.scrollHeight}px，余量 ${firstScreen.freeSpace}px（≥24 才够 iOS 字体差异）；各块 ${firstScreen.breakdown}`,
->>>>>>> origin/main
     )
     await shot('07-today-mobile')
 
@@ -1613,7 +1394,6 @@ async function main() {
       describeNoise(noisy),
     )
 
-<<<<<<< HEAD
     const verifiedIndex = await evaluate(`caches.open('molly-shell-${newStamp}').then(cache => cache.match('/index.html')).then(response => response.text())`)
     const failedBuildOutput = await runNpm(['run', 'build:no-empty'], 'npm run build:no-empty（更新资源失败夹具）')
     const failedManifestPath = failedBuildOutput.match(/assets\/shell-assets-\d+\.json/)?.[0]
@@ -1729,8 +1509,6 @@ async function main() {
     )
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
 
-=======
->>>>>>> origin/main
     const failed = results.filter((item) => !item.ok)
     console.log('')
     console.log(`结果：${results.length - failed.length}/${results.length} 通过`)
@@ -1746,7 +1524,6 @@ async function main() {
       server.closeAllConnections?.()
       server.close()
     }
-<<<<<<< HEAD
     if (unconfiguredServer) {
       unconfiguredServer.closeAllConnections?.()
       unconfiguredServer.close()
@@ -1755,10 +1532,6 @@ async function main() {
     const cleanupPath = resolve(userDataDir)
     if (!cleanupPath.startsWith(`${resolve(tmpdir())}${sep}molly-pwa-`)) throw new Error(`浏览器清理路径越界：${cleanupPath}`)
     rmSync(cleanupPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-=======
-    await sleep(500)
-    rmSync(userDataDir, { recursive: true, force: true })
->>>>>>> origin/main
   }
 }
 

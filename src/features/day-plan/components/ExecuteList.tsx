@@ -11,10 +11,7 @@ import {
   EXECUTE_TITLE,
   MEAL_NAMES,
 } from '../dayPlanLabels'
-<<<<<<< HEAD
 import { CollapsibleSection } from './CollapsibleSection'
-=======
->>>>>>> origin/main
 
 /**
  * 执行区的勾选目标。用判别联合而不是 `(target, id?)`：
@@ -48,11 +45,8 @@ export function ExecuteList({
   exerciseItems,
   writable,
   mode,
-<<<<<<< HEAD
   collapsed,
   onToggleSection,
-=======
->>>>>>> origin/main
   onToggle,
 }: {
   plan: DayPlan | null
@@ -62,11 +56,8 @@ export function ExecuteList({
   exerciseItems: DailyExerciseItem[]
   writable: boolean
   mode: DayMode
-<<<<<<< HEAD
   collapsed: boolean
   onToggleSection: () => void
-=======
->>>>>>> origin/main
   onToggle: (toggle: ExecutionToggle) => void
 }) {
   const isRest = mode === 'rest'
@@ -80,7 +71,6 @@ export function ExecuteList({
     : meals.length === 0 && !showMorning && !showExercise && plannedSupplements.length === 0)
 
   return (
-<<<<<<< HEAD
     <CollapsibleSection
       section="execute"
       title={EXECUTE_TITLE}
@@ -107,13 +97,6 @@ export function ExecuteList({
         </label>
       ) : null}
 
-=======
-    <div className="execute-list">
-      <h3>{EXECUTE_TITLE}</h3>
-
-      {empty ? <p className="muted empty-note">{EXECUTE_EMPTY}</p> : null}
-
->>>>>>> origin/main
       {!empty && showMeals
         ? MEAL_TYPES.map((type) => {
             const meal = meals.find((item) => item.meal_type === type)
@@ -138,25 +121,6 @@ export function ExecuteList({
           })
         : null}
 
-<<<<<<< HEAD
-=======
-      {showMorning && plan ? (
-        <label className="execution-row">
-          <input
-            type="checkbox"
-            checked={plan.morning_completed}
-            disabled={!writable}
-            aria-label={`${EXECUTE_MORNING_LABEL}已完成`}
-            onChange={() => onToggle({ kind: 'morning' })}
-          />
-          <span>
-            <strong>{EXECUTE_MORNING_LABEL}</strong>
-            <small>{plan.morning_focus}</small>
-          </span>
-        </label>
-      ) : null}
-
->>>>>>> origin/main
       {plannedSupplements.length ? (
         <>
           <h3 className="section-title">{EXECUTE_SUPPLEMENT_TITLE}</h3>
@@ -199,11 +163,7 @@ export function ExecuteList({
           </span>
         </label>
       ) : null}
-<<<<<<< HEAD
       </div>
     </CollapsibleSection>
-=======
-    </div>
->>>>>>> origin/main
   )
 }

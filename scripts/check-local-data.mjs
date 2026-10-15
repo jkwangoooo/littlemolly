@@ -1,27 +1,16 @@
 #!/usr/bin/env node
-<<<<<<< HEAD
 // 本地数据结构回归：迁移表「只追加」、仓库定义与迁移表一一对应、仓库三分类不交叉、
 // 写入口共享原子校验与入队、旧身份隔离保留业务记录、示例选项不写死在界面层。
 //
 // 用法：npm run check:local-data
 //
 // 直接导入 src/services/local/localDb.ts 与 recordSchemas.ts（Node 22.18+ / 24 原生支持剥离类型），
-=======
-// 本地数据结构回归：迁移表「只追加」、仓库定义与迁移表一一对应、示例选项不写死在界面层。
-//
-// 用法：npm run check:local-data
-//
-// 直接导入 src/services/local/localDb.ts 与 optionSeed.ts（Node 22.18+ / 24 原生支持剥离类型），
->>>>>>> origin/main
 // 不引入测试框架、不产生构建产物。
 //
 // 为什么需要它：docs/01 把「数据库迁移只追加，不改写旧迁移」列为硬性规则。
 // 真实浏览器只能验证「新装出来是多少张表」，无法验证「旧版本升级时旧表没被动过」，
 // 所以这里对着迁移表本身做静态断言，与 npm run verify:local 的运行时检查互补。
-<<<<<<< HEAD
 // 队列规则（压缩、层级排序、入队与否）在 `npm run check:sync` 里，与本脚本互补。
-=======
->>>>>>> origin/main
 
 // 必须先注册扩展名补全钩子，再动态导入源码（源码用的是不带 .ts 的相对导入）。
 import './ts-resolve.mjs'
@@ -42,14 +31,10 @@ function check(name, actual, expected) {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  → 实际 ${JSON.stringify(actual)}，期望 ${JSON.stringify(expected)}`}`)
 }
 
-<<<<<<< HEAD
 const { LOCAL_SCHEMA, rekeySyncStateRows } = await import('../src/services/local/localDb.ts')
 const { ALL_STORES, DEVICE_STORES, META_STORES, SCHEMA_STORES, USER_DATA_STORES } = await import(
   '../src/services/local/recordSchemas.ts'
 )
-=======
-const { LOCAL_SCHEMA } = await import('../src/services/local/localDb.ts')
->>>>>>> origin/main
 
 const { version, stores, migrations } = LOCAL_SCHEMA
 const storeNames = stores.map((store) => store.name).sort()
@@ -74,7 +59,6 @@ check(
   ['daily_exercise_items', 'daily_meal_items', 'daily_supplements'],
 )
 check('v4 迁移新增休息日家务表', [...storesOf(4)].sort(), ['routine_tasks'])
-<<<<<<< HEAD
 check('v5 不新增仓库（只把登录名从 email 换成 username）', [...storesOf(5)].sort(), [])
 check('v6 只新增两张设备状态表（同步队列与同步状态）', [...storesOf(6)].sort(), ['sync_outbox', 'sync_state'])
 // v7 不动结构：`sync_state` 的 `keyPath` 一直是 `id`、本来就没有索引，只是**含义**从
@@ -85,14 +69,11 @@ check(
   [...storesOf(8)].sort(),
   ['legacy_outbox', 'legacy_sync_state', 'legacy_users', 'workspace_migrations', 'workspace_state'],
 )
-=======
->>>>>>> origin/main
 
 // ---- 已有数据的版本必须带搬迁函数：只建表不搬数据，老用户的自由文本会被静默丢掉 ----
 check('v3 迁移带数据搬迁函数', typeof migrations[3].migrate, 'function')
 check('v1 / v2 只建表、不做数据搬迁', migrationVersions.slice(0, 2).map((key) => migrations[key].migrate ?? null), [null, null])
 check('v4 只建表、不做数据搬迁', migrations[4].migrate ?? null, null)
-<<<<<<< HEAD
 check('v5 迁移带数据搬迁函数', typeof migrations[5].migrate, 'function')
 // v6 建的是两张空表，从空开始就是正确状态（见 localDb.ts 的 MIGRATIONS[6] 注释）：
 // 老用户升级后不该凭空多出待上传项——历史数据要上云必须由人点「本地上传云端」。
@@ -221,21 +202,16 @@ check(
   [stores.find((store) => store.name === 'sync_state')?.keyPath, (stores.find((store) => store.name === 'sync_state')?.indexes ?? []).length],
   ['id', 0],
 )
-=======
->>>>>>> origin/main
 
 // ---- 定义与迁移必须一一对应，防止「加了 STORES 忘了 MIGRATIONS」这类漏项 ----
 check('迁移表覆盖的仓库与 STORES 清单完全一致', [...new Set(migratedNames)].sort(), storeNames)
 check('每个仓库只在一个版本里引入', migratedNames.length, new Set(migratedNames).size)
 check('所有仓库的主键都是 id', [...new Set(stores.map((store) => store.keyPath))], ['id'])
 
-<<<<<<< HEAD
 // ---- users 只存经 Auth 验证的资料，不再有本地登录名索引 ----
 const usersStore = stores.find((store) => store.name === 'users')
 check('users 不再保留 email / username 登录索引', usersStore?.indexes ?? [], [])
 
-=======
->>>>>>> origin/main
 // ---- 按 user_id 隔离的三张选项表必须带 user_id 索引，否则靠 getAll 全表扫 ----
 for (const name of storesOf(2)) {
   const definition = stores.find((store) => store.name === name)
@@ -257,7 +233,6 @@ for (const [name, index] of [
 
 // ---- 写入必须先过字段契约（L5 加固）：绕过 localDb 的 put / runTransaction，坏数据就再也拦不住 ----
 const localDbSource = readFileSync(join(PROJECT_ROOT, 'src/services/local/localDb.ts'), 'utf8')
-<<<<<<< HEAD
 function functionBody(source, name) {
   const declaration = new RegExp(`(?:^|\\n)(?:export )?(?:async )?function ${name}\\b`)
   const match = declaration.exec(source)
@@ -370,25 +345,6 @@ const directWrites = walk(join(PROJECT_ROOT, 'src'))
   .filter((file) => WRITE_CALL.test(readFileSync(file, 'utf8')))
   .map((file) => relative(PROJECT_ROOT, file))
 check('除 localDb.ts 外没有绕过契约校验与入队钩子的直接写库', directWrites, [])
-=======
-check(
-  'put 在任何写入请求之前调用 assertRecord',
-  /export async function put[\s\S]{0,240}?\n\s*assertRecord\(/.test(localDbSource),
-  true,
-)
-check(
-  'runTransaction 对每条待写记录先 assertRecord',
-  /export async function runTransaction[\s\S]{0,1400}?for \(const item of work\.put \?\? \[\]\) assertRecord\(/.test(localDbSource),
-  true,
-)
-
-/** 直接调 objectStore().put/add 的地方：这些写入绕过了 assertRecord。 */
-const directWrites = walk(join(PROJECT_ROOT, 'src'))
-  .filter((file) => !file.endsWith('localDb.ts'))
-  .filter((file) => /objectStore\([^)]*\)\s*\.\s*(put|add)\s*\(/.test(readFileSync(file, 'utf8')))
-  .map((file) => relative(PROJECT_ROOT, file))
-check('除 localDb.ts 外没有绕过契约校验的直接写库', directWrites, [])
->>>>>>> origin/main
 
 // ---- 界面层不得直接碰数据库：页面只能经 src/services/ ----
 function walk(dir) {
@@ -444,13 +400,8 @@ const cloudLeaks = uiFiles
 check('界面层没有直接引用 supabase', cloudLeaks, [])
 
 // ---- 示例选项属于服务层数据，不能写死在页面逻辑里（docs/05 L1 验收）----
-<<<<<<< HEAD
 // L6 起清单提到 `src/services/optionExamples.ts`，播种只读它；
 // S4-T7 删掉云端适配器后，消费者只剩本地播种（`local/optionSeed.ts`）一处。
-=======
-// L6 起清单提到 `src/services/optionExamples.ts`，由本地与云端两套适配器共用；
-// 本地播种（local/optionSeed.ts）与云端播种（cloud/optionSeed.ts）都只是读取它。
->>>>>>> origin/main
 const seedSource = readFileSync(join(PROJECT_ROOT, 'src/services/optionExamples.ts'), 'utf8')
 const seedNames = [...seedSource.matchAll(/'([^'\n]+)'/g)]
   .map((match) => match[1])

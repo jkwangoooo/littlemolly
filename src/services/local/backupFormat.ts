@@ -1,10 +1,6 @@
 import type { DataError } from '../../shared/errors'
 import type { LocalStore } from './localDb'
-<<<<<<< HEAD
 import { DEVICE_STORES, META_STORES, RECORD_SCHEMAS, SCHEMA_STORES, validateRecord } from './recordSchemas'
-=======
-import { RECORD_SCHEMAS, SCHEMA_STORES, validateRecord } from './recordSchemas'
->>>>>>> origin/main
 
 /**
  * 本地备份文件格式（L5）——纯数据层。
@@ -19,22 +15,14 @@ import { RECORD_SCHEMAS, SCHEMA_STORES, validateRecord } from './recordSchemas'
  * {
  *   "app": "happy-little-molly",
  *   "format": "local-backup",
-<<<<<<< HEAD
  *   "version": 3,
  *   "db_version": 8,
  *   "exported_at": "2026-09-15T02:30:00.000Z",
  *   "source_user": { "username": "W" },
-=======
- *   "version": 1,
- *   "db_version": 4,
- *   "exported_at": "2026-09-15T02:30:00.000Z",
- *   "source_user": { "email": "someone@example.com" },
->>>>>>> origin/main
  *   "counts": { "day_plans": 3, "food_options": 6 },
  *   "records": { "day_plans": [ ... ], "food_options": [ ... ] }
  * }
  * ```
-<<<<<<< HEAD
  *
  * 格式版本 1 与 2 的差别只有一处：登录凭据从「邮箱」改成「账号」，
  * 因此 `source_user.email` 与 `records.users[].email` 都改名为 `username`。
@@ -48,17 +36,10 @@ import { RECORD_SCHEMAS, SCHEMA_STORES, validateRecord } from './recordSchemas'
  * v2 → v3：`users` 只保留资料字段，备份不携带密码。
  */
 export const BACKUP_FORMAT_VERSION = 3
-=======
- */
-
-/** 文件格式版本。`records` 的组织方式变了才提升；数据库结构版本另记 `db_version`。 */
-export const BACKUP_FORMAT_VERSION = 1
->>>>>>> origin/main
 /** 文件标记，用来一眼认出「这不是随便一个 JSON」。 */
 export const BACKUP_FORMAT = 'local-backup'
 export const BACKUP_APP = 'happy-little-molly'
 
-<<<<<<< HEAD
 /**
  * 参与备份的仓库：**契约清单去掉设备状态**（10 张用户数据 + `users`），共 11 张。
  *
@@ -84,17 +65,6 @@ export const BACKUP_STORES: LocalStore[] = SCHEMA_STORES.filter(
  * 导入时不会写入，也不会出现在「共 N 条」里。
  */
 export const BACKUP_META_STORES: LocalStore[] = [...META_STORES]
-=======
-/** 参与备份的仓库：与字段契约同源，漏一张表都会被 `check:local-data` 抓到。 */
-export const BACKUP_STORES: LocalStore[] = [...SCHEMA_STORES]
-
-/**
- * 只作文件自洽用途、不计入「数据条数」的仓库。
- * `users` 由账号体系管理：备份里带一条只为让外键校验能通过、并显示来源邮箱，
- * 导入时不会写入，也不会出现在「共 N 条」里。
- */
-export const BACKUP_META_STORES: LocalStore[] = ['users']
->>>>>>> origin/main
 
 export type BackupRecord = Record<string, unknown>
 
@@ -113,11 +83,7 @@ export interface BackupFile {
   version: number
   db_version: number
   exported_at: string
-<<<<<<< HEAD
   source_user: { username: string }
-=======
-  source_user: { email: string }
->>>>>>> origin/main
   counts: Record<string, number>
   records: Partial<Record<LocalStore, BackupRecord[]>>
 }
@@ -127,13 +93,8 @@ export interface BackupSummary {
   total: number
   /** 每个仓库的条数，只列非空仓库。 */
   counts: Partial<Record<LocalStore, number>>
-<<<<<<< HEAD
   /** 来源账号（仅作展示：导入后数据归当前账号所有）。 */
   sourceUsername: string
-=======
-  /** 来源账号邮箱（仅作展示：导入后数据归当前账号所有）。 */
-  sourceEmail: string
->>>>>>> origin/main
   exportedAt: string
   dbVersion: number
   formatVersion: number
@@ -160,7 +121,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
-<<<<<<< HEAD
  * 从 `source_user` 里读出来源账号。格式版本 1 用的字段名是 `email`，v2 起是 `username`；
  * 两种都认——它只用于展示，认错不会影响导入结果的正确性。
  */
@@ -196,8 +156,6 @@ function normalizeLegacyUserRows(records: Record<string, unknown>, version: numb
 }
 
 /**
-=======
->>>>>>> origin/main
  * 引用完整性：每条外键都必须能在备份内找到父记录。
  *
  * 少了这一步，坏备份会「格式合法但导入后页面空白」——三餐项挂在不存在的一餐上，
@@ -216,7 +174,6 @@ const FOREIGN_KEYS: Array<{ store: LocalStore; field: string; parent: LocalStore
   { store: 'daily_meal_items', field: 'daily_meal_id', parent: 'daily_meals' },
 ]
 
-<<<<<<< HEAD
 /**
  * 数一份记录集合的条数。
  *
@@ -226,9 +183,6 @@ const FOREIGN_KEYS: Array<{ store: LocalStore; field: string; parent: LocalStore
  * 元数据仓库（`users`）不计入，与 `BackupSummary.total` 的注释一致。
  */
 export function countRecords(records: Partial<Record<LocalStore, BackupRecord[]>>): {
-=======
-function countRecords(records: Partial<Record<LocalStore, BackupRecord[]>>): {
->>>>>>> origin/main
   counts: Partial<Record<LocalStore, number>>
   total: number
 } {
@@ -252,15 +206,11 @@ function countRecords(records: Partial<Record<LocalStore, BackupRecord[]>>): {
  * `currentDbVersion` 传入当前数据库结构版本（可选）。只在两边不一致时给一条提醒，
  * 不因此拒绝导入——记录本身已经逐条按当前契约校验过了。
  */
-<<<<<<< HEAD
 export function parseBackup(
   text: string,
   currentDbVersion?: number,
   options: { allowEmpty?: boolean } = {},
 ): ValidatedBackup {
-=======
-export function parseBackup(text: string, currentDbVersion?: number): ValidatedBackup {
->>>>>>> origin/main
   if (typeof text !== 'string' || !text.trim()) fail('备份内容为空。')
 
   let raw: unknown
@@ -284,7 +234,6 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
   }
   if (typeof raw.exported_at !== 'string' || !raw.exported_at) fail('备份缺少导出时间。')
 
-<<<<<<< HEAD
   /** 格式版本 1 的登录名字段是 `email`，读入时归一（见 `normalizeLegacyUserRows`）。 */
   const legacy = raw.version < 2
   const sourceUsername = readSourceUsername(raw.source_user, legacy)
@@ -298,16 +247,6 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
       if (key === 'legacy_users') fail('新格式备份不得包含任何身份凭据。', 'legacy_users 不允许导入')
       fail('备份里出现了当前版本不认识的仓库。', `未知仓库 ${key}`)
     }
-=======
-  const sourceEmail =
-    isPlainObject(raw.source_user) && typeof raw.source_user.email === 'string' ? raw.source_user.email : ''
-
-  if (!isPlainObject(raw.records)) fail('备份缺少 records 字段。')
-
-  const known = new Set<string>(BACKUP_STORES)
-  for (const key of Object.keys(raw.records)) {
-    if (!known.has(key)) fail('备份里出现了当前版本不认识的仓库。', `未知仓库 ${key}`)
->>>>>>> origin/main
   }
 
   const records: Partial<Record<LocalStore, BackupRecord[]>> = {}
@@ -342,12 +281,9 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
   }
 
   const idsOf = (store: LocalStore): Set<string> => new Set((records[store] ?? []).map((row) => String(row.id)))
-<<<<<<< HEAD
   if ((records.users?.length ?? 0) !== 1) {
     fail('备份必须属于一个明确的来源账号。', 'users 元数据必须恰好包含一条资料记录')
   }
-=======
->>>>>>> origin/main
   for (const link of FOREIGN_KEYS) {
     const rows = records[link.store] ?? []
     if (!rows.length) continue
@@ -363,7 +299,6 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
     }
   }
 
-<<<<<<< HEAD
   // 选项引用与快照父链必须属于同一来源；缺失来源请显式使用 null。
   const planOwners = new Map((records.day_plans ?? []).map((row) => [String(row.id), String(row.user_id)]))
   const mealPlans = new Map((records.daily_meals ?? []).map((row) => [String(row.id), String(row.day_plan_id)]))
@@ -394,12 +329,6 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
   if (raw.version < 3) {
     warnings.push('旧备份中的密码字段已忽略；导入只恢复业务数据，不创建账号或登录会话。')
   }
-=======
-  const { counts, total } = countRecords(records)
-  if (!total) fail('备份里没有任何数据。')
-
-  const warnings: string[] = []
->>>>>>> origin/main
   if (typeof currentDbVersion === 'number' && raw.db_version !== currentDbVersion) {
     warnings.push(`备份由结构版本 ${raw.db_version} 的数据库导出，当前是 ${currentDbVersion}，导入后按当前结构使用。`)
   }
@@ -407,11 +336,7 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
   const summary: BackupSummary = {
     total,
     counts,
-<<<<<<< HEAD
     sourceUsername,
-=======
-    sourceEmail,
->>>>>>> origin/main
     exportedAt: raw.exported_at,
     dbVersion: raw.db_version,
     formatVersion: raw.version,
@@ -425,11 +350,7 @@ export function parseBackup(text: string, currentDbVersion?: number): ValidatedB
 export function buildBackup(input: {
   dbVersion: number
   exportedAt: string
-<<<<<<< HEAD
   sourceUsername: string
-=======
-  sourceEmail: string
->>>>>>> origin/main
   records: Partial<Record<LocalStore, BackupRecord[]>>
 }): BackupFile {
   const counts: Record<string, number> = {}
@@ -443,11 +364,7 @@ export function buildBackup(input: {
     version: BACKUP_FORMAT_VERSION,
     db_version: input.dbVersion,
     exported_at: input.exportedAt,
-<<<<<<< HEAD
     source_user: { username: input.sourceUsername },
-=======
-    source_user: { email: input.sourceEmail },
->>>>>>> origin/main
     counts,
     records: input.records,
   }
@@ -470,7 +387,6 @@ export function backupFileName(exportedAt: string): string {
   return `happy-little-molly-备份-${values.year}-${values.month}-${values.day}.json`
 }
 
-<<<<<<< HEAD
 /**
  * 供界面展示的一行摘要，例如「共 128 条（日计划 12 · 常用食物 6）」。
  *
@@ -483,10 +399,6 @@ export function describeBackupSummary(
   summary: { total: number; counts: Partial<Record<LocalStore, number>> },
   labelOf: (store: LocalStore) => string,
 ): string {
-=======
-/** 供界面展示的一行摘要，例如「共 128 条（日计划 12 · 常用食物 6）」。 */
-export function describeBackupSummary(summary: BackupSummary, labelOf: (store: LocalStore) => string): string {
->>>>>>> origin/main
   const parts = Object.entries(summary.counts)
     .filter(([, count]) => count > 0)
     .map(([store, count]) => `${labelOf(store as LocalStore)} ${count}`)
@@ -502,21 +414,13 @@ export const BACKUP_STORE_COUNT = BACKUP_STORES.length
  */
 export function summarizeRecords(
   records: Partial<Record<LocalStore, BackupRecord[]>>,
-<<<<<<< HEAD
   meta: { sourceUsername: string; exportedAt: string; dbVersion: number; formatVersion?: number; warnings?: string[] },
-=======
-  meta: { sourceEmail: string; exportedAt: string; dbVersion: number; formatVersion?: number; warnings?: string[] },
->>>>>>> origin/main
 ): BackupSummary {
   const { counts, total } = countRecords(records)
   return {
     total,
     counts,
-<<<<<<< HEAD
     sourceUsername: meta.sourceUsername,
-=======
-    sourceEmail: meta.sourceEmail,
->>>>>>> origin/main
     exportedAt: meta.exportedAt,
     dbVersion: meta.dbVersion,
     formatVersion: meta.formatVersion ?? BACKUP_FORMAT_VERSION,
@@ -527,8 +431,4 @@ export function summarizeRecords(
 /** 某仓库是否有字段契约。避免调用方自己拼 `RECORD_SCHEMAS[...]`。 */
 export function hasSchema(store: LocalStore): boolean {
   return Boolean(RECORD_SCHEMAS[store])
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> origin/main

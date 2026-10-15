@@ -1,8 +1,4 @@
 import type { BackupStore } from '../../services/api/backupFormat'
-<<<<<<< HEAD
-=======
-import { isCloudBackend } from '../../services/backend'
->>>>>>> origin/main
 import type { OptionKind } from '../../shared/types/options'
 
 /** 三个选项分区的标题，与 docs/02 选项页一致。 */
@@ -85,7 +81,6 @@ export const DELETE_CONFIRM = {
 export const ACCOUNT_TITLE = '账号与同步'
 
 /**
-<<<<<<< HEAD
  * 统一账号与本机缓存说明。上传条数与时间由同步卡片单独展示，
  * 离线使用仅限当前浏览器已经准备好的工作区。
  */
@@ -204,20 +199,6 @@ export const SYNC_REPLACE_TEXT = {
   restoreFailed: '从云端恢复失败。',
   summaryFailed: '读取云端条数失败。',
 }
-=======
- * 后端说明文案。两种后端下都**不显示任何同步时间或同步状态**：
- * 说得出「上次同步时间」就等于暗示同步已经成功，local 后端没有这个事实（docs/05 规则 6）。
- */
-export const ACCOUNT_TEXT = isCloudBackend
-  ? {
-      mode: '云端模式',
-      body: '数据保存在云端账号中，换设备登录同一账号即可看到相同的计划；浏览器本地不再保存业务数据。',
-    }
-  : {
-      mode: '本地模式',
-      body: '数据保存在当前浏览器中，账号与计划都未上传，也没有同步时间可显示。',
-    }
->>>>>>> origin/main
 
 // ---------------------------------------------------------------- 本地备份（L5）
 
@@ -226,7 +207,6 @@ export const BACKUP_TITLE = '本地数据备份'
 export const BACKUP_HINT =
   '备份只包含当前账号的数据，保存成一个 JSON 文件。清理浏览器数据、换电脑或换浏览器之前，先导出一份。'
 
-<<<<<<< HEAD
 /**
  * 仓库中文名，用于把「共 N 条（日计划 3 · 常用食物 6）」翻译成人能读的摘要。
  *
@@ -234,9 +214,6 @@ export const BACKUP_HINT =
  * （备份不含设备仓库），但仓库名表要覆盖 `LocalStore` 的全部成员，
  * 所以照样给它们一个说法，免得将来别处展示仓库名时出现英文表名。
  */
-=======
-/** 仓库中文名，用于把「共 N 条（日计划 3 · 常用食物 6）」翻译成人能读的摘要。 */
->>>>>>> origin/main
 export const BACKUP_STORE_LABEL: Record<BackupStore, string> = {
   users: '账号',
   day_plans: '日计划',
@@ -249,7 +226,6 @@ export const BACKUP_STORE_LABEL: Record<BackupStore, string> = {
   daily_supplements: '补剂执行',
   daily_exercise_items: '健身执行',
   routine_tasks: '家务',
-<<<<<<< HEAD
   sync_outbox: '待上传队列',
   sync_state: '同步状态',
   legacy_users: '旧账号隔离资料',
@@ -257,8 +233,6 @@ export const BACKUP_STORE_LABEL: Record<BackupStore, string> = {
   legacy_outbox: '旧待上传队列',
   workspace_state: '工作区状态',
   workspace_migrations: '工作区迁移记录',
-=======
->>>>>>> origin/main
 }
 
 export const BACKUP_EMPTY_NOTE = '当前账号还没有任何数据，导出的备份会没有内容可恢复。'
@@ -278,11 +252,7 @@ export const BACKUP_CLEAR_ACTION = '清空输入'
 /** 导入前确认：说清「替换」而不是「合并」，这是全流程里唯一会造成数据丢失的一步。 */
 export const BACKUP_IMPORT_CONFIRM = {
   title: '导入这份备份？',
-<<<<<<< HEAD
   body: '导入会用备份内容替换当前账号的全部数据，当前账号已有的计划与选项都会被清空，且无法撤销。隔离的旧数据不受影响。',
-=======
-  body: '导入会用备份内容替换当前账号的全部数据，当前账号已有的计划与选项都会被清空，且无法撤销。其他本地账号不受影响。',
->>>>>>> origin/main
   confirmLabel: '确认导入并替换',
 } as const
 
@@ -291,17 +261,6 @@ export const BACKUP_IMPORT_HINT =
 
 export const BACKUP_INVALID_CHANNEL = '请选择文件或粘贴备份内容。'
 
-<<<<<<< HEAD
-=======
-/**
- * 云端模式下的说明。不是「暂时不可用」，而是**这个功能在后端层面不成立**：
- * 它操作的是浏览器 IndexedDB，云端模式下数据在 Supabase。
- * 所以这里直接讲清楚去哪儿找备份，而不是让用户点一个必然报错的按钮。
- */
-export const BACKUP_UNAVAILABLE_NOTE =
-  '当前是云端模式，业务数据保存在云端账号里，没有可导出的本地库：这里的导出 / 导入只在本地模式下可用。云端数据请使用云端数据库自身的备份能力。'
-
->>>>>>> origin/main
 // ---------------------------------------------------------------- 存储与安装（PWA）
 
 export const STORAGE_TITLE = '存储与安装'
@@ -348,7 +307,6 @@ export const STORAGE_INSTALL_ACCEPTED_NOTE = '已开始安装，完成后从主�
 export const STORAGE_INSTALL_DISMISSED_NOTE = '这次没有安装。想装的时候再点一次即可。'
 
 /**
-<<<<<<< HEAD
  * 「为什么值得装」。事实只有一个版本：数据真的在这台设备的浏览器里。
  *
  * 旧的「云端模式」分支随 S1 一起去掉了——数据落点恒为本地，
@@ -356,13 +314,3 @@ export const STORAGE_INSTALL_DISMISSED_NOTE = '这次没有安装。想装的时
  */
 export const STORAGE_WHY =
   '这个应用的数据保存在这台设备的浏览器里。没有安装到主屏幕时，iOS 会在连续 7 天没有打开之后清掉本地数据；添加到主屏幕的 Web App 使用独立存储分区，不计入那个计时。安装也只是降低风险：手动清理浏览器数据、卸载浏览器一样会丢，重要数据请用上面的备份导出留一份。'
-=======
- * 「为什么值得装」。本地模式与云端模式的事实完全不同，必须分开写：
- * 本地模式下数据真的在这台设备的浏览器里，iOS 的 7 天无交互清理规则会把它清掉；
- * 云端模式下本地只剩登录会话，装不装都不影响数据本身。
- */
-export const STORAGE_WHY = isCloudBackend
-  ? '业务数据保存在云端账号里，浏览器本地只留着登录会话。安装到主屏幕可以让它像一个应用那样打开，但不会把云端数据搬到本地，也不改变任何同步行为。'
-  : '这个应用的数据保存在这台设备的浏览器里。没有安装到主屏幕时，iOS 会在连续 7 天没有打开之后清掉本地数据；添加到主屏幕的 Web App 使用独立存储分区，不计入那个计时。安装也只是降低风险：手动清理浏览器数据、卸载浏览器一样会丢，重要数据请用上面的备份导出留一份。'
-
->>>>>>> origin/main

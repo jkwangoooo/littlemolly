@@ -1,18 +1,10 @@
 import { useCallback, useState } from 'react'
-<<<<<<< HEAD
 import { currentUser } from '../../services/api/authService'
-=======
->>>>>>> origin/main
 import type { AnyOption, OptionKind, SupplementPeriod } from '../../shared/types/options'
 import { SUPPLEMENT_PERIODS } from '../../shared/types/options'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { useSaveRunner } from '../../shared/hooks/useSaveRunner'
 import { SAVE_STATUS_PREFIX, SAVE_STATUS_TEXT } from '../../shared/saveStatus'
-<<<<<<< HEAD
-=======
-import { currentUser, signOut } from '../../services/api/authService'
-import { supportsLocalBackup } from '../../services/backend'
->>>>>>> origin/main
 import {
   createOption,
   deleteOption,
@@ -23,20 +15,11 @@ import {
 } from '../../services/api/optionService'
 import { BackupCard } from './components/BackupCard'
 import { AccountCard } from './components/AccountCard'
-<<<<<<< HEAD
 import { SyncCard } from './components/SyncCard'
 import { OptionEditor } from './components/OptionEditor'
 import { OptionListScreen, type OptionListGroup } from './components/OptionListScreen'
 import { OptionsOverview } from './components/OptionsOverview'
 import { StorageCard } from './components/StorageCard'
-=======
-import { OptionEditor } from './components/OptionEditor'
-import { OptionListScreen, type OptionListGroup } from './components/OptionListScreen'
-import { OptionsOverview, type OptionsSection } from './components/OptionsOverview'
-import { StorageCard } from './components/StorageCard'
-import { BottomNav } from '../../shared/components/BottomNav'
-import type { View } from '../../shared/types/view'
->>>>>>> origin/main
 import {
   ACCOUNT_TITLE,
   BACKUP_TITLE,
@@ -56,13 +39,8 @@ type EditorState = { kind: OptionKind; mode: 'create' | 'rename'; option: AnyOpt
 
 /**
  * 选项页当前的层级。概览只放入口，三类清单与备份 / 存储各有自己的子屏（docs/17 §4）。
-<<<<<<< HEAD
  * 用组件内状态而不是路由：项目没有路由库（docs/01），日程入口保持在底部，
  * 子屏是选项内容内部的层级。
-=======
- * 用组件内状态而不是路由：项目没有路由库（docs/01），底部三个一级入口保持不变，
- * 子屏是「选项」这个二级入口内部的层级。
->>>>>>> origin/main
  */
 type OptionsView = 'overview' | OptionKind | 'backup' | 'storage' | 'account'
 
@@ -71,7 +49,6 @@ type OptionsView = 'overview' | OptionKind | 'backup' | 'storage' | 'account'
  * 只负责编排：读取清单、串起写入与确认弹层、组装概览与子屏。
  * 校验与落库都在服务层，失败时保留弹层内容并显示具体原因。
  */
-<<<<<<< HEAD
 export function PreferencesScreen({ onBack }: {
   onBack: () => void
 }) {
@@ -79,24 +56,12 @@ export function PreferencesScreen({ onBack }: {
   const { lists, selectable, loading, loadError, reload } = useOptionLists(view)
   const { status, saveError, canRetry, runSave, retryLastSave, resetForDateChange } = useSaveRunner()
   const [username] = useState(() => currentUser()?.username ?? '')
-=======
-export function PreferencesScreen({
-  onNavigate,
-}: {
-  onNavigate: (view: View) => void
-}) {
-  const { lists, selectable, loading, loadError, reload } = useOptionLists()
-  const { status, saveError, canRetry, runSave, retryLastSave } = useSaveRunner()
-  const [email] = useState(() => currentUser()?.email ?? '')
-  const [view, setView] = useState<OptionsView>('overview')
->>>>>>> origin/main
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [pendingDisable, setPendingDisable] = useState<OptionTarget | null>(null)
   const [pendingDelete, setPendingDelete] = useState<OptionTarget | null>(null)
 
   /** 所有写入都经这里：成功才 reload 并让调用方关闭弹层，失败保留弹层与输入。 */
   const mutate = useCallback(
-<<<<<<< HEAD
     async (action: (isCurrent: () => boolean) => Promise<unknown>): Promise<boolean> => {
       let ok = false
       await runSave(async (isCurrent) => {
@@ -104,14 +69,6 @@ export function PreferencesScreen({
         if (!isCurrent()) return
         await reload()
         ok = isCurrent()
-=======
-    async (action: () => Promise<unknown>): Promise<boolean> => {
-      let ok = false
-      await runSave(async () => {
-        await action()
-        await reload()
-        ok = true
->>>>>>> origin/main
       })
       return ok
     },
@@ -127,16 +84,10 @@ export function PreferencesScreen({
    */
   const commitReorder = useCallback(
     async (kind: OptionKind, id: string, delta: number) => {
-<<<<<<< HEAD
       await mutate(async (isCurrent) => {
         const step = delta > 0 ? 1 : -1
         for (let index = 0; index < Math.abs(delta); index += 1) {
           if (!isCurrent()) return
-=======
-      await mutate(async () => {
-        const step = delta > 0 ? 1 : -1
-        for (let index = 0; index < Math.abs(delta); index += 1) {
->>>>>>> origin/main
           const moved = await moveOption(kind, id, step)
           if (!moved) break
         }
@@ -152,11 +103,7 @@ export function PreferencesScreen({
       target.mode === 'create'
         ? await mutate(() => createOption(target.kind, { name, period }))
         : await mutate(() => renameOption(target.kind, target.option?.id ?? '', name))
-<<<<<<< HEAD
     if (ok) setEditor((current) => current === target ? null : current)
-=======
-    if (ok) setEditor(null)
->>>>>>> origin/main
   }
 
   async function confirmDisableOption() {
@@ -212,7 +159,6 @@ export function PreferencesScreen({
           ? ACCOUNT_TITLE
           : ''
 
-<<<<<<< HEAD
   function changeView(next: OptionsView) {
     resetForDateChange()
     setEditor(null)
@@ -223,14 +169,6 @@ export function PreferencesScreen({
 
   return (
     <main className="page options-page">
-=======
-  function openSection(section: OptionsSection) {
-    setView(section)
-  }
-
-  return (
-    <main className="page">
->>>>>>> origin/main
       <header className="topbar">
         {view === 'overview' ? (
           <div>
@@ -243,11 +181,7 @@ export function PreferencesScreen({
               className="icon-button"
               type="button"
               aria-label={OPTIONS_BACK_LABEL}
-<<<<<<< HEAD
               onClick={() => changeView('overview')}
-=======
-              onClick={() => setView('overview')}
->>>>>>> origin/main
             >
               ‹
             </button>
@@ -257,7 +191,6 @@ export function PreferencesScreen({
             </div>
           </div>
         )}
-<<<<<<< HEAD
         <button className="secondary" type="button" onClick={() => {
           resetForDateChange()
           onBack()
@@ -265,11 +198,6 @@ export function PreferencesScreen({
       </header>
 
       <section className="stack page-scroll page-content">
-=======
-      </header>
-
-      <section className="panel stack page-scroll">
->>>>>>> origin/main
         <p className={`status ${status}`} aria-live="polite">
           {SAVE_STATUS_PREFIX}
           {SAVE_STATUS_TEXT[status]}
@@ -309,13 +237,8 @@ export function PreferencesScreen({
                   selectable={selectable}
                   total={totalOptions}
                   busy={busy}
-<<<<<<< HEAD
                   username={username}
                   onOpen={changeView}
-=======
-                  email={email}
-                  onOpen={openSection}
->>>>>>> origin/main
                   onSeed={() => void mutate(() => seedExampleOptionsForCurrentUser())}
                 />
               </>
@@ -337,25 +260,17 @@ export function PreferencesScreen({
             ) : null}
 
             {view === 'backup' ? (
-<<<<<<< HEAD
               <BackupCard busy={busy} runSave={runSave} onImported={reload} onInputChange={resetForDateChange} />
-=======
-              <BackupCard available={supportsLocalBackup} busy={busy} runSave={runSave} onImported={reload} />
->>>>>>> origin/main
             ) : null}
 
             {view === 'storage' ? <StorageCard /> : null}
 
-<<<<<<< HEAD
             {view === 'account' ? (
               <>
                 <AccountCard username={username} />
                 <SyncCard username={username} />
               </>
             ) : null}
-=======
-            {view === 'account' ? <AccountCard email={email} onSignOut={() => void signOut()} /> : null}
->>>>>>> origin/main
           </>
         )}
       </section>
@@ -398,10 +313,6 @@ export function PreferencesScreen({
         </ConfirmDialog>
       ) : null}
 
-<<<<<<< HEAD
-=======
-      <BottomNav current="options" onNavigate={onNavigate} />
->>>>>>> origin/main
     </main>
   )
 }

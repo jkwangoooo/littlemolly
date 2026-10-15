@@ -1,9 +1,5 @@
 import type { DataError } from '../../shared/errors'
-<<<<<<< HEAD
 import type { LocalStore, UserDataStore } from './localDb'
-=======
-import type { LocalStore } from './localDb'
->>>>>>> origin/main
 
 /**
  * 本地记录的字段契约（L5 加固）。
@@ -43,7 +39,6 @@ const MEAL_TYPE: FieldRule = { type: 'string', oneOf: ['breakfast', 'lunch', 'di
 const PERIOD: FieldRule = { type: 'string', oneOf: ['morning', 'noon', 'evening'] }
 const DECISION: FieldRule = { type: 'string', oneOf: ['undecided', 'exercise', 'rest'] }
 const ROUTINE_KIND: FieldRule = { type: 'string', oneOf: ['mop', 'laundry'] }
-<<<<<<< HEAD
 /** 允许为 null 的自由文本（例如「还没有失败过」的 `last_error`）。 */
 const OPTIONAL_TEXT: FieldRule = { type: 'string', nullable: true }
 /** 允许为 null 的时间戳（例如「还没推送过」的 `last_push_at`）。 */
@@ -116,15 +111,6 @@ export function isSyncableStore(storeName: LocalStore): storeName is UserDataSto
  */
 export const RECORD_SCHEMAS: Record<LocalStore, Record<string, FieldRule>> = {
   users: { id: TEXT, username: TEXT, created_at: TIMESTAMP },
-=======
-
-/**
- * 11 张对象仓库的字段契约。
- * 时间字段统一用 ISO 字符串；`note` / `morning_focus` 这类自由文本允许空串。
- */
-export const RECORD_SCHEMAS: Record<LocalStore, Record<string, FieldRule>> = {
-  users: { id: TEXT, email: TEXT, password_hash: TEXT, created_at: TIMESTAMP },
->>>>>>> origin/main
 
   day_plans: {
     id: TEXT,
@@ -212,7 +198,6 @@ export const RECORD_SCHEMAS: Record<LocalStore, Record<string, FieldRule>> = {
   },
 
   routine_tasks: { id: TEXT, day_plan_id: TEXT, kind: ROUTINE_KIND, title: TEXT, completed: FLAG },
-<<<<<<< HEAD
 
   /**
    * 出站队列（S2）。**只记「哪条记录变了」，不存数据副本**：
@@ -307,8 +292,6 @@ export const RECORD_SCHEMAS: Record<LocalStore, Record<string, FieldRule>> = {
     started_at: TIMESTAMP,
     completed_at: TIMESTAMP,
   },
-=======
->>>>>>> origin/main
 }
 
 /** `YYYY-MM-DD`，并且必须能被 Date 解析成真实日期（排除 2026-02-30 这类）。 */
@@ -406,7 +389,6 @@ export function sanitizeRecord(
   return { value: clean, dropped }
 }
 
-<<<<<<< HEAD
 /**
  * 契约覆盖的仓库清单，供回归脚本断言「不漏表」。
  *
@@ -415,7 +397,3 @@ export function sanitizeRecord(
  * `check:sync` 再断言一次「两者相等」，避免将来有人只改了一边。
  */
 export const SCHEMA_STORES: LocalStore[] = Object.keys(RECORD_SCHEMAS) as LocalStore[]
-=======
-/** 契约覆盖的仓库清单，供回归脚本断言「不漏表」。 */
-export const SCHEMA_STORES: LocalStore[] = Object.keys(RECORD_SCHEMAS) as LocalStore[]
->>>>>>> origin/main

@@ -33,13 +33,9 @@ const MANIFEST_URL = new URL('manifest.webmanifest', SCOPE_URL).href
 
 /** 构建戳来自注册 URL；没有就是有人手动注册了裸的 /sw.js，退回一个固定名。 */
 const BUILD_STAMP = new URL(self.location.href).searchParams.get('build') || 'manual'
-<<<<<<< HEAD
 const AUTH_CONFIGURED = new URL(self.location.href).searchParams.get('auth') === '1'
 const SHELL_CACHE = `${CACHE_PREFIX}${BUILD_STAMP}`
 const ASSET_MANIFEST_URL = new URL(`assets/shell-assets-${BUILD_STAMP}.json`, SCOPE_URL).href
-=======
-const SHELL_CACHE = `${CACHE_PREFIX}${BUILD_STAMP}`
->>>>>>> origin/main
 
 /** 网络优先的超时上限：超过它就先拿缓存把页面渲染出来，网络请求继续在后台跑。 */
 const NETWORK_FIRST_TIMEOUT_MS = 3000
@@ -55,33 +51,6 @@ const SHELL_ASSETS = [
   new URL('icons/icon-maskable-512.png', SCOPE_URL).href,
 ]
 
-<<<<<<< HEAD
-=======
-/**
- * 从 index.html 里解析出构建产物地址。
- * 产物文件名带内容哈希（index-XXXX.js），没法在源码里写死，只能装的时候读一遍首页。
- * 顺带把首页本身也存下来：断网时的导航请求就是靠它渲染的。
- */
-function extractAssetUrls(html) {
-  const urls = new Set()
-  const patterns = [
-    /<script[^>]+src="([^"]+)"/g,
-    /<link[^>]+rel="(?:stylesheet|icon|apple-touch-icon|manifest)"[^>]*href="([^"]+)"/g,
-  ]
-  for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
-      try {
-        const url = new URL(match[1], SCOPE_URL)
-        if (url.origin === SCOPE_URL.origin) urls.add(url.href)
-      } catch {
-        // 地址写坏了就跳过：宁可少缓存一个资源，也不能让 install 整个失败。
-      }
-    }
-  }
-  return [...urls]
-}
-
->>>>>>> origin/main
 /** 单个资源取不到时不能让 install 失败——少一个图标也要能装上。 */
 async function precacheOne(cache, url) {
   try {
@@ -92,7 +61,6 @@ async function precacheOne(cache, url) {
   }
 }
 
-<<<<<<< HEAD
 function indexMatchesAssets(html, urls) {
   const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)]
   const styles = [...html.matchAll(/<link[^>]+rel="(?:stylesheet|modulepreload)"[^>]*href="([^"]+)"/g)]
@@ -136,24 +104,6 @@ async function precacheShell() {
   }))
   await cache.put(ASSET_MANIFEST_URL, manifestResponse)
   await Promise.all(SHELL_ASSETS.filter((url) => !urls.has(url)).map((url) => precacheOne(cache, url)))
-=======
-async function precacheShell() {
-  const cache = await caches.open(SHELL_CACHE)
-  const urls = new Set(SHELL_ASSETS)
-
-  try {
-    const response = await fetch(INDEX_URL, { cache: 'no-cache' })
-    if (response.ok) {
-      const html = await response.clone().text()
-      await cache.put(INDEX_URL, response)
-      for (const url of extractAssetUrls(html)) urls.add(url)
-    }
-  } catch {
-    // 装的时候恰好断网：下面的 precacheOne 会逐个失败，缓存为空但 SW 仍然可用。
-  }
-
-  await Promise.all([...urls].map((url) => precacheOne(cache, url)))
->>>>>>> origin/main
 }
 
 self.addEventListener('install', (event) => {
@@ -230,12 +180,8 @@ async function networkFirst(request) {
   }
 
   if (response && response.ok) {
-<<<<<<< HEAD
     // 首页只在安装时与本构建资源核验后写入，不能用新部署的 HTML 覆盖旧离线入口。
     if (key && new URL(key).pathname !== INDEX_PATH) {
-=======
-    if (key) {
->>>>>>> origin/main
       const copy = response.clone()
       // 缓存写入失败不该影响这次响应，因此单独 catch。
       void cache.put(key, copy).catch(() => {})

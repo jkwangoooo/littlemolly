@@ -7,11 +7,7 @@ export const MEAL_NAMES: Record<MealType, string> = {
 }
 
 /** 五项准备全部完成时的反馈文案。 */
-<<<<<<< HEAD
 export const PREPARE_COMPLETE_TEXT = '明天的准备都做好了。'
-=======
-export const PREPARE_COMPLETE_TEXT = '美好的一天结束啦，迎接下一天！'
->>>>>>> origin/main
 
 export const HISTORY_READONLY_TEXT = '历史计划仅供查看'
 
@@ -24,11 +20,7 @@ export const LOADING_TEXT = '正在读取这一天的计划…'
  */
 export const EMPTY_DAY_TEXT = {
   title: '这一天还没有计划',
-<<<<<<< HEAD
   body: '从一件小事开始就好，不着急。',
-=======
-  body: '勾选下面的任意一项，或打开三餐、补剂、晨间、健身面板填写内容，就算开始准备这一天了。不填也没关系。',
->>>>>>> origin/main
 } as const
 
 /** 自定义事项的空状态文案，可写与只读分开，避免在只读日期提示用户去添加。 */
@@ -39,13 +31,8 @@ export const EMPTY_TASKS_TEXT = {
 
 /** 模式切换二次确认文案，与 docs/00 产品范围一致。 */
 export const MODE_SWITCH_MESSAGE = {
-<<<<<<< HEAD
   toRest: '这一天会改为休息日。',
   toWork: '这一天会改为工作日。',
-=======
-  toRest: '恭喜幸福小Molly，今天不上班',
-  toWork: '幸福小Molly，今天要上班哦',
->>>>>>> origin/main
 } as const
 
 export const MODE_LABEL = { work: '工作日', rest: '休息日' } as const
@@ -106,21 +93,14 @@ export const EXERCISE_PANEL = {
 
 export const EXECUTE_TITLE = '今日计划'
 export const EXECUTE_SUPPLEMENT_TITLE = '早中晚补剂'
-<<<<<<< HEAD
 export const EXECUTE_EMPTY = '这一天还没有安排内容。'
-=======
-export const EXECUTE_EMPTY = '这一天还没有安排内容，先去「准备明天」填一填。'
->>>>>>> origin/main
 export const EXECUTE_MORNING_LABEL = '晨间专注 5:00-6:30'
 export const EXECUTE_MEAL_EMPTY = '未安排'
 export const EXECUTE_EXERCISE_LABEL = { exercise: '健身', rest: '不健身' } as const
 export const EXECUTE_EXERCISE_DECIDED = '已决定'
 
-<<<<<<< HEAD
 export const COMPLETION_FEEDBACK = ['完成，今天轻松一点了。', '好，这件事处理好了。', '不错，继续按自己的节奏来。'] as const
 
-=======
->>>>>>> origin/main
 // ---------------------------------------------------------------- 休息日家务
 
 /** 休息日家务区块标题。 */

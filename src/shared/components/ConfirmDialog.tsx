@@ -9,11 +9,8 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = '确认',
-<<<<<<< HEAD
   confirmDisabled = false,
   cancelDisabled = false,
-=======
->>>>>>> origin/main
   onConfirm,
   onCancel,
   children,
@@ -21,11 +18,8 @@ export function ConfirmDialog({
   title: string
   description?: ReactNode
   confirmLabel?: string
-<<<<<<< HEAD
   confirmDisabled?: boolean
   cancelDisabled?: boolean
-=======
->>>>>>> origin/main
   onConfirm: () => void
   onCancel: () => void
   children?: ReactNode
@@ -45,17 +39,10 @@ export function ConfirmDialog({
         {description ? <p>{description}</p> : null}
         {children}
         <div className="actions">
-<<<<<<< HEAD
           <button type="button" disabled={confirmDisabled} onClick={onConfirm}>
             {confirmLabel}
           </button>
           <button className="secondary" type="button" disabled={cancelDisabled} onClick={onCancel}>
-=======
-          <button type="button" onClick={onConfirm}>
-            {confirmLabel}
-          </button>
-          <button className="secondary" type="button" onClick={onCancel}>
->>>>>>> origin/main
             取消
           </button>
         </div>

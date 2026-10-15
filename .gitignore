@@ -1,6 +1,5 @@
 node_modules/
 dist/
-<<<<<<< HEAD
 .workbuddy/
 # 本机智能体工作目录（验收截图、工作记忆）。与 .workbuddy/ 同类，不进公开仓库。
 .workbuddy-ai/
@@ -17,17 +16,3 @@ supabase/.temp/
 .vercel
 .env*
 !.env.example
-=======
-# 云端构建产物（npx vite build --mode cloud --outDir dist-cloud）。
-# 与 dist/ 分开是为了能同时存在、便于核对两种产物的互斥检索。
-dist-cloud/
-.workbuddy/
-# 本机智能体工作目录（验收截图、工作记忆）。与 .workbuddy/ 同类，不进公开仓库。
-.workbuddy-ai/
-.env
-.env.local
-.env.*.local
-!.env.example
-*.log
-.DS_Store
->>>>>>> origin/main

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { readLegacySession, readSession, subscribeAuth } from '../session'
 import {
   compactionVictims,
@@ -23,20 +22,6 @@ export const DB_VERSION = 8
  * 5. 在 `recordSchemas.ts` 的 `STORE_KIND` 与 `RECORD_SCHEMAS` 里各补一条
  *    （前者决定它属于用户数据 / 元数据 / 设备状态，后者是它的字段契约；
  *    两张表都由 `Record<LocalStore, ...>` 兜底，漏一张就编译不过）。
-=======
-import { assertRecord } from './recordSchemas'
-
-const DB_NAME = 'happy-little-molly-local'
-/** 当前结构版本。备份文件里会记下它，便于以后判断「这份备份是哪一代的库导出的」。 */
-export const DB_VERSION = 4
-
-/**
- * 本地对象仓库契约。新增仓库时必须同时做四件事，缺一不可：
- * 1. 把名字加进 LocalStore（否则类型不放行）；
- * 2. 在 STORES 里补一条定义（keyPath 与索引）；
- * 3. 提升 DB_VERSION；
- * 4. 在 MIGRATIONS 里登记该版本新增的仓库。
->>>>>>> origin/main
  * 只做第 1 步会导致类型放行但运行时报错。
  */
 export type LocalStore =
@@ -51,7 +36,6 @@ export type LocalStore =
   | 'daily_supplements'
   | 'daily_exercise_items'
   | 'routine_tasks'
-<<<<<<< HEAD
   | 'sync_outbox'
   | 'sync_state'
   | 'legacy_users'
@@ -75,18 +59,12 @@ export type UserDataStore = Exclude<
   | 'workspace_state'
   | 'workspace_migrations'
 >
-=======
->>>>>>> origin/main
 
 type IndexDefinition = { name: string; keyPath: string | string[]; unique?: boolean }
 type StoreDefinition = { name: LocalStore; keyPath: string; indexes?: IndexDefinition[] }
 
 const STORES: StoreDefinition[] = [
-<<<<<<< HEAD
   { name: 'users', keyPath: 'id' },
-=======
-  { name: 'users', keyPath: 'id', indexes: [{ name: 'email', keyPath: 'email', unique: true }] },
->>>>>>> origin/main
   {
     name: 'day_plans',
     keyPath: 'id',
@@ -115,7 +93,6 @@ const STORES: StoreDefinition[] = [
   { name: 'daily_supplements', keyPath: 'id', indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }] },
   { name: 'daily_exercise_items', keyPath: 'id', indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }] },
   { name: 'routine_tasks', keyPath: 'id', indexes: [{ name: 'day_plan_id', keyPath: 'day_plan_id' }] },
-<<<<<<< HEAD
   // ---- 设备状态（S2）：不进备份、不同步，只服务「待上传队列」与「上次同步到哪儿」 ----
   {
     name: 'sync_outbox',
@@ -143,8 +120,6 @@ const STORES: StoreDefinition[] = [
     keyPath: 'id',
     indexes: [{ name: 'source_owner', keyPath: 'source_owner', unique: true }],
   },
-=======
->>>>>>> origin/main
 ]
 
 /**
@@ -157,11 +132,8 @@ type Migration = { stores?: LocalStore[]; migrate?: (tx: IDBTransaction) => void
 /** 老库把三餐内容与健身内容存成自由文本，这两个形状只用于迁移读取。 */
 type LegacyMeal = { id: string; plan_content?: string }
 type LegacyPlan = { id: string; exercise_decision?: string; exercise_content?: string }
-<<<<<<< HEAD
 /** v5 之前的 `users` 用 `email` 当登录名，这个形状只用于迁移读取。 */
 type LegacyUser = { id: string; email?: string; username?: string }
-=======
->>>>>>> origin/main
 
 /**
  * v3 数据搬迁：把老库的自由文本转成「名称快照项」。
@@ -210,7 +182,6 @@ function backfillSnapshots(tx: IDBTransaction): void {
   }
 }
 
-<<<<<<< HEAD
 /**
  * v5 数据搬迁：登录凭据从「邮箱 + 密码」换成「账号 + 密码」，`users` 的字段与唯一索引一起换名。
  *
@@ -360,8 +331,6 @@ function isolateLegacyIdentity(tx: IDBTransaction): void {
   }
 }
 
-=======
->>>>>>> origin/main
 /** 版本号 → 该版本的改动。升级时按版本升序补齐，已存在的跳过。**只追加，不改写旧版本。** */
 const MIGRATIONS: Record<number, Migration> = {
   1: { stores: ['users', 'day_plans', 'daily_meals', 'custom_tasks'] },
@@ -371,7 +340,6 @@ const MIGRATIONS: Record<number, Migration> = {
     migrate: backfillSnapshots,
   },
   4: { stores: ['routine_tasks'] },
-<<<<<<< HEAD
   5: { migrate: renameUsersToUsername },
   /**
    * v6 只新建两张**设备状态**表，没有数据搬迁。
@@ -397,8 +365,6 @@ const MIGRATIONS: Record<number, Migration> = {
     stores: ['legacy_users', 'legacy_sync_state', 'legacy_outbox', 'workspace_state', 'workspace_migrations'],
     migrate: isolateLegacyIdentity,
   },
-=======
->>>>>>> origin/main
 }
 
 /**
@@ -496,7 +462,6 @@ export function newId(): string {
  * 若没人接，浏览器不会把它传给事务，事务照样 complete——「写失败却被当成成功」。
  * 这里把请求错误转成 reject，让调用方看到真实原因。
  */
-<<<<<<< HEAD
 function guardRequest(request: IDBRequest, fallback: string, guard?: () => void): Promise<void> {
   return new Promise((resolve, reject) => {
     request.onerror = () => reject(request.error ?? new Error(fallback))
@@ -625,15 +590,6 @@ function notifyOutboxChange(): void {
   globalThis.dispatchEvent?.(new Event(OUTBOX_CHANGE_EVENT))
 }
 
-=======
-function guardRequest(request: IDBRequest, fallback: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    request.onerror = () => reject(request.error ?? new Error(fallback))
-    request.onsuccess = () => resolve()
-  })
-}
-
->>>>>>> origin/main
 export async function getAll<T>(storeName: LocalStore): Promise<T[]> {
   const db = await database()
   return new Promise((resolve, reject) => {
@@ -644,7 +600,6 @@ export async function getAll<T>(storeName: LocalStore): Promise<T[]> {
 }
 
 /**
-<<<<<<< HEAD
  * 读一条记录（S4）。
  *
  * 推送队列里只记「哪条记录变了」的引用，所以推送前必须按 `record_id` 回主表读**当前**行
@@ -701,32 +656,6 @@ export async function remove(
   options: WriteOptions = {},
 ): Promise<void> {
   await runTransaction({ remove: [{ store: storeName, id }] }, options)
-=======
- * 写入一条记录。入库前先过一遍字段契约（L5）：缺字段、类型错、枚举越界、
- * 多出未定义字段都会被拒，避免坏数据落库后界面才崩。
- */
-export async function put<T extends { id: string }>(storeName: LocalStore, value: T): Promise<T> {
-  assertRecord(storeName, value)
-  const db = await database()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(storeName, 'readwrite')
-    transaction.onerror = () => reject(transaction.error ?? new Error('写入本地数据库失败。'))
-    transaction.onabort = () => reject(transaction.error ?? new Error('写入本地数据库被中止。'))
-    void guardRequest(transaction.objectStore(storeName).put(value), '写入本地数据库失败。').catch(reject)
-    transaction.oncomplete = () => resolve(value)
-  })
-}
-
-export async function remove(storeName: LocalStore, id: string): Promise<void> {
-  const db = await database()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(storeName, 'readwrite')
-    transaction.onerror = () => reject(transaction.error ?? new Error('删除本地数据失败。'))
-    transaction.onabort = () => reject(transaction.error ?? new Error('删除本地数据被中止。'))
-    void guardRequest(transaction.objectStore(storeName).delete(id), '删除本地数据失败。').catch(reject)
-    transaction.oncomplete = () => resolve()
-  })
->>>>>>> origin/main
 }
 
 // ---------------------------------------------------------------- 跨仓库事务
@@ -746,7 +675,6 @@ export type TransactionWork = {
  *
  * 注意：事务是「按需提交」的——中途一旦 await 了事务外的 promise，事务就会先提交，
  * 因此这里的写入必须在同一个同步段里全部发出。查询请先在事务外做完。
-<<<<<<< HEAD
  *
  * S2 起：`put` / `remove` 会各记一条队列记录（批内同键去重，后写覆盖先写），
  * 与业务写入在同一个事务里。`clear` 例外——它删的是整张表，语义上不属于「某条记录变了」，
@@ -1011,33 +939,4 @@ export async function readModifyWrite<T extends { id: string }>(input: {
   })
   if (!written) throw new Error('本地记录尚未写入。')
   return written
-=======
- */
-export async function runTransaction(work: TransactionWork): Promise<void> {
-  const names = [
-    ...new Set([...(work.clear ?? []), ...(work.put ?? []).map((item) => item.store), ...(work.remove ?? []).map((item) => item.store)]),
-  ]
-  if (!names.length) return
-
-  for (const item of work.put ?? []) assertRecord(item.store, item.value)
-
-  const db = await database()
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(names, 'readwrite')
-    const failure = new Error('写入本地数据库失败。')
-    transaction.onerror = () => reject(transaction.error ?? failure)
-    transaction.onabort = () => reject(transaction.error ?? failure)
-    transaction.oncomplete = () => resolve()
-
-    for (const storeName of work.clear ?? []) {
-      void guardRequest(transaction.objectStore(storeName).clear(), '清空本地数据失败。').catch(reject)
-    }
-    for (const item of work.remove ?? []) {
-      void guardRequest(transaction.objectStore(item.store).delete(item.id), '删除本地数据失败。').catch(reject)
-    }
-    for (const item of work.put ?? []) {
-      void guardRequest(transaction.objectStore(item.store).put(item.value), '写入本地数据库失败。').catch(reject)
-    }
-  })
->>>>>>> origin/main
 }

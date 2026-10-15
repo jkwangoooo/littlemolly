@@ -1,9 +1,6 @@
 import type { CustomTask } from '../../../shared/types/dayPlan'
 import { EMPTY_TASKS_TEXT } from '../dayPlanLabels'
-<<<<<<< HEAD
 import { CollapsibleSection } from './CollapsibleSection'
-=======
->>>>>>> origin/main
 
 /**
  * 自定义时间线事项，按时间升序显示。历史日期只渲染内容，不渲染任何编辑入口。
@@ -11,11 +8,8 @@ import { CollapsibleSection } from './CollapsibleSection'
 export function CustomTaskList({
   tasks,
   writable,
-<<<<<<< HEAD
   collapsed,
   onToggleSection,
-=======
->>>>>>> origin/main
   onAdd,
   onEdit,
   onRequestDelete,
@@ -23,18 +17,14 @@ export function CustomTaskList({
 }: {
   tasks: CustomTask[]
   writable: boolean
-<<<<<<< HEAD
   collapsed: boolean
   onToggleSection: () => void
-=======
->>>>>>> origin/main
   onAdd: () => void
   onEdit: (task: CustomTask) => void
   onRequestDelete: (task: CustomTask) => void
   onToggle: (id: string) => void
 }) {
   return (
-<<<<<<< HEAD
     <CollapsibleSection
       section="tasks"
       title="自定义事项"
@@ -47,18 +37,6 @@ export function CustomTaskList({
         </button>
       ) : null}
     >
-=======
-    <>
-      <div className="timeline-head">
-        <h3>自定义事项</h3>
-        {writable ? (
-          <button type="button" onClick={onAdd}>
-            ＋ 添加事项
-          </button>
-        ) : null}
-      </div>
-
->>>>>>> origin/main
       {tasks.length === 0 ? (
         <p className="muted empty-note">
           {writable ? EMPTY_TASKS_TEXT.writable : EMPTY_TASKS_TEXT.readonly}
@@ -92,10 +70,6 @@ export function CustomTaskList({
           ) : null}
         </div>
       ))}
-<<<<<<< HEAD
     </CollapsibleSection>
-=======
-    </>
->>>>>>> origin/main
   )
 }

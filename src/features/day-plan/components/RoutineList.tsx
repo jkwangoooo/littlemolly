@@ -1,9 +1,6 @@
 import type { RoutineTask } from '../../../shared/types/dayPlan'
 import { ROUTINE_TITLE } from '../dayPlanLabels'
-<<<<<<< HEAD
 import { CollapsibleSection } from './CollapsibleSection'
-=======
->>>>>>> origin/main
 
 /**
  * 休息日家务（拖地 / 洗衣）。只展示「完成」勾选，没有编辑面板——它们是每日实例，
@@ -13,26 +10,19 @@ import { CollapsibleSection } from './CollapsibleSection'
 export function RoutineList({
   routines,
   writable,
-<<<<<<< HEAD
   collapsed,
   onToggleSection,
-=======
->>>>>>> origin/main
   onToggle,
 }: {
   routines: RoutineTask[]
   writable: boolean
-<<<<<<< HEAD
   collapsed: boolean
   onToggleSection: () => void
-=======
->>>>>>> origin/main
   onToggle: (id: string) => void
 }) {
   if (routines.length === 0) return null
 
   return (
-<<<<<<< HEAD
     <CollapsibleSection
       section="routine"
       title={ROUTINE_TITLE}
@@ -56,24 +46,5 @@ export function RoutineList({
         ))}
       </div>
     </CollapsibleSection>
-=======
-    <div className="execute-list">
-      <h3>{ROUTINE_TITLE}</h3>
-      {routines.map((routine) => (
-        <label className="execution-row" data-routine={routine.kind} key={routine.id}>
-          <input
-            type="checkbox"
-            checked={routine.completed}
-            disabled={!writable}
-            aria-label={`${routine.title}已完成`}
-            onChange={() => onToggle(routine.id)}
-          />
-          <span>
-            <strong>{routine.title}</strong>
-          </span>
-        </label>
-      ))}
-    </div>
->>>>>>> origin/main
   )
 }

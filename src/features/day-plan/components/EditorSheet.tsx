@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import { useEffect, useRef, useState } from 'react'
-=======
-import { useState } from 'react'
->>>>>>> origin/main
 import type {
   CustomTask,
   DailyExerciseItem,
@@ -65,10 +61,7 @@ export function EditorSheet({
   plan,
   task,
   writable,
-<<<<<<< HEAD
   saveError,
-=======
->>>>>>> origin/main
   onCancel,
   onSave,
 }: {
@@ -80,10 +73,7 @@ export function EditorSheet({
   plan: DayPlan | null
   task: CustomTask | null
   writable: boolean
-<<<<<<< HEAD
   saveError: string | null
-=======
->>>>>>> origin/main
   onCancel: () => void
   onSave: (payload: PanelPayload) => void
 }) {
@@ -92,7 +82,6 @@ export function EditorSheet({
   const [mealDraft, setMealDraft] = useState<MealDraft>(() => buildMealDraft(meals, mealItems))
   const [exerciseDraft, setExerciseDraft] = useState<ExerciseDraft>(() => buildExerciseDraft(plan, exerciseItems))
   const [morningFocus, setMorningFocus] = useState(plan?.morning_focus ?? '')
-<<<<<<< HEAD
   const [taskTime, setTaskTime] = useState(task?.task_time?.slice(0, 5) ?? '')
   const [taskTitle, setTaskTitle] = useState(task?.title ?? '')
   const [taskNote, setTaskNote] = useState(task?.note ?? '')
@@ -106,11 +95,6 @@ export function EditorSheet({
     previousSaveError.current = saveError
     setTaskSaveError(saveError)
   }, [saveError])
-=======
-  const [taskTime, setTaskTime] = useState(task?.task_time?.slice(0, 5) || '08:00')
-  const [taskTitle, setTaskTitle] = useState(task?.title ?? '')
-  const [taskNote, setTaskNote] = useState(task?.note ?? '')
->>>>>>> origin/main
 
   // 补剂草稿在用户第一次改动之前保持「派生」状态：候选项是异步到的，
   // 若一开始就固化进 state，模板补进来的行会永远等不到。
@@ -136,7 +120,6 @@ export function EditorSheet({
     if (kind === 'supplements') return { kind: 'supplements', rows: supplementDraft }
     if (kind === 'morning') return { kind: 'morning', morning_focus: morningFocus }
     if (kind === 'exercise') return { kind: 'exercise', exercise: exerciseDraft }
-<<<<<<< HEAD
     return { kind: 'task', task: { task_time: taskTime, title: taskTitle.trim(), note: taskNote } }
   }
 
@@ -150,9 +133,6 @@ export function EditorSheet({
       if (Object.keys(validation).length > 0) return
     }
     onSave(buildPayload())
-=======
-    return { kind: 'task', task: { task_time: taskTime, title: taskTitle, note: taskNote } }
->>>>>>> origin/main
   }
 
   const needsOptions = kind === 'meals' || kind === 'supplements' || kind === 'exercise'
@@ -168,11 +148,7 @@ export function EditorSheet({
       title={title}
       placement={placement}
       saveDisabled={!writable}
-<<<<<<< HEAD
       onSave={handleSave}
-=======
-      onSave={() => onSave(buildPayload())}
->>>>>>> origin/main
       onCancel={onCancel}
     >
       {needsOptions && options.loading ? (
@@ -223,7 +199,6 @@ export function EditorSheet({
 
           {kind === 'task' ? (
             <>
-<<<<<<< HEAD
               {taskSaveError ? <p className="notice" role="alert">保存失败：{taskSaveError}</p> : null}
               <label className="field">
                 事项名称
@@ -268,20 +243,6 @@ export function EditorSheet({
                   <input value={taskNote} onChange={(event) => setTaskNote(event.target.value)} />
                 </label>
               </div>
-=======
-              <label className="field">
-                时间
-                <input type="time" value={taskTime} onChange={(event) => setTaskTime(event.target.value)} />
-              </label>
-              <label className="field">
-                事项名称
-                <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} />
-              </label>
-              <label className="field">
-                备注
-                <input value={taskNote} onChange={(event) => setTaskNote(event.target.value)} />
-              </label>
->>>>>>> origin/main
             </>
           ) : null}
         </>

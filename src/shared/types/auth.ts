@@ -1,17 +1,12 @@
 export interface AppUser {
   id: string
-<<<<<<< HEAD
   username: string
   created_at: string
-=======
-  email: string
->>>>>>> origin/main
 }
 
 export interface AppSession {
   user: AppUser
 }
-<<<<<<< HEAD
 
 export type AuthContext = { owner: string; generation: number }
 
@@ -31,5 +26,3 @@ export type AuthState = {
   verified: boolean
   error: string | null
 }
-=======
->>>>>>> origin/main

@@ -1,33 +1,17 @@
-<<<<<<< HEAD
 // Auth 与云端传输客户端，只由 services/sync/ 编排调用。
 // 页面经 api 门面访问；认证与同步门面用动态 import 保持 SDK 独立分块。
 // 业务写入始终走 IndexedDB，此目录不提供云端业务 Service。
 // 环境变量只从 services/capabilities.ts 获取。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../capabilities'
-=======
-// 云端适配层，L0-L5 期间冻结、不参与运行时。
-// 本地优先阶段的业务数据只走 src/services/local/；本目录保留供 L6 迁移参考，页面与本地服务不得引用。
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
->>>>>>> origin/main
 
 export const supabaseConfigurationError =
   '缺少 Supabase 配置。请在 .env.local 中设置 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY。'
 
-<<<<<<< HEAD
 export const hasSupabaseConfiguration = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
 
 export const supabase: SupabaseClient | null = hasSupabaseConfiguration
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-=======
-export const hasSupabaseConfiguration = Boolean(supabaseUrl && supabaseAnonKey)
-
-export const supabase: SupabaseClient | null = hasSupabaseConfiguration
-  ? createClient(supabaseUrl, supabaseAnonKey, {
->>>>>>> origin/main
       auth: {
         persistSession: true,
         autoRefreshToken: true,

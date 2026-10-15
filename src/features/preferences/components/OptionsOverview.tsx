@@ -30,11 +30,7 @@ export function OptionsOverview({
   selectable,
   total,
   busy,
-<<<<<<< HEAD
   username,
-=======
-  email,
->>>>>>> origin/main
   onOpen,
   onSeed,
 }: {
@@ -42,11 +38,7 @@ export function OptionsOverview({
   selectable: Record<OptionKind, number>
   total: number
   busy: boolean
-<<<<<<< HEAD
   username: string
-=======
-  email: string
->>>>>>> origin/main
   onOpen: (section: OptionsSection) => void
   onSeed: () => void
 }) {
@@ -126,11 +118,7 @@ export function OptionsOverview({
         <button className="nav-row" type="button" data-option-entry="account" onClick={() => onOpen('account')}>
           <span>
             <strong>{ACCOUNT_TITLE}</strong>
-<<<<<<< HEAD
             <small>{username || '未登录'}</small>
-=======
-            <small>{email || '未登录'}</small>
->>>>>>> origin/main
           </span>
           <span className="arrow" aria-hidden="true">
             ›
