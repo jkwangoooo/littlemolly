@@ -441,6 +441,8 @@ export function DayPlanScreen() {
           onSwitchMode={() => setPendingMode(mode === 'work' ? 'rest' : 'work')}
           onRestoreDefault={() => void restoreDefault()}
           onAddTask={() => void openPanel('task')}
+          onCopyYesterday={isPrepare && mode === 'work' ? () => setConfirmCopy(true) : undefined}
+          copyDisabled={status === 'saving' || !writable}
         />
 
         <SaveStatusBar
@@ -477,7 +479,6 @@ export function DayPlanScreen() {
                 onRetry={() => void retryLastSave()}
                 onToggle={toggleRouteNode}
                 onArrange={arrangeRouteNode}
-                onCopyYesterday={() => setConfirmCopy(true)}
                 onEditTask={(node) => {
                   if (node.task) {
                     setEditingTask(node.task)

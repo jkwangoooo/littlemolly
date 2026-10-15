@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 
-const PET_SIZE = 88
+const PET_SIZE = 112
 const EDGE_GAP = 14
 const BOTTOM_SAFE_GAP = 76
 const DRAG_THRESHOLD = 6
@@ -56,7 +56,7 @@ export function FloatingPet({ onPositionChange }: { onPositionChange?: (position
   useEffect(() => { onPositionChange?.({ ...position, size: PET_SIZE }) }, [onPositionChange, position])
 
   if (isHidden) return <button className="floating-pet-restore" type="button" aria-label="显示悬浮小火球" title="显示悬浮小火球" onClick={() => setIsHidden(false)}><span aria-hidden="true">✦</span></button>
-  const style = { '--pet-x': `${position.x}px`, '--pet-y': `${position.y}px` } as CSSProperties; const placement = placementFor(position); const viewport = getViewport(); const bubbleWidth = Math.min(236, viewport.width - 32); const bubbleHeight = 106; const bubbleX = Math.min(Math.max(position.x, viewport.offsetLeft + 16), viewport.offsetLeft + viewport.width - bubbleWidth - 16); const bubbleY = placement === 'top' ? Math.max(viewport.offsetTop + 16, position.y - bubbleHeight - 12) : Math.min(position.y + PET_SIZE + 12, viewport.offsetTop + viewport.height - bubbleHeight - 16); const bubbleStyle = { '--bubble-x': `${bubbleX}px`, '--bubble-y': `${bubbleY}px` } as CSSProperties; const frame = FRAME_FILES[animationMode][frameIndex % FRAME_FILES[animationMode].length]
+  const style = { '--pet-x': `${position.x}px`, '--pet-y': `${position.y}px`, '--pet-size': `${PET_SIZE}px` } as CSSProperties; const placement = placementFor(position); const viewport = getViewport(); const bubbleWidth = Math.min(236, viewport.width - 32); const bubbleHeight = 106; const bubbleX = Math.min(Math.max(position.x, viewport.offsetLeft + 16), viewport.offsetLeft + viewport.width - bubbleWidth - 16); const bubbleY = placement === 'top' ? Math.max(viewport.offsetTop + 16, position.y - bubbleHeight - 12) : Math.min(position.y + PET_SIZE + 12, viewport.offsetTop + viewport.height - bubbleHeight - 16); const bubbleStyle = { '--bubble-x': `${bubbleX}px`, '--bubble-y': `${bubbleY}px` } as CSSProperties; const frame = FRAME_FILES[animationMode][frameIndex % FRAME_FILES[animationMode].length]
   return <div className={`floating-pet-layer floating-pet-${petState}`} style={style}>
     {isOpen ? <aside className={`floating-pet-bubble floating-pet-bubble-${placement}`} style={bubbleStyle} data-floating-pet-bubble role="dialog" aria-label="Molly 小火球提示"><button className="floating-pet-bubble-close" type="button" aria-label="关闭小火球提示" onClick={() => setIsOpen(false)}>×</button><strong>嗨，我是 Molly 的小火球</strong><span>今天也要慢慢完成一件事</span><button className="floating-pet-hide" type="button" onClick={() => { setIsOpen(false); setIsHidden(true) }}>隐藏小火球</button></aside> : null}
     <button ref={petRef} className="floating-pet" type="button" aria-label="Molly 的小火球，可拖动，按 Enter 或空格打开提示" aria-expanded={isOpen} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={finishPointer} onPointerCancel={finishPointer} onKeyDown={handleKeyDown}><img className={`floating-pet-sprite floating-pet-sprite-${facing}`} src={animationMode === 'walk' ? frame : `${FRAME_ROOT}${frame}`} alt="" draggable={false} aria-hidden="true" /></button>

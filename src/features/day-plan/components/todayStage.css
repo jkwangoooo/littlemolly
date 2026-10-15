@@ -4,6 +4,26 @@
   pointer-events: none;
 }
 
+/* 透明触摸层覆盖文字，长按仍交给气泡按钮处理。 */
+.rhythm-bubble,
+.rhythm-bubble * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.rhythm-bubble > * {
+  pointer-events: none;
+}
+
+.rhythm-bubble::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  content: "";
+}
+
  /* 横屏与矮窗口：舞台尺寸跟随容器高度，避免正方形画布制造横屏溢出。 */
 .bubble-stage {
   container: bubble-stage / size;
@@ -38,4 +58,52 @@
   .bubble-canvas {
     width: min(100%, 620px);
   }
+}
+
+/* 手机首屏：舞台要完整落在标题与底部导航之间，不能再用视口高度
+   参与半径计算，否则高屏设备会把气泡推到导航后面。 */
+@media (max-width: 480px) {
+  .bubble-stage {
+    padding-bottom: 88px;
+  }
+
+  .bubble-stage-toolbar {
+    min-height: 28px;
+    margin-bottom: 2px;
+  }
+
+  .bubble-canvas {
+    width: min(100%, 350px);
+    height: 292px;
+    margin-top: 0;
+  }
+
+  .rhythm-bubble {
+    --bubble-size: clamp(60px, 17vw, 72px);
+  }
+
+  .progress-orb {
+    width: min(33%, 128px);
+  }
+}
+
+.bubble-header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.bubble-copy-link {
+  border: 1px solid #e5c6ce;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #9c5064;
+  background: #fffaf8;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.bubble-copy-link:disabled {
+  opacity: .58;
 }
